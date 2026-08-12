@@ -113,5 +113,12 @@ dist/
 # OS metadata
 .DS_Store
 Thumbs.db
-
 requirements/
+
+# Agent skills and editor-specific metadata
+.agents/skills/
+**/.agents/
+**/.claude/
+**/.windsurf/
+skills-lock.json
+**/skills-lock.json
