@@ -9,6 +9,7 @@ import { VouchersModule } from './vouchers/vouchers.module';
 import { CartModule } from './cart/cart.module';
 import { OrdersModule } from './orders/orders.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     CartModule,
     OrdersModule,
     ScheduleModule.forRoot(),
+    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
