@@ -27,11 +27,11 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
     { name: 'Hồ sơ đối tác', href: '/partner/profile', icon: Building2 },
     { name: 'Chi nhánh cửa hàng', href: '/partner/branches', icon: MapPin },
     { name: 'Danh sách Voucher', href: '/partner/vouchers', icon: Ticket },
-    { name: 'Quét/Xác thực mã', href: '/partner/validate', icon: CheckSquare },
+    { name: 'Quét/Xác thực mã', href: '/partner/redeem', icon: CheckSquare },
   ];
 
   return (
-    <RoleGuard allowedRoles={['PARTNER']}>
+    <RoleGuard allowedRoles={['PARTNER', 'PARTNER_STAFF']}>
       <div className="min-h-screen flex flex-col md:flex-row bg-background">
         
         {/* Sidebar cho Desktop */}

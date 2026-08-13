@@ -47,6 +47,24 @@ export class VouchersController {
   }
 
   /**
+   * Quét và đổi mã voucher tại một chi nhánh cụ thể.
+   * POST /vouchers/redeem
+   */
+  @Post('redeem')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PARTNER, UserRole.PARTNER_STAFF, UserRole.ADMIN)
+  async redeemVoucher(
+    @Req() req: any,
+    @Body() dto: { uniqueCode: string; branchId: string },
+  ) {
+    return this.vouchersService.redeemVoucher(
+      req.user,
+      dto.uniqueCode,
+      dto.branchId,
+    );
+  }
+
+  /**
    * Cập nhật thông tin chiến dịch voucher (chỉ áp dụng cho DRAFT/REJECTED).
    * PATCH /vouchers/:id
    */

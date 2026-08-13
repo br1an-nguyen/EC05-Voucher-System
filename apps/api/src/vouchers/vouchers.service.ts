@@ -418,4 +418,119 @@ export class VouchersService {
       orderBy: { issuedAt: 'desc' },
     });
   }
+
+  /**
+   * Thực hiện quét và đổi mã voucher tại chi nhánh (Redemption logic).
+   * Có row-level locking (SELECT FOR UPDATE) để chống race-condition quét trùng lặp.
+   * @param actorUser Thông tin đối tác/nhân viên thực hiện quét
+   * @param uniqueCode Chuỗi mã voucher cần quét
+   * @param branchId ID chi nhánh thực hiện quét
+   */
+  async redeemVoucher(
+    actorUser: { userId: string; role: string; partnerId?: string | null; branchId?: string | null },
+    uniqueCode: string,
+    branchId: string,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Tìm VoucherCode theo uniqueCode và khóa dòng để chống double-redemption
+      const rawCode = await tx.voucherCode.findUnique({
+        where: { uniqueCode },
+      });
+
+      if (!rawCode) {
+        throw new NotFoundException('Mã voucher này không tồn tại trên hệ thống.');
+      }
+
+      await tx.$executeRawUnsafe(
+        `SELECT code_id FROM "Voucher_Codes" WHERE code_id = $1::uuid FOR UPDATE`,
+        rawCode.codeId,
+      );
+
+      // Nạp đầy đủ thông tin liên kết
+      const voucher = await tx.voucherCode.findUnique({
+        where: { codeId: rawCode.codeId },
+        include: {
+          orderItem: {
+            include: {
+              campaign: {
+                include: {
+                  campaignBranches: true,
+                },
+              },
+            },
+          },
+          usageLogs: true,
+        },
+      });
+
+      if (!voucher) {
+        throw new NotFoundException('Mã voucher không còn khả dụng.');
+      }
+
+      const campaign = voucher.orderItem.campaign;
+
+      // 2. Kiểm tra phân quyền truy cập của người quét (RB-09)
+      if (actorUser.role === 'PARTNER' || actorUser.role === 'PARTNER_STAFF') {
+        // Chiến dịch phải thuộc quyền sở hữu của đối tác này
+        if (campaign.partnerId !== actorUser.partnerId) {
+          throw new BadRequestException('Mã voucher này thuộc về đối tác khác. Bạn không có quyền quét.');
+        }
+
+        // Nếu là nhân viên chi nhánh, bắt buộc phải đúng chi nhánh được phân công (nếu có scope)
+        if (actorUser.role === 'PARTNER_STAFF' && actorUser.branchId && actorUser.branchId !== branchId) {
+          throw new BadRequestException('Bạn không được phép quét mã tại chi nhánh khác chi nhánh phân công.');
+        }
+      }
+
+      // 3. Kiểm tra chi nhánh áp dụng của chiến dịch voucher (RB-09)
+      const isBranchApplicable = campaign.campaignBranches.some((cb) => cb.branchId === branchId);
+      if (!isBranchApplicable) {
+        throw new BadRequestException('Chiến dịch voucher này không được áp dụng tại chi nhánh hiện tại.');
+      }
+
+      // 4. Kiểm tra trạng thái khả dụng của mã (RB-07)
+      if (voucher.status !== 'AVAILABLE') {
+        throw new BadRequestException('Mã voucher này đã được sử dụng hoặc đã bị hủy/hết hạn.');
+      }
+
+      // 5. Kiểm tra thời hạn sử dụng của voucher (RB-08)
+      const now = new Date();
+      if (now < campaign.usageStartTime || now > campaign.usageEndTime) {
+        throw new BadRequestException('Voucher đã hết hạn sử dụng hoặc chưa đến thời gian áp dụng.');
+      }
+
+      // 6. Ghi nhận lịch sử sử dụng VoucherUsageLog
+      const log = await tx.voucherUsageLog.create({
+        data: {
+          codeId: voucher.codeId,
+          branchId,
+          usedAt: now,
+        },
+        include: {
+          branch: true,
+        },
+      });
+
+      // 7. Xử lý trạng thái mã voucher (Single-use vs Multi-use)
+      const totalUses = voucher.usageLogs.length + 1; // Tính cả lượt quét hiện tại
+      if (campaign.isMultiUse) {
+        const maxUses = campaign.maxUsesPerCode || 1;
+        if (totalUses >= maxUses) {
+          // Đạt giới hạn quét tối đa -> chuyển sang USED
+          await tx.voucherCode.update({
+            where: { codeId: voucher.codeId },
+            data: { status: 'USED' },
+          });
+        }
+      } else {
+        // Single-use -> Chuyển sang USED ngay sau lần quét đầu tiên
+        await tx.voucherCode.update({
+          where: { codeId: voucher.codeId },
+          data: { status: 'USED' },
+        });
+      }
+
+      return log;
+    });
+  }
 }
