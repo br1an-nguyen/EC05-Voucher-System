@@ -7,7 +7,7 @@ import * as z from 'zod';
 import { useAuth } from '../../../context/AuthContext';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Mail, Phone, Lock, Ticket, ArrowRight, AlertCircle, Info } from 'lucide-react';
+import { Mail, Lock, Ticket, ArrowRight, AlertCircle, Info, Eye, EyeOff } from 'lucide-react';
 
 const loginSchema = z.object({
   identifier: z.string().min(1, 'Vui lòng nhập Email hoặc Số điện thoại.'),
@@ -21,6 +21,7 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showPartnerInfo, setShowPartnerInfo] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (searchParams.get('registered') === 'partner') {
@@ -53,30 +54,30 @@ function LoginForm() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 px-4 py-12 sm:px-6 lg:px-8">
-      <div className="w-full max-w-md space-y-8 rounded-2xl bg-slate-900/60 p-8 shadow-2xl backdrop-blur-md border border-slate-800">
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-12 sm:px-6 lg:px-8 font-sans">
+      <div className="w-full max-w-md space-y-8 rounded-2xl bg-card p-8 border border-border shadow-xl">
         
         {/* LOGO & TIÊU ĐỀ */}
         <div className="text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-500 to-violet-500 text-white shadow-lg shadow-indigo-500/30">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-white shadow shadow-primary/20">
             <Ticket className="h-6 w-6" />
           </div>
-          <h2 className="mt-6 text-3xl font-bold tracking-tight text-white">
-            Đăng nhập Hệ thống
+          <h2 className="mt-6 text-3xl font-bold tracking-tight text-foreground">
+            VoucherNow
           </h2>
-          <p className="mt-2 text-sm text-slate-400">
+          <p className="mt-2 text-sm text-muted">
             Trải nghiệm mua sắm và đổi voucher tiện lợi
           </p>
         </div>
 
         {/* THÔNG BÁO CHO ĐỐI TÁC VỪA ĐĂNG KÝ */}
         {showPartnerInfo && (
-          <div className="flex items-start gap-3 rounded-lg bg-indigo-500/10 p-4 border border-indigo-500/20 text-indigo-200 text-sm leading-relaxed">
-            <Info className="h-5 w-5 shrink-0 text-indigo-400 mt-0.5" />
+          <div className="flex items-start gap-3 rounded-lg bg-secondary p-4 border border-primary/20 text-primary text-sm leading-relaxed">
+            <Info className="h-5 w-5 shrink-0 text-primary mt-0.5" />
             <div>
-              <span className="font-semibold text-white">Đăng ký đối tác thành công!</span>
-              <p className="mt-1 text-xs text-slate-300">
-                Hồ sơ doanh nghiệp đang chờ Admin phê duyệt. Hệ thống sẽ gửi thông báo kích hoạt khi hoàn tất.
+              <span className="font-semibold">Đăng ký đối tác thành công!</span>
+              <p className="mt-1 text-xs text-muted">
+                Hồ sơ doanh nghiệp đang chờ Admin phê duyệt. Hệ thống sẽ kích hoạt tài khoản ngay sau khi phê duyệt hoàn tất.
               </p>
             </div>
           </div>
@@ -84,33 +85,34 @@ function LoginForm() {
 
         {/* THÔNG BÁO LỖI NẾU ĐĂNG NHẬP THẤT BẠI */}
         {errorMsg && (
-          <div className="flex items-center gap-3 rounded-lg bg-red-500/10 p-4 border border-red-500/20 text-red-200 text-sm">
-            <AlertCircle className="h-5 w-5 shrink-0 text-red-400" />
-            <p>{errorMsg}</p>
+          <div className="flex items-center gap-3 rounded-lg bg-red-500/10 p-4 border border-red-500/20 text-red-800 text-sm">
+            <AlertCircle className="h-5 w-5 shrink-0 text-red-600" />
+            <p className="font-medium">{errorMsg}</p>
           </div>
         )}
 
         {/* FORM ĐĂNG NHẬP */}
         <form className="mt-8 space-y-6" onSubmit={handleSubmit(onSubmit)}>
           <div className="space-y-4">
+            
             {/* EMAIL / SỐ ĐIỆN THOẠI */}
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">
+              <label className="block text-xs font-semibold text-foreground mb-1.5">
                 Email hoặc Số điện thoại
               </label>
-              <div className="relative rounded-lg shadow-sm">
+              <div className="relative rounded-lg">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                  <Mail className="h-5 w-5 text-slate-500" />
+                  <Mail className="h-5 w-5 text-muted/70" />
                 </div>
                 <input
                   type="text"
                   {...formRegister('identifier')}
-                  className="block w-full rounded-lg border border-slate-800 bg-slate-950 py-3 pl-10 pr-3 text-slate-200 placeholder-slate-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-sm"
+                  className="block w-full rounded-lg border border-border bg-card py-3 pl-10 pr-3 text-foreground placeholder-slate-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary text-sm transition-all"
                   placeholder="name@example.com hoặc 0901234567"
                 />
               </div>
               {errors.identifier && (
-                <p className="mt-1.5 text-xs text-red-400 flex items-center gap-1">
+                <p className="mt-1.5 text-xs text-primary flex items-center gap-1 font-medium">
                   {errors.identifier.message}
                 </p>
               )}
@@ -119,40 +121,48 @@ function LoginForm() {
             {/* MẬT KHẨU */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-sm font-medium text-slate-300">
+                <label className="block text-xs font-semibold text-foreground">
                   Mật khẩu
                 </label>
                 <Link
                   href="/forgot-password"
-                  className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors"
+                  className="text-xs font-semibold text-primary hover:text-primary-hover transition-colors"
                 >
                   Quên mật khẩu?
                 </Link>
               </div>
-              <div className="relative rounded-lg shadow-sm">
+              <div className="relative rounded-lg">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                  <Lock className="h-5 w-5 text-slate-500" />
+                  <Lock className="h-5 w-5 text-muted/70" />
                 </div>
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   {...formRegister('password')}
-                  className="block w-full rounded-lg border border-slate-800 bg-slate-950 py-3 pl-10 pr-3 text-slate-200 placeholder-slate-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-sm"
+                  className="block w-full rounded-lg border border-border bg-card py-3 pl-10 pr-10 text-foreground placeholder-slate-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary text-sm transition-all"
                   placeholder="••••••••"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted/70 hover:text-foreground transition-colors"
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
               </div>
               {errors.password && (
-                <p className="mt-1.5 text-xs text-red-400 flex items-center gap-1">
+                <p className="mt-1.5 text-xs text-primary flex items-center gap-1 font-medium">
                   {errors.password.message}
                 </p>
               )}
             </div>
           </div>
 
+
           {/* NÚT SUBMIT */}
           <button
             type="submit"
             disabled={loading}
-            className="group relative flex w-full justify-center rounded-lg bg-gradient-to-r from-indigo-500 to-violet-500 py-3 px-4 text-sm font-semibold text-white hover:from-indigo-600 hover:to-violet-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-900 disabled:opacity-50 transition-all duration-200 shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/35"
+            className="group relative flex w-full justify-center rounded-lg bg-primary py-3 px-4 text-sm font-semibold text-white hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background disabled:opacity-50 transition-all duration-200 shadow-sm"
           >
             {loading ? 'Đang xử lý...' : 'Đăng nhập'}
             {!loading && <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />}
@@ -160,11 +170,11 @@ function LoginForm() {
         </form>
 
         {/* LINK CHUYỂN TRANG ĐĂNG KÝ */}
-        <div className="text-center text-sm text-slate-500 pt-4 border-t border-slate-800/60">
+        <div className="text-center text-sm text-muted pt-4 border-t border-border/60">
           Chưa có tài khoản?{' '}
           <Link
             href="/register"
-            className="font-semibold text-indigo-400 hover:text-indigo-300 transition-colors"
+            className="font-bold text-primary hover:text-primary-hover transition-colors"
           >
             Đăng ký ngay
           </Link>
@@ -179,8 +189,8 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
-          <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-indigo-500"></div>
+        <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
+          <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-primary"></div>
         </div>
       }
     >
