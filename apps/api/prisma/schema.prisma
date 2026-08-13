@@ -118,6 +118,7 @@ model User {
   orders         Order[]
   voucherCodes   VoucherCode[]
   auditLogs      AuditLog[]
+  cartItems      CartItem[]
 
   @@map("Users")
 }
@@ -183,6 +184,7 @@ model VoucherCampaign {
   campaignBranches CampaignBranch[]
   orderItems       OrderItem[]
   inventoryReservations InventoryReservation[]
+  cartItems        CartItem[]
 
   @@unique([partnerId, campaignId])
   @@map("Voucher_Campaigns")
@@ -368,4 +370,20 @@ model AuditLog {
   admin              User     @relation(fields: [adminId], references: [userId], onDelete: Restrict)
 
   @@map("Audit_Logs")
+}
+
+model CartItem {
+  cartItemId String   @id @default(dbgenerated("gen_random_uuid()")) @map("cart_item_id") @db.Uuid
+  customerId String   @map("customer_id") @db.Uuid
+  campaignId String   @map("campaign_id") @db.Uuid
+  quantity   Int      @map("quantity")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  customer   User     @relation(fields: [customerId], references: [userId], onDelete: Cascade)
+  campaign   VoucherCampaign @relation(fields: [campaignId], references: [campaignId], onDelete: Cascade)
+
+  @@unique([customerId, campaignId])
+  @@map("Cart_Items")
 }

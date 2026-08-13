@@ -1,0 +1,45 @@
+import { Controller, Get, Post, Body, Param, UseGuards, Req } from '@nestjs/common';
+import { OrdersService } from './orders.service';
+import { CheckoutDto } from './dto/checkout.dto';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { UserRole } from '@prisma/client';
+
+/**
+ * Controller tiếp nhận REST API xử lý đơn đặt hàng của Khách hàng.
+ * POST /orders, GET /orders, GET /orders/:id
+ */
+@Controller('orders')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.CUSTOMER)
+export class OrdersController {
+  constructor(private ordersService: OrdersService) {}
+
+  /**
+   * Đặt hàng (Checkout) tạo đơn hàng mới từ giỏ hàng hiện tại.
+   * POST /orders
+   */
+  @Post()
+  async checkout(@Req() req: any, @Body() checkoutDto: CheckoutDto) {
+    return this.ordersService.checkout(req.user.userId, checkoutDto);
+  }
+
+  /**
+   * Lấy lịch sử đơn hàng của khách hàng hiện tại.
+   * GET /orders
+   */
+  @Get()
+  async getCustomerOrders(@Req() req: any) {
+    return this.ordersService.getCustomerOrders(req.user.userId);
+  }
+
+  /**
+   * Xem chi tiết một đơn hàng cụ thể.
+   * GET /orders/:id
+   */
+  @Get(':id')
+  async getOrderDetails(@Req() req: any, @Param('id') orderId: string) {
+    return this.ordersService.getOrderDetails(req.user.userId, orderId);
+  }
+}
