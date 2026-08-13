@@ -261,6 +261,73 @@ export class VouchersService {
     return campaign;
   }
 
+  /**
+   * Lấy danh sách voucher công khai để hiển thị trên trang chủ cho khách hàng.
+   * Hỗ trợ tìm kiếm từ khóa, danh mục, khoảng giá và chi nhánh áp dụng.
+   */
+  async findPublicCatalog(query: {
+    keyword?: string;
+    category?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    branchId?: string;
+  }) {
+    const { keyword, category, minPrice, maxPrice, branchId } = query;
+    const now = new Date();
+
+    // Ràng buộc: Chiến dịch phải được phê duyệt và đang trong thời gian mở bán
+    const whereClause: any = {
+      status: VoucherStatus.APPROVED,
+      saleStartTime: { lte: now },
+      saleEndTime: { gte: now },
+    };
+
+    if (category) {
+      whereClause.category = category;
+    }
+
+    if (minPrice !== undefined || maxPrice !== undefined) {
+      whereClause.salePrice = {};
+      if (minPrice !== undefined) {
+        whereClause.salePrice.gte = minPrice;
+      }
+      if (maxPrice !== undefined) {
+        whereClause.salePrice.lte = maxPrice;
+      }
+    }
+
+    if (keyword) {
+      whereClause.OR = [
+        { title: { contains: keyword, mode: 'insensitive' } },
+        { description: { contains: keyword, mode: 'insensitive' } },
+      ];
+    }
+
+    if (branchId) {
+      whereClause.campaignBranches = {
+        some: {
+          branchId: branchId,
+        },
+      };
+    }
+
+    const campaigns = await this.prisma.voucherCampaign.findMany({
+      where: whereClause,
+      include: {
+        partner: {
+          select: { companyName: true },
+        },
+        campaignBranches: {
+          include: { branch: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Lọc bỏ những chiến dịch đã hết hàng trong kho (Đã bán >= Sức chứa)
+    return campaigns.filter((c) => c.soldQuantity < c.capacity);
+  }
+
   // ================= ADMIN OPERATIONS =================
 
   /**

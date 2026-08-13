@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Param, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, UseGuards, Req, Query } from '@nestjs/common';
 import { VouchersService } from './vouchers.service';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 import { UpdateCampaignDto } from './dto/update-campaign.dto';
@@ -13,6 +13,27 @@ import { UserRole } from '@prisma/client';
 @Controller('vouchers')
 export class VouchersController {
   constructor(private vouchersService: VouchersService) {}
+
+  /**
+   * Lấy danh sách voucher công khai để hiển thị cho khách hàng (trang chủ).
+   * GET /vouchers
+   */
+  @Get()
+  async findPublicCatalog(
+    @Query('keyword') keyword?: string,
+    @Query('category') category?: string,
+    @Query('minPrice') minPrice?: string,
+    @Query('maxPrice') maxPrice?: string,
+    @Query('branchId') branchId?: string,
+  ) {
+    return this.vouchersService.findPublicCatalog({
+      keyword,
+      category,
+      minPrice: minPrice ? Number(minPrice) : undefined,
+      maxPrice: maxPrice ? Number(maxPrice) : undefined,
+      branchId,
+    });
+  }
 
   /**
    * Tạo chiến dịch voucher mới ở dạng nháp.
@@ -70,6 +91,7 @@ export class VouchersController {
   async findOne(@Param('id') campaignId: string) {
     return this.vouchersService.findOne(campaignId);
   }
+
 
   // ================= ADMIN ENDPOINTS =================
 
