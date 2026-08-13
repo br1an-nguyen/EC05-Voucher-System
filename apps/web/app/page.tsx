@@ -18,7 +18,8 @@ import {
   Store,
   Grid,
   Filter,
-  X
+  X,
+  ShoppingCart
 } from 'lucide-react';
 
 interface Branch {
@@ -144,6 +145,15 @@ export default function HomePage() {
                   >
                     <Briefcase className="h-4 w-4" />
                     Partner Portal
+                  </Link>
+                )}
+                {user.role === 'CUSTOMER' && (
+                  <Link
+                    href="/cart"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-secondary text-primary hover:bg-secondary/70 transition-colors"
+                  >
+                    <ShoppingCart className="h-4 w-4" />
+                    Giỏ hàng
                   </Link>
                 )}
                 

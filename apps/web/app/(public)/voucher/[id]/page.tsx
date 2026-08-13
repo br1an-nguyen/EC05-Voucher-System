@@ -82,16 +82,29 @@ export default function VoucherDetailPage() {
     }
   }, [campaignId]);
 
-  const handlePurchaseClick = () => {
+  const handlePurchaseClick = async () => {
     if (!user) {
       // Điều hướng về trang login nếu chưa đăng nhập
-      router.push('/login');
+      router.push('/login?redirect=' + encodeURIComponent(window.location.pathname));
       return;
     }
 
-    // Thông báo Mock vì tính năng Cart/Checkout sẽ được triển khai ở Commit 10 & 11
-    setDemoMessage(`Thành công! Chức năng mua ${purchaseQty} voucher sẽ khả dụng ở Commit 10 & 11 (Giỏ hàng và Thanh toán) tiếp theo.`);
-    setTimeout(() => setDemoMessage(null), 6000);
+    setErrorMsg(null);
+    try {
+      await apiRequest('/cart/items', {
+        method: 'POST',
+        body: JSON.stringify({
+          campaignId,
+          quantity: purchaseQty,
+        }),
+      });
+      setDemoMessage(`Đã thêm thành công ${purchaseQty} voucher vào giỏ hàng! Đang chuyển hướng...`);
+      setTimeout(() => {
+        router.push('/cart');
+      }, 1200);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Không thể thêm voucher vào giỏ hàng.');
+    }
   };
 
   if (loading) {
