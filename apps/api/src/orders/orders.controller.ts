@@ -42,4 +42,13 @@ export class OrdersController {
   async getOrderDetails(@Req() req: any, @Param('id') orderId: string) {
     return this.ordersService.getOrderDetails(req.user.userId, orderId);
   }
+
+  /**
+   * Yêu cầu hủy và hoàn tiền đơn hàng.
+   * POST /orders/:id/refund
+   */
+  @Post(':id/refund')
+  async requestRefund(@Req() req: any, @Param('id') orderId: string) {
+    return this.ordersService.requestRefund(req.user.userId, orderId);
+  }
 }

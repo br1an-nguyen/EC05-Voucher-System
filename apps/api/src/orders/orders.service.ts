@@ -168,4 +168,99 @@ export class OrdersService {
 
     return order;
   }
+
+  /**
+   * Yêu cầu hoàn tiền và hủy đơn hàng (Refund logic - MVP hỗ trợ hoàn tiền toàn bộ).
+   * Ràng buộc: Chỉ hoàn tiền khi toàn bộ mã voucher trong đơn hàng chưa được sử dụng.
+   * @param customerId ID khách hàng yêu cầu hoàn tiền
+   * @param orderId ID đơn hàng cần hoàn tiền
+   */
+  async requestRefund(customerId: string, orderId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Tìm đơn hàng và khóa dòng để đảm bảo nhất quán
+      await tx.$executeRawUnsafe(
+        `SELECT order_id FROM "Orders" WHERE order_id = $1::uuid FOR UPDATE`,
+        orderId,
+      );
+
+      const order = await tx.order.findFirst({
+        where: { orderId, customerId },
+        include: {
+          orderItems: true,
+          paymentTransactions: {
+            where: { status: 'SUCCEEDED' },
+          },
+        },
+      });
+
+      if (!order) {
+        throw new NotFoundException('Không tìm thấy đơn hàng yêu cầu hoàn tiền.');
+      }
+
+      // Ràng buộc: Đơn hàng phải đã thanh toán thành công
+      if (order.paymentStatus !== PaymentStatus.PAID || order.orderStatus !== OrderStatus.CONFIRMED) {
+        throw new BadRequestException('Chỉ có thể hoàn tiền cho các đơn hàng đã thanh toán thành công.');
+      }
+
+      const payment = order.paymentTransactions[0];
+      if (!payment) {
+        throw new BadRequestException('Không tìm thấy giao dịch thanh toán thành công liên kết.');
+      }
+
+      // 2. Tìm toàn bộ các mã voucher đã phát hành từ đơn hàng này
+      const voucherCodes = await tx.voucherCode.findMany({
+        where: {
+          orderItem: { orderId: order.orderId },
+        },
+      });
+
+      // Ràng buộc (RB-14): Nếu có bất kỳ mã voucher nào đã dùng (status === USED), từ chối hoàn tiền
+      const hasUsedCode = voucherCodes.some((vc) => vc.status === 'USED');
+      if (hasUsedCode) {
+        throw new BadRequestException('Không thể hoàn tiền vì đã có ít nhất một mã voucher trong đơn hàng đã được sử dụng.');
+      }
+
+      // 3. Hủy bỏ tất cả các mã voucher chưa dùng (chuyển sang CANCELLED)
+      await tx.voucherCode.updateMany({
+        where: {
+          orderItem: { orderId: order.orderId },
+          status: 'AVAILABLE',
+        },
+        data: { status: 'CANCELLED' },
+      });
+
+      // 4. Khởi tạo bản ghi hoàn tiền PaymentRefund
+      await tx.paymentRefund.create({
+        data: {
+          paymentId: payment.paymentId,
+          amountMinor: payment.requestAmountMinor,
+          currency: payment.requestCurrency,
+          status: 'SUCCEEDED', // Giả lập thành công từ nhà cung cấp
+          idempotencyKey: `REFUND-${order.orderId}-${Date.now()}`,
+          reason: 'Khách hàng tự hủy và yêu cầu hoàn tiền trực tuyến.',
+        },
+      });
+
+      // 5. Cập nhật trạng thái đơn hàng thành CANCELLED và trạng thái thanh toán thành REFUNDED
+      const updatedOrder = await tx.order.update({
+        where: { orderId: order.orderId },
+        data: {
+          orderStatus: OrderStatus.CANCELLED,
+          paymentStatus: PaymentStatus.REFUNDED,
+        },
+      });
+
+      // 6. Hoàn lại số lượng tồn kho của voucher chiến dịch (giảm soldQuantity)
+      for (const item of order.orderItems) {
+        await tx.voucherCampaign.update({
+          where: { campaignId: item.campaignId },
+          data: {
+            soldQuantity: { decrement: item.quantity },
+          },
+        });
+      }
+
+      return updatedOrder;
+    });
+  }
 }
