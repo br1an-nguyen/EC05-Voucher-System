@@ -391,4 +391,31 @@ export class VouchersService {
       data: { status: VoucherStatus.REJECTED },
     });
   }
+
+  /**
+   * Lấy danh sách ví voucher cá nhân của một khách hàng (Customer Wallet).
+   * @param customerId ID khách hàng sở hữu các mã voucher
+   */
+  async getCustomerWallet(customerId: string) {
+    return this.prisma.voucherCode.findMany({
+      where: { customerId },
+      include: {
+        orderItem: {
+          include: {
+            campaign: {
+              include: {
+                partner: {
+                  select: { companyName: true },
+                },
+                campaignBranches: {
+                  include: { branch: true },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { issuedAt: 'desc' },
+    });
+  }
 }

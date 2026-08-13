@@ -245,7 +245,7 @@ export default function PaymentReturnPage() {
             <div className="space-y-3 pt-2">
               <button
                 onClick={() => {
-                  alert('Tính năng Ví Voucher cá nhân (My Vouchers) sẽ khả dụng ở các module tiếp theo.');
+                  router.push('/customer/vouchers');
                 }}
                 className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary hover:bg-primary-hover text-white py-3 text-sm font-bold transition-colors"
               >

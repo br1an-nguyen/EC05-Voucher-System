@@ -84,6 +84,17 @@ export class VouchersController {
   }
 
   /**
+   * Lấy danh sách ví voucher cá nhân của khách hàng.
+   * GET /vouchers/customer/wallet
+   */
+  @Get('customer/wallet')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
+  async getCustomerWallet(@Req() req: any) {
+    return this.vouchersService.getCustomerWallet(req.user.userId);
+  }
+
+  /**
    * Chi tiết chiến dịch voucher (Có thể truy cập công khai).
    * GET /vouchers/:id
    */
