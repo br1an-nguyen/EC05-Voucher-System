@@ -53,6 +53,9 @@ export class PaymentsService {
         requestCurrency: 'VND',
         expiresAt: order.reservationExpiresAt,
       },
+      include: {
+        order: true,
+      },
     });
 
     // Cập nhật cổng thanh toán đang chọn trên đơn hàng

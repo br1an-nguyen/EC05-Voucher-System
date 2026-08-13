@@ -50,6 +50,7 @@ export default function CheckoutPage() {
   // Order created state
   const [createdOrder, setCreatedOrder] = useState<any | null>(null);
   const [timeLeft, setTimeLeft] = useState(900); // 15 phút = 900 giây
+  const [redirecting, setRedirecting] = useState(false);
 
   // Lấy giỏ hàng hiện tại để hiển thị tóm tắt
   const fetchCart = async () => {
@@ -113,6 +114,29 @@ export default function CheckoutPage() {
     }
   };
 
+  const handlePaymentRedirect = async () => {
+    if (!createdOrder) return;
+    setRedirecting(true);
+    setErrorMsg(null);
+    try {
+      const res = await apiRequest(`/payments/${createdOrder.orderId}`, {
+        method: 'POST',
+        body: JSON.stringify({ provider: paymentProvider }),
+      });
+      
+      // Chuyển hướng người dùng sang trang thanh toán chính thức hoặc mock URL
+      if (res.paymentUrl.startsWith('http://') || res.paymentUrl.startsWith('https://')) {
+        window.location.href = res.paymentUrl;
+      } else {
+        // Nếu là relative path (mock url)
+        router.push(res.paymentUrl);
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Không thể chuyển hướng đến trang thanh toán.');
+      setRedirecting(false);
+    }
+  };
+
   if (authLoading || loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -172,14 +196,19 @@ export default function CheckoutPage() {
             </div>
           </div>
 
+          {errorMsg && (
+            <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg p-3 text-left">
+              {errorMsg}
+            </div>
+          )}
+
           <div className="space-y-3">
             <button
-              onClick={() => {
-                alert(`Mô phỏng: Điều hướng khách hàng đến cổng ${createdOrder.selectedPaymentProvider} để thực hiện thanh toán.`);
-              }}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary hover:bg-primary-hover text-white py-3 text-sm font-bold transition-all shadow shadow-primary/10"
+              onClick={handlePaymentRedirect}
+              disabled={redirecting || timeLeft === 0}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary hover:bg-primary-hover text-white py-3 text-sm font-bold disabled:bg-slate-300 disabled:text-slate-500 transition-all shadow shadow-primary/10"
             >
-              Thanh toán ngay ({createdOrder.selectedPaymentProvider})
+              {redirecting ? 'Đang chuyển hướng...' : `Thanh toán ngay (${createdOrder.selectedPaymentProvider})`}
             </button>
             
             <Link

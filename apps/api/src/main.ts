@@ -42,7 +42,7 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   
   // Kích hoạt CORS để cho phép Frontend Next.js gọi API từ cổng khác
   app.enableCors();

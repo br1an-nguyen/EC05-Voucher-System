@@ -1,0 +1,317 @@
+'use client';
+
+import React, { useEffect, useState, useRef } from 'react';
+import { useParams, useSearchParams, useRouter } from 'next/navigation';
+import { apiRequest } from '../../../../lib/api';
+import Link from 'next/link';
+import { 
+  CheckCircle, 
+  XCircle, 
+  Loader2, 
+  Home, 
+  Ticket, 
+  AlertTriangle,
+  Play,
+  ArrowRight
+} from 'lucide-react';
+
+export default function PaymentReturnPage() {
+  const params = useParams();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  const provider = params.provider as string; // 'stripe', 'paypal', 'vnpay', 'mock'
+  
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState<'SUCCESS' | 'FAILED' | 'PENDING'>('PENDING');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [orderInfo, setOrderInfo] = useState<any | null>(null);
+  
+  // Ref để tránh chạy React StrictMode call API 2 lần
+  const initiated = useRef(false);
+
+  useEffect(() => {
+    if (initiated.current) return;
+    initiated.current = true;
+    
+    handlePaymentVerification();
+  }, []);
+
+  const handlePaymentVerification = async () => {
+    setLoading(true);
+    setErrorMsg(null);
+    try {
+      if (provider === 'paypal') {
+        const paymentId = searchParams.get('paymentId');
+        const paypalOrderId = searchParams.get('token'); // PayPal Order ID đại diện cho token
+
+        if (!paymentId || !paypalOrderId) {
+          throw new Error('Thiếu tham số định danh thanh toán PayPal.');
+        }
+
+        // Gọi API Capture PayPal của backend
+        const res = await apiRequest('/payments/paypal/capture', {
+          method: 'POST',
+          body: JSON.stringify({ paypalOrderId, paymentId }),
+        });
+
+        if (res.success) {
+          setStatus('SUCCESS');
+          fetchPaymentStatus(paymentId);
+        } else {
+          setStatus('FAILED');
+          setErrorMsg(res.message || 'Thanh toán PayPal không thành công.');
+        }
+        setLoading(false);
+
+      } else if (provider === 'vnpay') {
+        // Thu thập toàn bộ query parameters gửi từ VNPay về
+        const queryString = window.location.search;
+        
+        // Gọi API kiểm tra IPN chữ ký của backend trực tiếp ở foreground
+        const res = await apiRequest(`/payments/vnpay/ipn${queryString}`);
+        
+        if (res.RspCode === '00' || res.RspCode === '02') {
+          setStatus('SUCCESS');
+          const paymentId = searchParams.get('vnp_TxnRef');
+          if (paymentId) fetchPaymentStatus(paymentId);
+        } else {
+          setStatus('FAILED');
+          setErrorMsg(`VNPay phản hồi lỗi Code: ${res.RspCode}. Chi tiết: ${res.Message}`);
+        }
+        setLoading(false);
+
+      } else if (provider === 'stripe') {
+        const paymentId = searchParams.get('paymentId');
+        if (!paymentId) throw new Error('Không tìm thấy Payment ID.');
+        
+        // Stripe xử lý qua Webhook bất đồng bộ, chúng ta sẽ Polling trạng thái trong 6 giây
+        pollStripeStatus(paymentId);
+
+      } else if (provider === 'mock') {
+        const paymentId = searchParams.get('paymentId');
+        if (!paymentId) throw new Error('Không tìm thấy Payment ID.');
+        
+        // Ở chế độ Mock: Hiển thị giao diện cho developer trigger thành công
+        fetchPaymentStatus(paymentId);
+        setLoading(false);
+      } else {
+        throw new Error('Cổng thanh toán không được hỗ trợ.');
+      }
+    } catch (err: any) {
+      setStatus('FAILED');
+      setErrorMsg(err.message || 'Đã xảy ra lỗi khi kiểm tra giao dịch.');
+      setLoading(false);
+    }
+  };
+
+  // Polling lấy trạng thái giao dịch thanh toán Stripe
+  const pollStripeStatus = async (paymentId: string) => {
+    let attempts = 0;
+    const interval = setInterval(async () => {
+      attempts++;
+      try {
+        const res = await apiRequest(`/payments/${paymentId}/status`);
+        if (res.status === 'SUCCEEDED') {
+          setStatus('SUCCESS');
+          fetchPaymentStatus(paymentId);
+          clearInterval(interval);
+          setLoading(false);
+        } else if (res.status === 'FAILED') {
+          setStatus('FAILED');
+          setErrorMsg('Giao dịch Stripe bị từ chối hoặc thất bại.');
+          clearInterval(interval);
+          setLoading(false);
+        } else if (attempts >= 5) {
+          // Hết hạn polling (10 giây)
+          setStatus('PENDING');
+          clearInterval(interval);
+          setLoading(false);
+        }
+      } catch (err) {
+        clearInterval(interval);
+        setStatus('FAILED');
+        setLoading(false);
+      }
+    }, 2000);
+  };
+
+  // Lấy chi tiết đơn hàng để hiển thị mã code vừa phát hành
+  const fetchPaymentStatus = async (paymentId: string) => {
+    try {
+      const paymentDetails = await apiRequest(`/payments/${paymentId}/status`);
+      setOrderInfo(paymentDetails);
+    } catch (err) {
+      console.error('Không thể lấy chi tiết trạng thái đơn:', err);
+    }
+  };
+
+  // Mô phỏng thanh toán thành công (Developer mode)
+  const triggerMockSuccess = async () => {
+    const paymentId = searchParams.get('paymentId');
+    if (!paymentId) return;
+
+    setLoading(true);
+    try {
+      await apiRequest(`/payments/${paymentId}/mock-success`, {
+        method: 'POST',
+      });
+      setStatus('SUCCESS');
+      fetchPaymentStatus(paymentId);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Không thể mô phỏng thành công.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-background space-y-4">
+        <Loader2 className="h-10 w-10 text-primary animate-spin" />
+        <p className="text-sm font-semibold text-muted">Đang xác thực giao dịch với cổng thanh toán...</p>
+      </div>
+    );
+  }
+
+  // MÀN HÌNH CHẾ ĐỘ MOCK (CHƯA THANH TOÁN THẬT)
+  if (provider === 'mock' && status === 'PENDING') {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-card border border-yellow-200 rounded-2xl p-8 text-center space-y-6 shadow-xl">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-yellow-50 text-yellow-600">
+            <AlertTriangle className="h-8 w-8" />
+          </div>
+
+          <div className="space-y-2">
+            <h2 className="text-xl font-black text-foreground">Trang mô phỏng thanh toán</h2>
+            <p className="text-xs text-muted leading-relaxed">
+              Bạn đang ở môi trường phát triển (Sandbox). Hãy nhấn nút dưới đây để giả lập kết quả phản hồi thành công từ ngân hàng.
+            </p>
+          </div>
+
+          <div className="space-y-3 pt-2">
+            <button
+              onClick={triggerMockSuccess}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary hover:bg-primary-hover text-white py-3 text-sm font-bold transition-all shadow shadow-primary/10"
+            >
+              <Play className="h-4 w-4 fill-white" />
+              Mô phỏng Thanh toán Thành công
+            </button>
+            
+            <Link
+              href="/cart"
+              className="w-full inline-flex items-center justify-center rounded-xl border border-border hover:bg-slate-50 text-foreground py-2.5 text-xs font-bold transition-colors"
+            >
+              Hủy thanh toán & Quay lại giỏ hàng
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-card border border-border rounded-2xl p-8 text-center space-y-6 shadow-xl">
+        
+        {status === 'SUCCESS' ? (
+          <>
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-green-600">
+              <CheckCircle className="h-8 w-8" />
+            </div>
+
+            <div className="space-y-1">
+              <h2 className="text-xl font-extrabold text-foreground">Thanh toán thành công!</h2>
+              <p className="text-xs text-muted">Cảm ơn bạn đã tin tưởng dịch vụ của VoucherNow.</p>
+            </div>
+
+            {orderInfo && (
+              <div className="bg-secondary/40 border border-border rounded-xl p-4 text-xs text-left space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-muted">Đơn hàng:</span>
+                  <span className="font-bold text-foreground">#{orderInfo.orderId.substring(0, 8).toUpperCase()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">Phương thức:</span>
+                  <span className="font-bold text-foreground">{provider.toUpperCase()}</span>
+                </div>
+                <p className="text-[10px] text-primary font-bold text-center mt-2 pt-2 border-t border-border/60">
+                  Mã voucher đã được phát hành và gửi vào ví của bạn.
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-3 pt-2">
+              <button
+                onClick={() => {
+                  alert('Tính năng Ví Voucher cá nhân (My Vouchers) sẽ khả dụng ở các module tiếp theo.');
+                }}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary hover:bg-primary-hover text-white py-3 text-sm font-bold transition-colors"
+              >
+                <Ticket className="h-4 w-4" />
+                Xem ví Voucher của tôi
+              </button>
+
+              <Link
+                href="/"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-border hover:bg-slate-50 text-foreground py-2.5 text-xs font-bold transition-colors"
+              >
+                <Home className="h-4 w-4" />
+                Quay lại Trang chủ
+              </Link>
+            </div>
+          </>
+        ) : status === 'PENDING' ? (
+          <>
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-yellow-100 text-yellow-600">
+              <Loader2 className="h-8 w-8 animate-spin" />
+            </div>
+
+            <div className="space-y-1">
+              <h2 className="text-xl font-extrabold text-foreground">Thanh toán đang xử lý...</h2>
+              <p className="text-xs text-muted">Hệ thống đang chờ cập nhật xác nhận cuối cùng từ cổng thanh toán.</p>
+            </div>
+
+            <div className="space-y-3 pt-4">
+              <Link
+                href="/"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary hover:bg-primary-hover text-white py-3 text-sm font-bold transition-colors"
+              >
+                Quay lại Trang chủ
+              </Link>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-100 text-red-600">
+              <XCircle className="h-8 w-8" />
+            </div>
+
+            <div className="space-y-1">
+              <h2 className="text-xl font-extrabold text-foreground">Thanh toán thất bại</h2>
+              <p className="text-xs text-muted">{errorMsg || 'Không thể xác minh giao dịch thanh toán.'}</p>
+            </div>
+
+            <div className="space-y-3 pt-4">
+              <Link
+                href="/cart"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary hover:bg-primary-hover text-white py-3 text-sm font-bold transition-colors"
+              >
+                Thử thanh toán lại
+              </Link>
+              
+              <Link
+                href="/"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-border hover:bg-slate-50 text-foreground py-2.5 text-xs font-bold transition-colors"
+              >
+                Quay lại Trang chủ
+              </Link>
+            </div>
+          </>
+        )}
+
+      </div>
+    </div>
+  );
+}
