@@ -99,8 +99,8 @@ export class PartnersController {
    */
   @Patch('admin/:id/approve')
   @Roles(UserRole.ADMIN)
-  async adminApprovePartner(@Param('id') partnerId: string) {
-    return this.partnersService.adminApprovePartner(partnerId);
+  async adminApprovePartner(@Req() req: any, @Param('id') partnerId: string) {
+    return this.partnersService.adminApprovePartner(req.user.userId, partnerId);
   }
 
   /**
@@ -109,7 +109,7 @@ export class PartnersController {
    */
   @Patch('admin/:id/reject')
   @Roles(UserRole.ADMIN)
-  async adminRejectPartner(@Param('id') partnerId: string) {
-    return this.partnersService.adminRejectPartner(partnerId);
+  async adminRejectPartner(@Req() req: any, @Param('id') partnerId: string) {
+    return this.partnersService.adminRejectPartner(req.user.userId, partnerId);
   }
 }

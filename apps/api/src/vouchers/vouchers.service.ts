@@ -3,13 +3,17 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 import { UpdateCampaignDto } from './dto/update-campaign.dto';
 import { VoucherStatus, PartnerApprovalStatus } from '@prisma/client';
+import { AuditService } from '../audit/audit.service';
 
 /**
  * Service quản lý toàn bộ nghiệp vụ tạo, cập nhật, chuyển đổi trạng thái (vòng đời) chiến dịch Voucher.
  */
 @Injectable()
 export class VouchersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private auditService: AuditService,
+  ) {}
 
   /**
    * Tạo chiến dịch voucher mới ở trạng thái DRAFT.
@@ -351,7 +355,7 @@ export class VouchersService {
   /**
    * Admin: Phê duyệt voucher chiến dịch thành APPROVED.
    */
-  async adminApproveCampaign(campaignId: string) {
+  async adminApproveCampaign(adminId: string, campaignId: string) {
     const campaign = await this.prisma.voucherCampaign.findUnique({
       where: { campaignId },
     });
@@ -364,16 +368,19 @@ export class VouchersService {
       throw new BadRequestException('Chỉ có thể phê duyệt chiến dịch voucher đang ở trạng thái Chờ phê duyệt.');
     }
 
-    return this.prisma.voucherCampaign.update({
+    const updated = await this.prisma.voucherCampaign.update({
       where: { campaignId },
       data: { status: VoucherStatus.APPROVED },
     });
+
+    await this.auditService.logAction(adminId, 'APPROVE_VOUCHER', 'VoucherCampaign', campaignId);
+    return updated;
   }
 
   /**
    * Admin: Từ chối phê duyệt voucher chiến dịch thành REJECTED.
    */
-  async adminRejectCampaign(campaignId: string) {
+  async adminRejectCampaign(adminId: string, campaignId: string) {
     const campaign = await this.prisma.voucherCampaign.findUnique({
       where: { campaignId },
     });
@@ -386,10 +393,13 @@ export class VouchersService {
       throw new BadRequestException('Chỉ có thể từ chối chiến dịch voucher đang ở trạng thái Chờ phê duyệt.');
     }
 
-    return this.prisma.voucherCampaign.update({
+    const updated = await this.prisma.voucherCampaign.update({
       where: { campaignId },
       data: { status: VoucherStatus.REJECTED },
     });
+
+    await this.auditService.logAction(adminId, 'REJECT_VOUCHER', 'VoucherCampaign', campaignId);
+    return updated;
   }
 
   /**

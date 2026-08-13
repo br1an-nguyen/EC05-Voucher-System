@@ -10,6 +10,7 @@ import { CartModule } from './cart/cart.module';
 import { OrdersModule } from './orders/orders.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PaymentsModule } from './payments/payments.module';
+import { AuditModule } from './audit/audit.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { PaymentsModule } from './payments/payments.module';
     OrdersModule,
     ScheduleModule.forRoot(),
     PaymentsModule,
+    AuditModule,
   ],
   controllers: [AppController],
   providers: [AppService],

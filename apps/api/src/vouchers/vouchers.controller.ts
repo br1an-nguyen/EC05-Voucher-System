@@ -142,8 +142,8 @@ export class VouchersController {
   @Patch('admin/:id/approve')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-  async adminApproveCampaign(@Param('id') campaignId: string) {
-    return this.vouchersService.adminApproveCampaign(campaignId);
+  async adminApproveCampaign(@Req() req: any, @Param('id') campaignId: string) {
+    return this.vouchersService.adminApproveCampaign(req.user.userId, campaignId);
   }
 
   /**
@@ -153,7 +153,7 @@ export class VouchersController {
   @Patch('admin/:id/reject')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-  async adminRejectCampaign(@Param('id') campaignId: string) {
-    return this.vouchersService.adminRejectCampaign(campaignId);
+  async adminRejectCampaign(@Req() req: any, @Param('id') campaignId: string) {
+    return this.vouchersService.adminRejectCampaign(req.user.userId, campaignId);
   }
 }

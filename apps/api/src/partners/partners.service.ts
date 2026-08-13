@@ -4,13 +4,17 @@ import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { UpdatePartnerDto } from './dto/update-partner.dto';
 import { PartnerApprovalStatus, UserStatus } from '@prisma/client';
+import { AuditService } from '../audit/audit.service';
 
 /**
  * Service quản lý logic nghiệp vụ cho Đối tác (Partner) và Chi nhánh (Branch).
  */
 @Injectable()
 export class PartnersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private auditService: AuditService,
+  ) {}
 
   /**
    * Lấy thông tin hồ sơ doanh nghiệp của đối tác kèm thông tin tài khoản user.
@@ -170,7 +174,7 @@ export class PartnersService {
   /**
    * Admin: Phê duyệt đối tác (Duyệt hồ sơ & Kích hoạt tài khoản).
    */
-  async adminApprovePartner(partnerId: string) {
+  async adminApprovePartner(adminId: string, partnerId: string) {
     const partner = await this.prisma.partner.findUnique({
       where: { partnerId },
     });
@@ -179,7 +183,7 @@ export class PartnersService {
       throw new NotFoundException('Không tìm thấy đối tác cần duyệt.');
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const res = await this.prisma.$transaction(async (tx) => {
       // 1. Cập nhật trạng thái phê duyệt của đối tác thành APPROVED
       const updatedPartner = await tx.partner.update({
         where: { partnerId },
@@ -194,12 +198,15 @@ export class PartnersService {
 
       return updatedPartner;
     });
+
+    await this.auditService.logAction(adminId, 'APPROVE_PARTNER', 'Partner', partnerId);
+    return res;
   }
 
   /**
    * Admin: Từ chối phê duyệt đối tác.
    */
-  async adminRejectPartner(partnerId: string) {
+  async adminRejectPartner(adminId: string, partnerId: string) {
     const partner = await this.prisma.partner.findUnique({
       where: { partnerId },
     });
@@ -208,7 +215,7 @@ export class PartnersService {
       throw new NotFoundException('Không tìm thấy đối tác.');
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const res = await this.prisma.$transaction(async (tx) => {
       // 1. Cập nhật trạng thái thành REJECTED
       const updatedPartner = await tx.partner.update({
         where: { partnerId },
@@ -223,5 +230,8 @@ export class PartnersService {
 
       return updatedPartner;
     });
+
+    await this.auditService.logAction(adminId, 'REJECT_PARTNER', 'Partner', partnerId);
+    return res;
   }
 }
