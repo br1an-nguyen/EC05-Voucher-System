@@ -13,7 +13,7 @@ const prisma = new PrismaClient({ adapter });
 
 // Sử dụng một bcrypt hash cố định đại diện cho mật khẩu "Password123"
 // Điều này giúp tránh phải import thư viện bcrypt trong script seed
-const DEFAULT_PASSWORD_HASH = "$2b$10$EPY9TJb8W.c6j4h6GvGqI.5c0X7y.4P3/k.CgHh6.1rS.hGgG9F6y";
+const DEFAULT_PASSWORD_HASH = "$2b$10$FQgA0cVsWGkuhZAX8nfBte.tjl.wXzY8aO3eO.siP1gybqxO/dfoy";
 
 async function main() {
   console.log("Bắt đầu dọn dẹp cơ sở dữ liệu...");
