@@ -8,9 +8,19 @@ import { PartnersModule } from './partners/partners.module';
 import { VouchersModule } from './vouchers/vouchers.module';
 import { CartModule } from './cart/cart.module';
 import { OrdersModule } from './orders/orders.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
-  imports: [PrismaModule, UsersModule, AuthModule, PartnersModule, VouchersModule, CartModule, OrdersModule],
+  imports: [
+    PrismaModule,
+    UsersModule,
+    AuthModule,
+    PartnersModule,
+    VouchersModule,
+    CartModule,
+    OrdersModule,
+    ScheduleModule.forRoot(),
+  ],
   controllers: [AppController],
   providers: [AppService],
 })
