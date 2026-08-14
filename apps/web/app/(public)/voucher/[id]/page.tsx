@@ -16,7 +16,9 @@ import {
   CheckCircle,
   Ticket,
   ChevronRight,
-  Info
+  Info,
+  Star,
+  MessageSquare
 } from 'lucide-react';
 
 interface Branch {
@@ -54,6 +56,23 @@ interface VoucherCampaign {
   campaignBranches: CampaignBranch[];
 }
 
+interface ReviewCustomer {
+  fullName: string | null;
+}
+
+interface Review {
+  reviewId: string;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+  customer: ReviewCustomer;
+}
+
+interface ReviewStats {
+  totalCount: number;
+  averageRating: number;
+}
+
 export default function VoucherDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -66,11 +85,25 @@ export default function VoucherDetailPage() {
   const [purchaseQty, setPurchaseQty] = useState(1);
   const [demoMessage, setDemoMessage] = useState<string | null>(null);
 
+  // States cho module Đánh giá & Phản hồi (Commit 24)
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [reviewStats, setReviewStats] = useState<ReviewStats>({ totalCount: 0, averageRating: 0 });
+  const [userRating, setUserRating] = useState(5);
+  const [userComment, setUserComment] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [reviewSuccess, setReviewSuccess] = useState(false);
+
   useEffect(() => {
-    async function loadCampaign() {
+    async function loadCampaignAndReviews() {
       try {
-        const data = await apiRequest(`/vouchers/${campaignId}`);
-        setCampaign(data);
+        const campaignData = await apiRequest(`/vouchers/${campaignId}`);
+        setCampaign(campaignData);
+        
+        // Tải danh sách đánh giá của campaign
+        const reviewsData = await apiRequest(`/reviews/campaign/${campaignId}`);
+        setReviews(reviewsData.reviews);
+        setReviewStats(reviewsData.statistics);
       } catch (err: any) {
         setErrorMsg(err.message || 'Không thể tải thông tin chi tiết voucher.');
       } finally {
@@ -78,9 +111,39 @@ export default function VoucherDetailPage() {
       }
     }
     if (campaignId) {
-      loadCampaign();
+      loadCampaignAndReviews();
     }
   }, [campaignId]);
+
+  const handleReviewSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmittingReview(true);
+    setReviewError(null);
+    setReviewSuccess(false);
+
+    try {
+      await apiRequest('/reviews', {
+        method: 'POST',
+        body: JSON.stringify({
+          campaignId,
+          rating: userRating,
+          comment: userComment,
+        }),
+      });
+      setReviewSuccess(true);
+      setUserComment('');
+      setUserRating(5);
+      
+      // Tải lại danh sách đánh giá mới nhất
+      const reviewsData = await apiRequest(`/reviews/campaign/${campaignId}`);
+      setReviews(reviewsData.reviews);
+      setReviewStats(reviewsData.statistics);
+    } catch (err: any) {
+      setReviewError(err.message || 'Gửi đánh giá thất bại. Bạn chỉ có thể đánh giá sau khi đã mua và quét đổi mã voucher thành công.');
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
 
   const handlePurchaseClick = async () => {
     if (!user) {
@@ -209,6 +272,123 @@ export default function VoucherDetailPage() {
                     </div>
                   ))}
                 </div>
+              </div>
+              {/* PHÂN HỆ ĐÁNH GIÁ & Ý KIẾN PHẢN HỒI (Commit 24) */}
+              <div className="border-t border-border pt-6 space-y-6">
+                <div className="flex items-center justify-between gap-4">
+                  <h3 className="text-sm font-bold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                    <MessageSquare className="h-4 w-4 text-primary" />
+                    Đánh giá từ khách hàng ({reviewStats.totalCount})
+                  </h3>
+                  {reviewStats.totalCount > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex items-center text-amber-500">
+                        <Star className="h-4 w-4 fill-current" />
+                      </div>
+                      <span className="text-sm font-extrabold text-foreground">{reviewStats.averageRating}</span>
+                      <span className="text-xs text-muted">/ 5.0</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* FORM GỬI ĐÁNH GIÁ (Nếu là Customer đăng nhập) */}
+                {user && user.role === 'CUSTOMER' && (
+                  <div className="bg-secondary/40 border border-border rounded-2xl p-5 space-y-4">
+                    <h4 className="text-xs font-bold text-foreground uppercase tracking-wide">Viết đánh giá của bạn</h4>
+                    
+                    <form onSubmit={handleReviewSubmit} className="space-y-3">
+                      {/* Chọn Số Sao */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted">Đánh giá sao:</span>
+                        <div className="flex items-center gap-1">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <button
+                              key={star}
+                              type="button"
+                              onClick={() => setUserRating(star)}
+                              className="text-amber-500 hover:scale-110 transition-transform"
+                            >
+                              <Star className={`h-5 w-5 ${star <= userRating ? 'fill-current' : 'text-slate-300'}`} />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Bình luận text */}
+                      <div className="space-y-1.5">
+                        <textarea
+                          value={userComment}
+                          onChange={(e) => setUserComment(e.target.value)}
+                          placeholder="Nhập cảm nghĩ, bình luận của bạn về chất lượng dịch vụ và voucher..."
+                          rows={3}
+                          className="block w-full rounded-lg border border-border bg-card py-2 px-3 text-xs text-foreground placeholder-slate-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all resize-none"
+                        />
+                      </div>
+
+                      {reviewError && (
+                        <div className="bg-red-500/10 border border-red-500/20 text-red-800 text-[10px] p-2.5 rounded-lg flex items-center gap-2">
+                          <AlertCircle className="h-4 w-4 text-red-600 shrink-0" />
+                          <span>{reviewError}</span>
+                        </div>
+                      )}
+
+                      {reviewSuccess && (
+                        <div className="bg-green-500/10 border border-green-500/20 text-green-800 text-[10px] p-2.5 rounded-lg flex items-center gap-2">
+                          <CheckCircle className="h-4 w-4 text-green-600 shrink-0" />
+                          <span>Đã gửi đánh giá thành công! Cảm ơn ý kiến đóng góp của bạn.</span>
+                        </div>
+                      )}
+
+                      <button
+                        type="submit"
+                        disabled={submittingReview}
+                        className="inline-flex items-center justify-center rounded-xl bg-primary hover:bg-primary-hover text-white px-4 py-2 text-xs font-bold transition-colors disabled:bg-slate-300"
+                      >
+                        {submittingReview ? 'Đang gửi...' : 'Gửi đánh giá'}
+                      </button>
+                    </form>
+                  </div>
+                )}
+
+                {/* DANH SÁCH BÌNH LUẬN */}
+                {reviews.length === 0 ? (
+                  <p className="text-xs text-muted text-center py-4">Chưa có đánh giá nào cho chương trình voucher này.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {reviews.map((rev) => {
+                      const reviewDate = new Date(rev.createdAt).toLocaleDateString('vi-VN');
+                      return (
+                        <div key={rev.reviewId} className="border-b border-border/40 pb-4 last:border-b-0 last:pb-0 space-y-2">
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-2">
+                              <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-[11px] font-bold text-primary">
+                                {rev.customer.fullName?.charAt(0).toUpperCase() || 'C'}
+                              </div>
+                              <div>
+                                <span className="text-xs font-bold text-foreground block">{rev.customer.fullName || 'Khách hàng ẩn danh'}</span>
+                                <span className="text-[9px] text-muted">{reviewDate}</span>
+                              </div>
+                            </div>
+
+                            {/* Số sao hiển thị */}
+                            <div className="flex items-center gap-0.5">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <Star 
+                                  key={star} 
+                                  className={`h-3 w-3 ${star <= rev.rating ? 'text-amber-500 fill-current' : 'text-slate-200'}`} 
+                                />
+                              ))}
+                            </div>
+                          </div>
+
+                          {rev.comment && (
+                            <p className="text-xs text-muted pl-9 leading-relaxed">{rev.comment}</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
             </div>

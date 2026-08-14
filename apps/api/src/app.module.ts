@@ -11,6 +11,7 @@ import { OrdersModule } from './orders/orders.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PaymentsModule } from './payments/payments.module';
 import { AuditModule } from './audit/audit.module';
+import { ReviewsModule } from './reviews/reviews.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { AuditModule } from './audit/audit.module';
     ScheduleModule.forRoot(),
     PaymentsModule,
     AuditModule,
+    ReviewsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

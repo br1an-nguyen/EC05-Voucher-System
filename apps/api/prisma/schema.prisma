@@ -119,6 +119,7 @@ model User {
   voucherCodes   VoucherCode[]
   auditLogs      AuditLog[]
   cartItems      CartItem[]
+  reviews        VoucherReview[]
 
   @@map("Users")
 }
@@ -185,6 +186,7 @@ model VoucherCampaign {
   orderItems       OrderItem[]
   inventoryReservations InventoryReservation[]
   cartItems        CartItem[]
+  reviews          VoucherReview[]
 
   @@unique([partnerId, campaignId])
   @@map("Voucher_Campaigns")
@@ -386,4 +388,19 @@ model CartItem {
 
   @@unique([customerId, campaignId])
   @@map("Cart_Items")
+}
+
+model VoucherReview {
+  reviewId   String   @id @default(dbgenerated("gen_random_uuid()")) @map("review_id") @db.Uuid
+  customerId String   @map("customer_id") @db.Uuid
+  campaignId String   @map("campaign_id") @db.Uuid
+  rating     Int      @map("rating")
+  comment    String?  @map("comment") @db.Text
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  customer   User     @relation(fields: [customerId], references: [userId], onDelete: Cascade)
+  campaign   VoucherCampaign @relation(fields: [campaignId], references: [campaignId], onDelete: Cascade)
+
+  @@map("Voucher_Reviews")
 }
