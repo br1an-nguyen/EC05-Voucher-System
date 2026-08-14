@@ -175,12 +175,16 @@ export default function HomePage() {
                 )}
                 
                 {/* Avatar user */}
-                <div className="hidden sm:flex items-center gap-2 text-xs font-medium text-foreground mr-1">
+                <Link
+                  href="/profile"
+                  className="hidden sm:flex items-center gap-2 text-xs font-medium text-foreground mr-1 hover:text-primary transition-colors"
+                  title="Xem hồ sơ cá nhân"
+                >
                   <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
                     {user.fullName?.charAt(0).toUpperCase()}
                   </div>
                   <span>{user.fullName}</span>
-                </div>
+                </Link>
 
                 <button
                   onClick={logout}

@@ -75,13 +75,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             {/* Thông tin tài khoản phía dưới Sidebar */}
             <div className="flex-shrink-0 flex border-t border-border p-4 bg-background/50">
               <div className="flex items-center w-full">
-                <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
-                  {user?.fullName?.charAt(0).toUpperCase() || 'A'}
-                </div>
-                <div className="ml-3 overflow-hidden">
-                  <p className="text-xs font-semibold text-foreground truncate">{user?.fullName}</p>
-                  <p className="text-[10px] text-muted truncate">Quản trị viên</p>
-                </div>
+                <Link href="/profile" className="flex items-center group overflow-hidden" title="Xem hồ sơ cá nhân">
+                  <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold group-hover:bg-primary/20 transition-colors">
+                    {user?.fullName?.charAt(0).toUpperCase() || 'A'}
+                  </div>
+                  <div className="ml-3 overflow-hidden">
+                    <p className="text-xs font-semibold text-foreground truncate group-hover:text-primary transition-colors">{user?.fullName}</p>
+                    <p className="text-[10px] text-muted truncate">Quản trị viên</p>
+                  </div>
+                </Link>
                 <button
                   onClick={logout}
                   className="ml-auto p-1.5 rounded-lg hover:bg-red-500/10 text-muted hover:text-red-500 transition-colors"
@@ -148,13 +150,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </div>
 
               <div className="border-t border-border pt-4 flex items-center">
-                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
-                  {user?.fullName?.charAt(0).toUpperCase() || 'A'}
-                </div>
-                <div className="ml-3">
-                  <p className="text-xs font-semibold text-foreground truncate">{user?.fullName}</p>
-                  <p className="text-[10px] text-muted">Quản trị</p>
-                </div>
+                <Link href="/profile" className="flex items-center group" title="Xem hồ sơ cá nhân">
+                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold group-hover:bg-primary/20 transition-colors">
+                    {user?.fullName?.charAt(0).toUpperCase() || 'A'}
+                  </div>
+                  <div className="ml-3">
+                    <p className="text-xs font-semibold text-foreground truncate group-hover:text-primary transition-colors">{user?.fullName}</p>
+                    <p className="text-[10px] text-muted">Quản trị</p>
+                  </div>
+                </Link>
                 <button
                   onClick={logout}
                   className="ml-auto p-1.5 rounded-lg text-muted hover:text-red-500"
