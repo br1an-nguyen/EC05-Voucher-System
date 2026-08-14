@@ -14,23 +14,56 @@ import {
   Phone,
   AlertCircle,
   CheckCircle,
-  Calendar,
-  ChevronRight
+  ChevronRight,
+  Edit2,
+  Trash2,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
-// Form validation schema
-const staffSchema = z.object({
+// Form validation schema for creating staff
+const createStaffSchema = z.object({
   email: z.string().email('Email không hợp lệ.'),
   password: z.string().min(6, 'Mật khẩu phải chứa ít nhất 6 ký tự.'),
+  confirmPassword: z.string().min(1, 'Vui lòng xác nhận lại mật khẩu.'),
   fullName: z.string().min(2, 'Họ và tên phải dài ít nhất 2 ký tự.'),
   phone: z.string().optional(),
   branchId: z.string().uuid('Vui lòng chọn chi nhánh hợp lệ.'),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: 'Mật khẩu xác nhận không khớp.',
+  path: ['confirmPassword'],
 });
 
-type StaffFormInput = z.infer<typeof staffSchema>;
+type CreateStaffFormInput = z.infer<typeof createStaffSchema>;
+
+// Form validation schema for editing staff (password optional)
+const editStaffSchema = z.object({
+  fullName: z.string().min(2, 'Họ và tên phải dài ít nhất 2 ký tự.'),
+  branchId: z.string().uuid('Vui lòng chọn chi nhánh hợp lệ.'),
+  password: z.string().optional().or(z.literal('')),
+  confirmPassword: z.string().optional().or(z.literal('')),
+}).refine((data) => {
+  if (data.password && data.password.length > 0) {
+    return data.password === data.confirmPassword;
+  }
+  return true;
+}, {
+  message: 'Mật khẩu xác nhận không khớp.',
+  path: ['confirmPassword'],
+}).refine((data) => {
+  if (data.password && data.password.length > 0) {
+    return data.password.length >= 6;
+  }
+  return true;
+}, {
+  message: 'Mật khẩu phải chứa ít nhất 6 ký tự.',
+  path: ['password'],
+});
+
+type EditStaffFormInput = z.infer<typeof editStaffSchema>;
 
 interface Branch {
   branchId: string;
@@ -43,8 +76,10 @@ interface StaffUser {
   phone: string | null;
   fullName: string | null;
   createdAt: string;
+  branchId: string | null;
   branch: {
     name: string;
+    branchId: string;
   } | null;
 }
 
@@ -58,21 +93,49 @@ export default function PartnerStaffPage() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
 
+  // Modals state
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [editingStaff, setEditingStaff] = useState<StaffUser | null>(null);
+
+  // Visibility password toggles
+  const [showPass, setShowPass] = useState(false);
+  const [showConfirmPass, setShowConfirmPass] = useState(false);
+  const [showEditPass, setShowEditPass] = useState(false);
+  const [showEditConfirmPass, setShowEditConfirmPass] = useState(false);
+
+  // Form for creating staff
   const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors },
-  } = useForm<StaffFormInput>({
-    resolver: zodResolver(staffSchema),
+    register: registerCreate,
+    handleSubmit: handleSubmitCreate,
+    reset: resetCreate,
+    formState: { errors: errorsCreate },
+  } = useForm<CreateStaffFormInput>({
+    resolver: zodResolver(createStaffSchema),
     defaultValues: {
       email: '',
       password: '',
+      confirmPassword: '',
       fullName: '',
       phone: '',
       branchId: '',
+    }
+  });
+
+  // Form for editing staff
+  const {
+    register: registerEdit,
+    handleSubmit: handleSubmitEdit,
+    reset: resetEdit,
+    setValue: setEditValue,
+    formState: { errors: errorsEdit },
+  } = useForm<EditStaffFormInput>({
+    resolver: zodResolver(editStaffSchema),
+    defaultValues: {
+      fullName: '',
+      branchId: '',
+      password: '',
+      confirmPassword: '',
     }
   });
 
@@ -103,7 +166,20 @@ export default function PartnerStaffPage() {
     }
   }, [user, authLoading]);
 
-  const onSubmit = async (data: StaffFormInput) => {
+  // Set default values when editing a staff user
+  useEffect(() => {
+    if (editingStaff) {
+      setEditValue('fullName', editingStaff.fullName || '');
+      setEditValue('branchId', editingStaff.branchId || '');
+      setEditValue('password', '');
+      setEditValue('confirmPassword', '');
+      setShowEditPass(false);
+      setShowEditConfirmPass(false);
+    }
+  }, [editingStaff]);
+
+  // Handle create
+  const onCreateSubmit = async (data: CreateStaffFormInput) => {
     setSubmitting(true);
     setErrorMsg(null);
     setSuccessMsg(null);
@@ -113,13 +189,62 @@ export default function PartnerStaffPage() {
         body: JSON.stringify(data),
       });
       setSuccessMsg('Đã tạo thành công tài khoản nhân viên!');
-      reset();
-      setModalOpen(false);
-      loadData(); // Reload staff list
+      resetCreate();
+      setCreateModalOpen(false);
+      loadData();
     } catch (err: any) {
       setErrorMsg(err.message || 'Tạo nhân viên thất bại.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Handle edit
+  const onEditSubmit = async (data: EditStaffFormInput) => {
+    if (!editingStaff) return;
+    setSubmitting(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      // Build request body dynamically
+      const body: any = {
+        fullName: data.fullName,
+        branchId: data.branchId,
+      };
+      if (data.password && data.password.length > 0) {
+        body.password = data.password;
+      }
+
+      await apiRequest(`/partners/staff/${editingStaff.userId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      });
+      setSuccessMsg(`Cập nhật thông tin nhân viên "${data.fullName}" thành công!`);
+      setEditingStaff(null);
+      resetEdit();
+      loadData();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Cập nhật nhân viên thất bại.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Handle delete
+  const handleDeleteStaff = async (staff: StaffUser) => {
+    const confirm = window.confirm(`Bạn có chắc chắn muốn xóa vĩnh viễn tài khoản nhân viên "${staff.fullName}"?`);
+    if (!confirm) return;
+
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      await apiRequest(`/partners/staff/${staff.userId}`, {
+        method: 'DELETE',
+      });
+      setSuccessMsg(`Đã xóa thành công tài khoản nhân viên "${staff.fullName}".`);
+      loadData();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Không thể xóa tài khoản nhân viên này.');
     }
   };
 
@@ -147,14 +272,17 @@ export default function PartnerStaffPage() {
             <Users className="h-6 w-6 text-primary" />
             Nhân viên cửa hàng
           </h1>
-          <p className="text-xs text-muted mt-1">Quản lý tài khoản nhân viên phụ trách quét và đổi mã voucher tại các chi nhánh.</p>
+          <p className="text-xs text-muted mt-1">Cấp tài khoản, chỉnh sửa địa điểm gán chi nhánh hoặc xóa nhân sự thu ngân.</p>
         </div>
 
         <button
           onClick={() => {
             setSuccessMsg(null);
             setErrorMsg(null);
-            setModalOpen(true);
+            resetCreate();
+            setShowPass(false);
+            setShowConfirmPass(false);
+            setCreateModalOpen(true);
           }}
           className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary hover:bg-primary-hover text-white px-4 py-2.5 text-xs font-bold transition-colors shadow shadow-primary/10"
         >
@@ -191,9 +319,31 @@ export default function PartnerStaffPage() {
           {staffList.map((staff) => {
             const date = new Date(staff.createdAt).toLocaleDateString('vi-VN');
             return (
-              <div key={staff.userId} className="rounded-2xl border border-border bg-card p-5 shadow-sm space-y-4 hover:shadow-md transition-shadow">
+              <div key={staff.userId} className="rounded-2xl border border-border bg-card p-5 shadow-sm space-y-4 hover:shadow-md transition-shadow relative">
                 
-                <div className="flex items-center gap-3">
+                {/* Actions overlay buttons on card top-right */}
+                <div className="absolute top-4 right-4 flex items-center gap-1.5">
+                  <button
+                    onClick={() => {
+                      setSuccessMsg(null);
+                      setErrorMsg(null);
+                      setEditingStaff(staff);
+                    }}
+                    className="p-1.5 text-muted hover:text-primary hover:bg-slate-100 rounded-lg transition-colors"
+                    title="Chỉnh sửa tài khoản"
+                  >
+                    <Edit2 className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteStaff(staff)}
+                    className="p-1.5 text-muted hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    title="Xóa nhân viên"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-3 pr-16">
                   <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
                     {staff.fullName?.charAt(0).toUpperCase()}
                   </div>
@@ -229,8 +379,8 @@ export default function PartnerStaffPage() {
         </div>
       )}
 
-      {/* MODAL THÊM NHÂN VIÊN MỚI */}
-      {modalOpen && (
+      {/* MODAL 1: THÊM NHÂN VIÊN MỚI */}
+      {createModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-card border border-border rounded-2xl max-w-md w-full p-6 relative shadow-2xl space-y-4 animate-scale-up">
             
@@ -239,13 +389,13 @@ export default function PartnerStaffPage() {
               <p className="text-[11px] text-muted">Tạo tài khoản phụ trách cho nhân viên đứng quầy thu ngân.</p>
             </div>
 
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-3.5">
+            <form onSubmit={handleSubmitCreate(onCreateSubmit)} className="space-y-3.5">
               
               {/* Chi nhánh */}
               <div className="space-y-1">
                 <label className="block text-xs font-bold text-foreground uppercase tracking-wide">Chi nhánh gán cố định</label>
                 <select
-                  {...register('branchId')}
+                  {...registerCreate('branchId')}
                   className="block w-full rounded-lg border border-border bg-card py-2 px-3 text-xs text-foreground focus:border-primary focus:outline-none"
                 >
                   <option value="">-- Chọn chi nhánh cửa hàng --</option>
@@ -255,8 +405,8 @@ export default function PartnerStaffPage() {
                     </option>
                   ))}
                 </select>
-                {errors.branchId && (
-                  <p className="text-[10px] text-primary">{errors.branchId.message}</p>
+                {errorsCreate.branchId && (
+                  <p className="text-[10px] text-primary">{errorsCreate.branchId.message}</p>
                 )}
               </div>
 
@@ -267,13 +417,13 @@ export default function PartnerStaffPage() {
                   <input
                     type="text"
                     placeholder="Ví dụ: Nguyễn Văn A"
-                    {...register('fullName')}
+                    {...registerCreate('fullName')}
                     className="block w-full rounded-lg border border-border bg-card py-2 pl-9 pr-3 text-xs text-foreground focus:border-primary focus:outline-none"
                   />
                   <User className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
                 </div>
-                {errors.fullName && (
-                  <p className="text-[10px] text-primary">{errors.fullName.message}</p>
+                {errorsCreate.fullName && (
+                  <p className="text-[10px] text-primary">{errorsCreate.fullName.message}</p>
                 )}
               </div>
 
@@ -284,13 +434,13 @@ export default function PartnerStaffPage() {
                   <input
                     type="email"
                     placeholder="staff@company.com"
-                    {...register('email')}
+                    {...registerCreate('email')}
                     className="block w-full rounded-lg border border-border bg-card py-2 pl-9 pr-3 text-xs text-foreground focus:border-primary focus:outline-none"
                   />
                   <Mail className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
                 </div>
-                {errors.email && (
-                  <p className="text-[10px] text-primary">{errors.email.message}</p>
+                {errorsCreate.email && (
+                  <p className="text-[10px] text-primary">{errorsCreate.email.message}</p>
                 )}
               </div>
 
@@ -299,15 +449,46 @@ export default function PartnerStaffPage() {
                 <label className="block text-xs font-bold text-foreground uppercase tracking-wide">Mật khẩu ban đầu</label>
                 <div className="relative">
                   <input
-                    type="password"
+                    type={showPass ? 'text' : 'password'}
                     placeholder="Tối thiểu 6 ký tự"
-                    {...register('password')}
-                    className="block w-full rounded-lg border border-border bg-card py-2 pl-9 pr-3 text-xs text-foreground focus:border-primary focus:outline-none"
+                    {...registerCreate('password')}
+                    className="block w-full rounded-lg border border-border bg-card py-2 pl-9 pr-10 text-xs text-foreground focus:border-primary focus:outline-none"
                   />
                   <Lock className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                  <button
+                    type="button"
+                    onClick={() => setShowPass(!showPass)}
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-foreground"
+                  >
+                    {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
-                {errors.password && (
-                  <p className="text-[10px] text-primary">{errors.password.message}</p>
+                {errorsCreate.password && (
+                  <p className="text-[10px] text-primary">{errorsCreate.password.message}</p>
+                )}
+              </div>
+
+              {/* Confirm Password */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-foreground uppercase tracking-wide">Nhập lại mật khẩu</label>
+                <div className="relative">
+                  <input
+                    type={showConfirmPass ? 'text' : 'password'}
+                    placeholder="Xác nhận trùng khớp mật khẩu"
+                    {...registerCreate('confirmPassword')}
+                    className="block w-full rounded-lg border border-border bg-card py-2 pl-9 pr-10 text-xs text-foreground focus:border-primary focus:outline-none"
+                  />
+                  <Lock className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPass(!showConfirmPass)}
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-foreground"
+                  >
+                    {showConfirmPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                {errorsCreate.confirmPassword && (
+                  <p className="text-[10px] text-primary">{errorsCreate.confirmPassword.message}</p>
                 )}
               </div>
 
@@ -318,7 +499,7 @@ export default function PartnerStaffPage() {
                   <input
                     type="text"
                     placeholder="Ví dụ: 0987654321"
-                    {...register('phone')}
+                    {...registerCreate('phone')}
                     className="block w-full rounded-lg border border-border bg-card py-2 pl-9 pr-3 text-xs text-foreground focus:border-primary focus:outline-none"
                   />
                   <Phone className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
@@ -329,7 +510,7 @@ export default function PartnerStaffPage() {
               <div className="flex gap-2 justify-end pt-3 border-t border-border/60">
                 <button
                   type="button"
-                  onClick={() => setModalOpen(false)}
+                  onClick={() => setCreateModalOpen(false)}
                   className="px-4 py-2 rounded-xl border border-border hover:bg-slate-50 text-foreground text-xs font-bold transition-colors"
                 >
                   Hủy bỏ
@@ -340,6 +521,123 @@ export default function PartnerStaffPage() {
                   className="px-4 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold transition-colors disabled:opacity-50"
                 >
                   {submitting ? 'Đang tạo...' : 'Tạo tài khoản'}
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: CHỈNH SỬA NHÂN VIÊN */}
+      {editingStaff && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-2xl max-w-md w-full p-6 relative shadow-2xl space-y-4 animate-scale-up">
+            
+            <div className="pb-3 border-b border-border">
+              <h3 className="font-extrabold text-foreground text-base">Chỉnh sửa thông tin nhân viên</h3>
+              <p className="text-[11px] text-muted">Email đăng nhập gán cố định: <span className="font-bold text-foreground">{editingStaff.email}</span></p>
+            </div>
+
+            <form onSubmit={handleSubmitEdit(onEditSubmit)} className="space-y-3.5">
+              
+              {/* Chi nhánh */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-foreground uppercase tracking-wide">Chi nhánh gán làm việc</label>
+                <select
+                  {...registerEdit('branchId')}
+                  className="block w-full rounded-lg border border-border bg-card py-2 px-3 text-xs text-foreground focus:border-primary focus:outline-none"
+                >
+                  {branches.map((b) => (
+                    <option key={b.branchId} value={b.branchId}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+                {errorsEdit.branchId && (
+                  <p className="text-[10px] text-primary">{errorsEdit.branchId.message}</p>
+                )}
+              </div>
+
+              {/* Họ tên */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-foreground uppercase tracking-wide">Họ và tên nhân viên</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    {...registerEdit('fullName')}
+                    className="block w-full rounded-lg border border-border bg-card py-2 pl-9 pr-3 text-xs text-foreground focus:border-primary focus:outline-none"
+                  />
+                  <User className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                </div>
+                {errorsEdit.fullName && (
+                  <p className="text-[10px] text-primary">{errorsEdit.fullName.message}</p>
+                )}
+              </div>
+
+              {/* Password mới (Tùy chọn) */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-foreground uppercase tracking-wide">Mật khẩu mới (Bỏ trống nếu giữ nguyên)</label>
+                <div className="relative">
+                  <input
+                    type={showEditPass ? 'text' : 'password'}
+                    placeholder="Nhập nếu cần đổi mật khẩu nhân viên"
+                    {...registerEdit('password')}
+                    className="block w-full rounded-lg border border-border bg-card py-2 pl-9 pr-10 text-xs text-foreground focus:border-primary focus:outline-none"
+                  />
+                  <Lock className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                  <button
+                    type="button"
+                    onClick={() => setShowEditPass(!showEditPass)}
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-foreground"
+                  >
+                    {showEditPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                {errorsEdit.password && (
+                  <p className="text-[10px] text-primary">{errorsEdit.password.message}</p>
+                )}
+              </div>
+
+              {/* Confirm Password */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-foreground uppercase tracking-wide">Xác nhận lại mật khẩu mới</label>
+                <div className="relative">
+                  <input
+                    type={showEditConfirmPass ? 'text' : 'password'}
+                    placeholder="Xác nhận lại mật khẩu mới ở trên"
+                    {...registerEdit('confirmPassword')}
+                    className="block w-full rounded-lg border border-border bg-card py-2 pl-9 pr-10 text-xs text-foreground focus:border-primary focus:outline-none"
+                  />
+                  <Lock className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                  <button
+                    type="button"
+                    onClick={() => setShowEditConfirmPass(!showEditConfirmPass)}
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-foreground"
+                  >
+                    {showEditConfirmPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                {errorsEdit.confirmPassword && (
+                  <p className="text-[10px] text-primary">{errorsEdit.confirmPassword.message}</p>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-2 justify-end pt-3 border-t border-border/60">
+                <button
+                  type="button"
+                  onClick={() => setEditingStaff(null)}
+                  className="px-4 py-2 rounded-xl border border-border hover:bg-slate-50 text-foreground text-xs font-bold transition-colors"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-4 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold transition-colors disabled:opacity-50"
+                >
+                  {submitting ? 'Đang lưu...' : 'Lưu thay đổi'}
                 </button>
               </div>
 

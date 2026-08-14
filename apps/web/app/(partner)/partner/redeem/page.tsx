@@ -448,7 +448,7 @@ export default function PartnerRedeemPage() {
                 /* CHẾ ĐỘ QUÉT CAMERA */
                 <div className="space-y-4">
                   <div className="relative rounded-2xl border-2 border-dashed border-border p-4 bg-slate-900/5 flex flex-col items-center justify-center space-y-4">
-                    <div id="qr-reader" className="w-full max-w-sm overflow-hidden rounded-xl bg-black border border-border shadow-inner" />
+                    <div id="qr-reader" className="w-full max-w-sm overflow-hidden rounded-xl bg-card border border-border shadow-inner text-foreground" />
                     <p className="text-[10px] text-muted text-center">Căn chỉnh mã QR của khách hàng nằm chính giữa khung hình camera.</p>
                   </div>
                   

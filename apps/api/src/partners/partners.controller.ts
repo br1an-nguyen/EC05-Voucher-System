@@ -43,9 +43,10 @@ export class PartnersController {
    * GET /partners/branches
    */
   @Get('branches')
-  @Roles(UserRole.PARTNER)
+  @Roles(UserRole.PARTNER, UserRole.PARTNER_STAFF)
   async getBranches(@Req() req: any) {
-    return this.partnersService.getBranches(req.user.userId);
+    const partnerId = req.user.role === UserRole.PARTNER_STAFF ? req.user.partnerId : req.user.userId;
+    return this.partnersService.getBranches(partnerId);
   }
 
   /**
@@ -92,14 +93,34 @@ export class PartnersController {
     return this.partnersService.createStaff(req.user.userId, createStaffDto);
   }
 
-  /**
-   * Lấy danh sách nhân viên của đối tác.
-   * GET /partners/staff
-   */
   @Get('staff')
   @Roles(UserRole.PARTNER)
   async listStaff(@Req() req: any) {
     return this.partnersService.listStaff(req.user.userId);
+  }
+
+  /**
+   * Cập nhật tài khoản nhân viên.
+   * PATCH /partners/staff/:id
+   */
+  @Patch('staff/:id')
+  @Roles(UserRole.PARTNER)
+  async updateStaff(
+    @Req() req: any,
+    @Param('id') staffUserId: string,
+    @Body() dto: { fullName?: string; branchId?: string; password?: string },
+  ) {
+    return this.partnersService.updateStaff(req.user.userId, staffUserId, dto);
+  }
+
+  /**
+   * Xóa tài khoản nhân viên.
+   * DELETE /partners/staff/:id
+   */
+  @Delete('staff/:id')
+  @Roles(UserRole.PARTNER)
+  async deleteStaff(@Req() req: any, @Param('id') staffUserId: string) {
+    return this.partnersService.deleteStaff(req.user.userId, staffUserId);
   }
 
   // ================= ADMIN ENDPOINTS =================

@@ -212,10 +212,76 @@ export class PartnersService {
       where: { partnerId, role: 'PARTNER_STAFF' },
       include: {
         branch: {
-          select: { name: true },
+          select: { name: true, branchId: true },
         },
       },
       orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /**
+   * Cập nhật thông tin nhân viên (Đổi tên, đổi chi nhánh, đổi mật khẩu tùy chọn).
+   */
+  async updateStaff(
+    partnerId: string,
+    staffUserId: string,
+    dto: { fullName?: string; branchId?: string; password?: string },
+  ) {
+    // 1. Kiểm tra tài khoản nhân viên thuộc đối tác quản lý
+    const staff = await this.prisma.user.findFirst({
+      where: { userId: staffUserId, partnerId, role: 'PARTNER_STAFF' },
+    });
+    if (!staff) {
+      throw new NotFoundException('Không tìm thấy tài khoản nhân viên cần chỉnh sửa.');
+    }
+
+    const updateData: any = {};
+
+    if (dto.fullName) {
+      updateData.fullName = dto.fullName;
+    }
+
+    if (dto.branchId) {
+      // Xác thực chi nhánh mới thuộc đối tác sở hữu
+      const branch = await this.prisma.branch.findUnique({
+        where: { branchId: dto.branchId },
+      });
+      if (!branch || branch.partnerId !== partnerId) {
+        throw new NotFoundException('Chi nhánh không tồn tại hoặc không thuộc sở hữu của đối tác.');
+      }
+      updateData.branchId = dto.branchId;
+    }
+
+    if (dto.password) {
+      updateData.passwordHash = await bcrypt.hash(dto.password, 10);
+    }
+
+    return this.prisma.user.update({
+      where: { userId: staffUserId },
+      data: updateData,
+      select: {
+        userId: true,
+        email: true,
+        fullName: true,
+        role: true,
+        branchId: true,
+      },
+    });
+  }
+
+  /**
+   * Xóa tài khoản nhân viên.
+   */
+  async deleteStaff(partnerId: string, staffUserId: string) {
+    const staff = await this.prisma.user.findFirst({
+      where: { userId: staffUserId, partnerId, role: 'PARTNER_STAFF' },
+    });
+    if (!staff) {
+      throw new NotFoundException('Không tìm thấy tài khoản nhân viên cần xóa.');
+    }
+
+    return this.prisma.user.delete({
+      where: { userId: staffUserId },
     });
   }
 
