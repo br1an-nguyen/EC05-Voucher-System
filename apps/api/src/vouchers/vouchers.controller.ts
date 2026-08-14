@@ -47,6 +47,17 @@ export class VouchersController {
   }
 
   /**
+   * Xem trước thông tin chi tiết mã voucher trước khi đổi.
+   * GET /vouchers/redeem/verify/:code
+   */
+  @Get('redeem/verify/:code')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PARTNER, UserRole.PARTNER_STAFF, UserRole.ADMIN)
+  async verifyVoucherCode(@Req() req: any, @Param('code') uniqueCode: string) {
+    return this.vouchersService.verifyVoucherCode(req.user, uniqueCode);
+  }
+
+  /**
    * Quét và đổi mã voucher tại một chi nhánh cụ thể.
    * POST /vouchers/redeem
    */

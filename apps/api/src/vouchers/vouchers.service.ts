@@ -430,6 +430,74 @@ export class VouchersService {
   }
 
   /**
+   * Xem trước thông tin mã voucher trước khi nhân viên xác nhận quét đổi (Preview Verification).
+   * @param actorUser Đối tác/Nhân viên quét
+   * @param uniqueCode Mã voucher cần kiểm tra
+   */
+  async verifyVoucherCode(
+    actorUser: { userId: string; role: string; partnerId?: string | null; branchId?: string | null },
+    uniqueCode: string,
+  ) {
+    const voucher = await this.prisma.voucherCode.findUnique({
+      where: { uniqueCode },
+      include: {
+        customer: {
+          select: { fullName: true, email: true },
+        },
+        orderItem: {
+          include: {
+            campaign: {
+              include: {
+                partner: { select: { companyName: true, partnerId: true } },
+                campaignBranches: { include: { branch: true } },
+              },
+            },
+          },
+        },
+        usageLogs: {
+          include: { branch: true },
+        },
+      },
+    });
+
+    if (!voucher) {
+      throw new NotFoundException('Mã voucher này không tồn tại trên hệ thống.');
+    }
+
+    const campaign = voucher.orderItem.campaign;
+
+    // Phân quyền: Đối tác quét phải sở hữu chiến dịch này
+    if (actorUser.role === 'PARTNER' || actorUser.role === 'PARTNER_STAFF') {
+      if (campaign.partnerId !== actorUser.partnerId) {
+        throw new BadRequestException('Mã voucher này thuộc về đối tác khác. Bạn không có quyền truy cập.');
+      }
+    }
+
+    // Trả về trạng thái chi tiết của voucher để hiển thị
+    return {
+      codeId: voucher.codeId,
+      uniqueCode: voucher.uniqueCode,
+      status: voucher.status,
+      issuedAt: voucher.issuedAt,
+      customer: voucher.customer,
+      campaign: {
+        title: campaign.title,
+        description: campaign.description,
+        usageStartTime: campaign.usageStartTime,
+        usageEndTime: campaign.usageEndTime,
+        partner: campaign.partner,
+        isMultiUse: campaign.isMultiUse,
+        maxUsesPerCode: campaign.maxUsesPerCode,
+        branches: campaign.campaignBranches.map((cb) => cb.branch.name),
+      },
+      usageLogs: voucher.usageLogs.map((log) => ({
+        usedAt: log.usedAt,
+        branchName: log.branch.name,
+      })),
+    };
+  }
+
+  /**
    * Thực hiện quét và đổi mã voucher tại chi nhánh (Redemption logic).
    * Có row-level locking (SELECT FOR UPDATE) để chống race-condition quét trùng lặp.
    * @param actorUser Thông tin đối tác/nhân viên thực hiện quét

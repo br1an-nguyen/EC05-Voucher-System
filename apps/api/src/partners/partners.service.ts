@@ -5,6 +5,8 @@ import { UpdateBranchDto } from './dto/update-branch.dto';
 import { UpdatePartnerDto } from './dto/update-partner.dto';
 import { PartnerApprovalStatus, UserStatus } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
+import { CreateStaffDto } from './dto/create-staff.dto';
+import * as bcrypt from 'bcrypt';
 
 /**
  * Service quản lý logic nghiệp vụ cho Đối tác (Partner) và Chi nhánh (Branch).
@@ -147,6 +149,73 @@ export class PartnersService {
 
     return this.prisma.branch.delete({
       where: { branchId },
+    });
+  }
+
+  /**
+   * Tạo tài khoản nhân viên (PARTNER_STAFF) cho chi nhánh cửa hàng.
+   */
+  async createStaff(partnerId: string, dto: CreateStaffDto) {
+    // 1. Kiểm tra chi nhánh thuộc sở hữu của đối tác
+    const branch = await this.prisma.branch.findUnique({
+      where: { branchId: dto.branchId },
+    });
+    if (!branch || branch.partnerId !== partnerId) {
+      throw new NotFoundException('Chi nhánh không tồn tại hoặc không thuộc sở hữu của đối tác.');
+    }
+
+    // 2. Kiểm tra email/phone trùng lặp trên hệ thống
+    const existingUser = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: dto.email },
+          dto.phone ? { phone: dto.phone } : undefined,
+        ].filter(Boolean) as any,
+      },
+    });
+    if (existingUser) {
+      throw new ConflictException('Email hoặc số điện thoại này đã đăng ký tài khoản khác.');
+    }
+
+    // 3. Mã hóa mật khẩu
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+
+    // 4. Tạo user
+    return this.prisma.user.create({
+      data: {
+        email: dto.email,
+        phone: dto.phone,
+        passwordHash,
+        fullName: dto.fullName,
+        role: 'PARTNER_STAFF',
+        partnerId,
+        branchId: dto.branchId,
+        status: UserStatus.ACTIVE, // Nhân viên của đối tác mặc định kích hoạt hoạt động
+      },
+      select: {
+        userId: true,
+        email: true,
+        phone: true,
+        fullName: true,
+        role: true,
+        branchId: true,
+        createdAt: true,
+      },
+    });
+  }
+
+  /**
+   * Lấy danh sách nhân viên của đối tác.
+   */
+  async listStaff(partnerId: string) {
+    return this.prisma.user.findMany({
+      where: { partnerId, role: 'PARTNER_STAFF' },
+      include: {
+        branch: {
+          select: { name: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
     });
   }
 

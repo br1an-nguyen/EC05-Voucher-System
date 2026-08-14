@@ -22,13 +22,16 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const navigation = [
-    { name: 'Dashboard', href: '/partner', icon: LayoutDashboard },
-    { name: 'Hồ sơ đối tác', href: '/partner/profile', icon: Building2 },
-    { name: 'Chi nhánh cửa hàng', href: '/partner/branches', icon: MapPin },
-    { name: 'Danh sách Voucher', href: '/partner/vouchers', icon: Ticket },
-    { name: 'Quét/Xác thực mã', href: '/partner/redeem', icon: CheckSquare },
+  const allNavigation = [
+    { name: 'Dashboard', href: '/partner', icon: LayoutDashboard, roles: ['PARTNER'] },
+    { name: 'Hồ sơ đối tác', href: '/partner/profile', icon: Building2, roles: ['PARTNER'] },
+    { name: 'Chi nhánh cửa hàng', href: '/partner/branches', icon: MapPin, roles: ['PARTNER'] },
+    { name: 'Danh sách Voucher', href: '/partner/vouchers', icon: Ticket, roles: ['PARTNER'] },
+    { name: 'Quản lý Nhân viên', href: '/partner/staff', icon: User, roles: ['PARTNER'] },
+    { name: 'Quét/Xác thực mã', href: '/partner/redeem', icon: CheckSquare, roles: ['PARTNER_STAFF'] },
   ];
+
+  const navigation = allNavigation.filter((item) => item.roles.includes(user?.role || ''));
 
   return (
     <RoleGuard allowedRoles={['PARTNER', 'PARTNER_STAFF']}>

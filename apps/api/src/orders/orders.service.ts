@@ -263,4 +263,121 @@ export class OrdersService {
       return updatedOrder;
     });
   }
+
+  /**
+   * Admin: Xem danh sách toàn bộ đơn hàng trên hệ thống.
+   */
+  async adminListOrders() {
+    return this.prisma.order.findMany({
+      include: {
+        customer: {
+          select: {
+            fullName: true,
+            email: true,
+          },
+        },
+        orderItems: {
+          include: {
+            campaign: {
+              select: {
+                title: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /**
+   * Admin: Thực hiện hoàn tiền/hủy đơn hàng trực tuyến của hệ thống.
+   * Bỏ qua kiểm tra khách hàng sở hữu.
+   * @param orderId ID đơn hàng cần hoàn tiền
+   */
+  async adminRefundOrder(orderId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      // Khóa dòng
+      await tx.$executeRawUnsafe(
+        `SELECT order_id FROM "Orders" WHERE order_id = $1::uuid FOR UPDATE`,
+        orderId,
+      );
+
+      const order = await tx.order.findUnique({
+        where: { orderId },
+        include: {
+          orderItems: true,
+          paymentTransactions: {
+            where: { status: 'SUCCEEDED' },
+          },
+        },
+      });
+
+      if (!order) {
+        throw new NotFoundException('Không tìm thấy đơn hàng cần hủy.');
+      }
+
+      if (order.paymentStatus !== PaymentStatus.PAID || order.orderStatus !== OrderStatus.CONFIRMED) {
+        throw new BadRequestException('Chỉ có thể hoàn tiền cho các đơn hàng đã thanh toán thành công.');
+      }
+
+      const payment = order.paymentTransactions[0];
+      if (!payment) {
+        throw new BadRequestException('Không tìm thấy giao dịch thanh toán thành công liên kết.');
+      }
+
+      const voucherCodes = await tx.voucherCode.findMany({
+        where: {
+          orderItem: { orderId: order.orderId },
+        },
+      });
+
+      const hasUsedCode = voucherCodes.some((vc) => vc.status === 'USED');
+      if (hasUsedCode) {
+        throw new BadRequestException('Không thể hoàn tiền vì đã có ít nhất một mã voucher đã được sử dụng.');
+      }
+
+      // Hủy mã
+      await tx.voucherCode.updateMany({
+        where: {
+          orderItem: { orderId: order.orderId },
+          status: 'AVAILABLE',
+        },
+        data: { status: 'CANCELLED' },
+      });
+
+      // Tạo refund log
+      await tx.paymentRefund.create({
+        data: {
+          paymentId: payment.paymentId,
+          amountMinor: payment.requestAmountMinor,
+          currency: payment.requestCurrency,
+          status: 'SUCCEEDED',
+          idempotencyKey: `ADMIN-REFUND-${order.orderId}-${Date.now()}`,
+          reason: 'Quản trị viên hệ thống chủ động hủy và hoàn tiền.',
+        },
+      });
+
+      // Cập nhật trạng thái
+      const updatedOrder = await tx.order.update({
+        where: { orderId: order.orderId },
+        data: {
+          orderStatus: OrderStatus.CANCELLED,
+          paymentStatus: PaymentStatus.REFUNDED,
+        },
+      });
+
+      // Trả lại tồn kho
+      for (const item of order.orderItems) {
+        await tx.voucherCampaign.update({
+          where: { campaignId: item.campaignId },
+          data: {
+            soldQuantity: { decrement: item.quantity },
+          },
+        });
+      }
+
+      return updatedOrder;
+    });
+  }
 }

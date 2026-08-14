@@ -7,6 +7,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '@prisma/client';
+import { CreateStaffDto } from './dto/create-staff.dto';
 
 /**
  * Controller tiếp nhận REST API cho các tác vụ liên quan đến Đối tác và Chi nhánh.
@@ -79,6 +80,26 @@ export class PartnersController {
   @Roles(UserRole.PARTNER)
   async deleteBranch(@Req() req: any, @Param('id') branchId: string) {
     return this.partnersService.deleteBranch(req.user.userId, branchId);
+  }
+
+  /**
+   * Tạo tài khoản nhân viên cho chi nhánh.
+   * POST /partners/staff
+   */
+  @Post('staff')
+  @Roles(UserRole.PARTNER)
+  async createStaff(@Req() req: any, @Body() createStaffDto: CreateStaffDto) {
+    return this.partnersService.createStaff(req.user.userId, createStaffDto);
+  }
+
+  /**
+   * Lấy danh sách nhân viên của đối tác.
+   * GET /partners/staff
+   */
+  @Get('staff')
+  @Roles(UserRole.PARTNER)
+  async listStaff(@Req() req: any) {
+    return this.partnersService.listStaff(req.user.userId);
   }
 
   // ================= ADMIN ENDPOINTS =================

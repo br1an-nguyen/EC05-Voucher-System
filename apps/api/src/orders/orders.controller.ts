@@ -51,4 +51,24 @@ export class OrdersController {
   async requestRefund(@Req() req: any, @Param('id') orderId: string) {
     return this.ordersService.requestRefund(req.user.userId, orderId);
   }
+
+  /**
+   * Admin: Xem danh sách tất cả các đơn đặt hàng trên hệ thống.
+   * GET /orders/admin/list
+   */
+  @Get('admin/list')
+  @Roles(UserRole.ADMIN)
+  async adminListOrders() {
+    return this.ordersService.adminListOrders();
+  }
+
+  /**
+   * Admin: Chủ động hoàn tiền và hủy đơn hàng.
+   * POST /orders/admin/:id/refund
+   */
+  @Post('admin/:id/refund')
+  @Roles(UserRole.ADMIN)
+  async adminRefundOrder(@Param('id') orderId: string) {
+    return this.ordersService.adminRefundOrder(orderId);
+  }
 }

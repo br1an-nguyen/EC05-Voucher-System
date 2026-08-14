@@ -68,7 +68,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else if (res.user.role === 'PARTNER') {
         router.push('/partner');
       } else if (res.user.role === 'PARTNER_STAFF') {
-        router.push('/partner/validate'); // Nhân viên quét mã chuyển thẳng đến trang quét QR
+        router.push('/partner/redeem'); // Nhân viên quét mã chuyển thẳng đến trang quét QR
       } else {
         router.push('/'); // Khách hàng chuyển đến trang chủ catalog
       }

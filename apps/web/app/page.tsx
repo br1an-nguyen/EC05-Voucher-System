@@ -19,7 +19,8 @@ import {
   Grid,
   Filter,
   X,
-  ShoppingCart
+  ShoppingCart,
+  FileText
 } from 'lucide-react';
 
 interface Branch {
@@ -148,13 +149,29 @@ export default function HomePage() {
                   </Link>
                 )}
                 {user.role === 'CUSTOMER' && (
-                  <Link
-                    href="/cart"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-secondary text-primary hover:bg-secondary/70 transition-colors"
-                  >
-                    <ShoppingCart className="h-4 w-4" />
-                    Giỏ hàng
-                  </Link>
+                  <>
+                    <Link
+                      href="/customer/vouchers"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-secondary text-primary hover:bg-secondary/70 transition-colors"
+                    >
+                      <Ticket className="h-4 w-4" />
+                      Ví Voucher
+                    </Link>
+                    <Link
+                      href="/customer/orders"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-secondary text-primary hover:bg-secondary/70 transition-colors"
+                    >
+                      <FileText className="h-4 w-4" />
+                      Đơn hàng
+                    </Link>
+                    <Link
+                      href="/cart"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-secondary text-primary hover:bg-secondary/70 transition-colors"
+                    >
+                      <ShoppingCart className="h-4 w-4" />
+                      Giỏ hàng
+                    </Link>
+                  </>
                 )}
                 
                 {/* Avatar user */}
