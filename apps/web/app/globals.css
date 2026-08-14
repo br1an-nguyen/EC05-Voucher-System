@@ -1,0 +1,96 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f7fafc; /* Warm Cream background */
+  --foreground: #2d3133; /* Charcoal Black text */
+  --card: #ffffff; /* Pure White card surfaces */
+  --primary: #ae2825; /* Coral Red action color */
+  --primary-hover: #d1413b;
+  --secondary: #fff2f0; /* Light Salmon hover state bg */
+  --muted: #717d84; /* Slate Gray meta-information */
+  --border: #efe6e0; /* Warm Sand border lines */
+}
+
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-secondary: var(--secondary);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  
+  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+  
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* Hide native browser password eye and clear buttons */
+input::-ms-reveal,
+input::-ms-clear,
+input::-webkit-contacts-auto-fill-button,
+input::-webkit-credentials-auto-fill-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Custom styling for HTML5 QR Code Scanner elements to fit VoucherNow design */
+#qr-reader {
+  border: none !important;
+  padding: 0 !important;
+}
+#qr-reader img {
+  display: none;
+}
+#qr-reader__dashboard_section_csr button,
+#qr-reader__dashboard_section_csr a {
+  background-color: var(--primary) !important;
+  color: white !important;
+  border: none !important;
+  border-radius: 0.5rem !important;
+  padding: 0.5rem 1rem !important;
+  font-size: 0.75rem !important;
+  font-weight: bold !important;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  display: inline-block;
+  margin: 5px;
+}
+#qr-reader__dashboard_section_csr button:hover {
+  background-color: var(--primary-hover) !important;
+}
+#qr-reader select {
+  border: 1px solid var(--border) !important;
+  background-color: white !important;
+  border-radius: 0.5rem !important;
+  padding: 0.25rem 0.5rem !important;
+  font-size: 0.75rem !important;
+  color: var(--foreground) !important;
+  outline: none;
+}
+#qr-reader__status_span {
+  font-size: 0.75rem !important;
+  color: var(--muted) !important;
+}
+#html5-qrcode-anchor-scan-type-change {
+  color: var(--primary) !important;
+  font-size: 0.75rem !important;
+  font-weight: bold !important;
+  text-decoration: none !important;
+}
+#qr-reader__header_message {
+  font-size: 0.75rem !important;
+  color: var(--foreground) !important;
+}
+#qr-reader__scan_region {
+  background-color: #000000 !important;
+  border-radius: 0.75rem !important;
+}
