@@ -51,6 +51,13 @@ interface VoucherCode {
   orderItem: OrderItem;
 }
 
+interface GroupedVoucher {
+  key: string;
+  campaign: VoucherCampaign;
+  items: VoucherCode[];
+  representativeCode: string;
+}
+
 export default function CustomerVouchersPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -103,6 +110,31 @@ export default function CustomerVouchersPage() {
     );
   }
 
+  const groupVouchers = (list: VoucherCode[]) => {
+    const groupedMap = new Map<string, GroupedVoucher>();
+
+    for (const voucher of list) {
+      const campaign = voucher.orderItem.campaign;
+      const key = `${campaign.partner.companyName}::${campaign.title}::${campaign.usageEndTime}`;
+
+      if (!groupedMap.has(key)) {
+        groupedMap.set(key, {
+          key,
+          campaign,
+          items: [],
+          representativeCode: voucher.uniqueCode,
+        });
+      }
+
+      groupedMap.get(key)!.items.push(voucher);
+    }
+
+    return Array.from(groupedMap.values()).map((group) => ({
+      ...group,
+      representativeCode: group.items[0]?.uniqueCode || group.representativeCode,
+    }));
+  };
+
   // Filter vouchers based on current active tab
   const filteredVouchers = vouchers.filter((v) => {
     if (activeTab === 'AVAILABLE') return v.status === 'AVAILABLE';
@@ -110,6 +142,8 @@ export default function CustomerVouchersPage() {
     // EXPIRED or CANCELLED tabs
     return v.status === 'EXPIRED' || v.status === 'CANCELLED';
   });
+
+  const groupedVouchers = groupVouchers(filteredVouchers);
 
   return (
     <div className="min-h-screen bg-background font-sans py-8 px-4 sm:px-6 lg:px-8">
@@ -151,7 +185,7 @@ export default function CustomerVouchersPage() {
                 : 'border-transparent text-muted hover:text-foreground'
             }`}
           >
-            Chưa sử dụng ({vouchers.filter((v) => v.status === 'AVAILABLE').length})
+            Chưa sử dụng ({groupVouchers(vouchers.filter((v) => v.status === 'AVAILABLE')).length})
           </button>
           <button
             onClick={() => setActiveTab('USED')}
@@ -161,7 +195,7 @@ export default function CustomerVouchersPage() {
                 : 'border-transparent text-muted hover:text-foreground'
             }`}
           >
-            Đã sử dụng ({vouchers.filter((v) => v.status === 'USED').length})
+            Đã sử dụng ({groupVouchers(vouchers.filter((v) => v.status === 'USED')).length})
           </button>
           <button
             onClick={() => setActiveTab('EXPIRED')}
@@ -171,12 +205,12 @@ export default function CustomerVouchersPage() {
                 : 'border-transparent text-muted hover:text-foreground'
             }`}
           >
-            Lịch sử khác ({vouchers.filter((v) => v.status === 'EXPIRED' || v.status === 'CANCELLED').length})
+            Lịch sử khác ({groupVouchers(vouchers.filter((v) => v.status === 'EXPIRED' || v.status === 'CANCELLED')).length})
           </button>
         </div>
 
         {/* DANH SÁCH VOUCHER */}
-        {filteredVouchers.length === 0 ? (
+        {groupedVouchers.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border p-12 text-center space-y-3">
             <Ticket className="h-10 w-10 text-muted mx-auto" />
             <h3 className="text-sm font-bold text-foreground">Không tìm thấy voucher nào</h3>
@@ -196,15 +230,17 @@ export default function CustomerVouchersPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredVouchers.map((v) => {
-              const campaign = v.orderItem.campaign;
+            {groupedVouchers.map((group) => {
+              const voucher = group.items[0];
+              const campaign = group.campaign;
               const formattedDate = new Date(campaign.usageEndTime).toLocaleDateString('vi-VN');
+              const status = voucher.status;
 
               return (
                 <div 
-                  key={v.codeId}
+                  key={group.key}
                   className={`rounded-2xl border border-border bg-card p-5 flex flex-col justify-between gap-4 shadow-sm relative overflow-hidden transition-all ${
-                    v.status === 'AVAILABLE' ? 'hover:shadow-md' : 'opacity-70'
+                    status === 'AVAILABLE' ? 'hover:shadow-md' : 'opacity-70'
                   }`}
                 >
                   <div className="space-y-2">
@@ -213,15 +249,20 @@ export default function CustomerVouchersPage() {
                       <span className="text-[10px] font-bold text-primary bg-primary/5 px-2.5 py-1 rounded-full uppercase tracking-wider">
                         {campaign.partner.companyName}
                       </span>
-                      <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded ${
-                        v.status === 'AVAILABLE'
-                          ? 'bg-green-100 text-green-700'
-                          : v.status === 'USED'
-                          ? 'bg-slate-100 text-slate-600'
-                          : 'bg-red-100 text-red-700'
-                      }`}>
-                        {v.status === 'AVAILABLE' ? 'Chưa dùng' : v.status === 'USED' ? 'Đã dùng' : v.status === 'EXPIRED' ? 'Hết hạn' : 'Đã hủy'}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                          x{group.items.length}
+                        </span>
+                        <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded ${
+                          status === 'AVAILABLE'
+                            ? 'bg-green-100 text-green-700'
+                            : status === 'USED'
+                            ? 'bg-slate-100 text-slate-600'
+                            : 'bg-red-100 text-red-700'
+                        }`}>
+                          {status === 'AVAILABLE' ? 'Chưa dùng' : status === 'USED' ? 'Đã dùng' : status === 'EXPIRED' ? 'Hết hạn' : 'Đã hủy'}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Voucher Title */}
@@ -247,9 +288,9 @@ export default function CustomerVouchersPage() {
                   {/* Actions & Code String */}
                   <div className="flex items-center justify-between gap-4 pt-3 border-t border-border/40">
                     <div className="bg-secondary/60 rounded-lg px-2.5 py-1.5 font-mono text-xs font-bold text-foreground tracking-wider flex items-center gap-2">
-                      <span>{v.uniqueCode}</span>
+                      <span>{group.representativeCode}</span>
                       <button 
-                        onClick={() => handleCopyCode(v.uniqueCode)}
+                        onClick={() => handleCopyCode(group.representativeCode)}
                         className="text-muted hover:text-primary transition-colors"
                         title="Sao chép mã"
                       >
@@ -257,9 +298,9 @@ export default function CustomerVouchersPage() {
                       </button>
                     </div>
 
-                    {v.status === 'AVAILABLE' && (
+                    {status === 'AVAILABLE' && (
                       <button
-                        onClick={() => setSelectedVoucher(v)}
+                        onClick={() => setSelectedVoucher(group.items[0])}
                         className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold transition-colors shadow-sm shadow-primary/10"
                       >
                         <QrCode className="h-3.5 w-3.5" />
