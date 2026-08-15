@@ -73,6 +73,62 @@ export class PartnersService {
   }
 
   /**
+   * Lấy thống kê dashboard theo tài khoản đối tác hiện tại.
+   */
+  async getDashboard(partnerId: string) {
+    const partner = await this.prisma.partner.findUnique({
+      where: { partnerId },
+      select: { companyName: true },
+    });
+
+    if (!partner) {
+      throw new NotFoundException('Không tìm thấy đối tác để tải dashboard.');
+    }
+
+    const campaigns = await this.prisma.voucherCampaign.findMany({
+      where: { partnerId },
+      select: {
+        campaignId: true,
+        status: true,
+        soldQuantity: true,
+      },
+    });
+
+    const orderItems = await this.prisma.orderItem.findMany({
+      where: {
+        campaign: {
+          partnerId,
+        },
+      },
+      select: {
+        quantity: true,
+        unitPrice: true,
+        order: {
+          select: {
+            customerId: true,
+          },
+        },
+      },
+    });
+
+    const totalCampaigns = campaigns.length;
+    const activeCampaigns = campaigns.filter((campaign) => campaign.status === 'APPROVED').length;
+    const soldVouchers = campaigns.reduce((sum, campaign) => sum + campaign.soldQuantity, 0);
+    const customerIds = new Set(orderItems.map((item) => item.order.customerId));
+    const customerCount = customerIds.size;
+    const revenue = orderItems.reduce((sum, item) => sum + Number(item.unitPrice) * item.quantity, 0);
+
+    return {
+      partnerName: partner.companyName,
+      totalCampaigns,
+      activeCampaigns,
+      soldVouchers,
+      customerCount,
+      revenue,
+    };
+  }
+
+  /**
    * Lấy danh sách toàn bộ chi nhánh của đối tác.
    */
   async getBranches(partnerId: string) {
@@ -286,6 +342,34 @@ export class PartnersService {
   }
 
   // ================= ADMIN OPERATIONS =================
+
+  /**
+   * Admin: Lấy tổng quan dashboard hệ thống.
+   */
+  async getAdminDashboard() {
+    const [partnerCount, campaignCount, successfulOrderCount, revenueSummary] = await Promise.all([
+      this.prisma.partner.count(),
+      this.prisma.voucherCampaign.count(),
+      this.prisma.order.count({
+        where: {
+          paymentStatus: 'PAID',
+        },
+      }),
+      this.prisma.order.aggregate({
+        _sum: { totalAmount: true },
+        where: {
+          paymentStatus: 'PAID',
+        },
+      }),
+    ]);
+
+    return {
+      totalPartners: partnerCount,
+      totalCampaigns: campaignCount,
+      totalSuccessfulOrders: successfulOrderCount,
+      totalRevenue: Number(revenueSummary._sum.totalAmount ?? 0),
+    };
+  }
 
   /**
    * Admin: Lấy danh sách toàn bộ đối tác trên hệ thống kèm thông tin tài khoản để kiểm tra duyệt.

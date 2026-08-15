@@ -122,3 +122,6 @@ requirements/
 **/.windsurf/
 skills-lock.json
 **/skills-lock.json
+
+# Local planning docs
+Tech-Plan.md

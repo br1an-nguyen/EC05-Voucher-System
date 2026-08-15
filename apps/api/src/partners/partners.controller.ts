@@ -39,6 +39,16 @@ export class PartnersController {
   }
 
   /**
+   * Lấy tổng quan dashboard cho đối tác hiện tại.
+   * GET /partners/dashboard
+   */
+  @Get('dashboard')
+  @Roles(UserRole.PARTNER)
+  async getDashboard(@Req() req: any) {
+    return this.partnersService.getDashboard(req.user.userId);
+  }
+
+  /**
    * Lấy danh sách chi nhánh của đối tác hiện tại.
    * GET /partners/branches
    */
@@ -124,6 +134,16 @@ export class PartnersController {
   }
 
   // ================= ADMIN ENDPOINTS =================
+
+  /**
+   * Admin: Tổng quan dashboard hệ thống.
+   * GET /partners/admin/dashboard
+   */
+  @Get('admin/dashboard')
+  @Roles(UserRole.ADMIN)
+  async adminDashboard() {
+    return this.partnersService.getAdminDashboard();
+  }
 
   /**
    * Admin: Xem danh sách đối tác chờ duyệt hoặc đã duyệt.

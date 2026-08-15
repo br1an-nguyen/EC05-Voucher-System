@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../../../lib/api';
 import Link from 'next/link';
-import { Ticket, Plus, Send, AlertCircle, CheckCircle, Clock, Calendar, Check, Ban } from 'lucide-react';
+import { Ticket, Plus, Send, AlertCircle, CheckCircle, Clock3, Calendar, MapPin, Check, Ban } from 'lucide-react';
 
 interface Branch {
   branchId: string;
@@ -26,8 +26,25 @@ interface VoucherCampaign {
   status: 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'PAUSED' | 'EXPIRED' | 'SOLD_OUT';
   saleStartTime: string;
   saleEndTime: string;
+  usageStartTime: string;
+  usageEndTime: string;
   campaignBranches: CampaignBranch[];
 }
+
+const formatDateTime = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '—';
+  }
+
+  return new Intl.DateTimeFormat('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+};
 
 export default function PartnerVouchersPage() {
   const [campaigns, setCampaigns] = useState<VoucherCampaign[]>([]);
@@ -193,13 +210,21 @@ export default function PartnerVouchersPage() {
                 {/* Dates & Branches */}
                 <div className="mt-4 space-y-2 text-xs text-muted">
                   <div className="flex items-center gap-1.5">
+                    <Clock3 className="h-4 w-4 shrink-0 text-muted/80" />
+                    <span>
+                      Thời gian bán: {formatDateTime(campaign.saleStartTime)} - {formatDateTime(campaign.saleEndTime)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
                     <Calendar className="h-4 w-4 shrink-0 text-muted/80" />
-                    <span>Hạn bán: {new Date(campaign.saleStartTime).toLocaleDateString('vi-VN')} - {new Date(campaign.saleEndTime).toLocaleDateString('vi-VN')}</span>
+                    <span>
+                      Thời gian sử dụng: {formatDateTime(campaign.usageStartTime)} - {formatDateTime(campaign.usageEndTime)}
+                    </span>
                   </div>
                   <div className="flex items-start gap-1.5">
-                    <Clock className="h-4 w-4 shrink-0 text-muted/80 mt-0.5" />
-                    <div className="line-clamp-1" title={campaign.campaignBranches.map(cb => cb.branch.name).join(', ')}>
-                      Chi nhánh áp dụng: {campaign.campaignBranches.map(cb => cb.branch.name).join(', ')}
+                    <MapPin className="h-4 w-4 shrink-0 text-muted/80 mt-0.5" />
+                    <div className="line-clamp-1" title={campaign.campaignBranches.map((cb) => cb.branch.name).join(', ')}>
+                      Chi nhánh áp dụng: {campaign.campaignBranches.map((cb) => cb.branch.name).join(', ')}
                     </div>
                   </div>
                 </div>

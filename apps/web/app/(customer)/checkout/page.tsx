@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { apiRequest } from '../../../lib/api';
 import { useAuth } from '../../../context/AuthContext';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { 
   CreditCard, 
@@ -35,8 +35,18 @@ interface CartItem {
 }
 
 export default function CheckoutPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-background"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary mx-auto" /></div>}>
+      <CheckoutPageContent />
+    </Suspense>
+  );
+}
+
+function CheckoutPageContent() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const orderIdFromQuery = searchParams.get('orderId');
 
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,15 +78,60 @@ export default function CheckoutPage() {
     }
   };
 
+  const fetchExistingOrder = async (orderId: string) => {
+    setLoading(true);
+    setErrorMsg(null);
+    try {
+      const orders = await apiRequest('/orders');
+      const order = (orders || []).find((item: any) => item.orderId === orderId);
+
+      if (!order) {
+        setCartItems([]);
+        setCreatedOrder(null);
+        setErrorMsg('Không tìm thấy đơn hàng chờ thanh toán này.');
+        return;
+      }
+
+      const mappedItems = (order.orderItems || []).map((item: any) => ({
+        cartItemId: item.itemId || item.orderItemId || item.campaignId,
+        quantity: item.quantity,
+        campaign: {
+          title: item.campaign?.title || 'Voucher',
+          salePrice: Number(item.unitPrice ?? item.campaign?.salePrice ?? 0),
+          partner: {
+            companyName: item.campaign?.partner?.companyName || 'Partner',
+          },
+        },
+      }));
+
+      setCartItems(mappedItems);
+      setCreatedOrder({
+        ...order,
+        selectedPaymentProvider: order.selectedPaymentProvider || 'STRIPE',
+      });
+      setPaymentProvider(order.selectedPaymentProvider || 'STRIPE');
+      setRecipientNote(order.recipientNote || '');
+    } catch (err: any) {
+      setCartItems([]);
+      setCreatedOrder(null);
+      setErrorMsg(err.message || 'Không thể tải đơn hàng cần thanh toán.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!authLoading) {
       if (!user) {
-        router.push('/login?redirect=/checkout');
+        const redirectTarget = orderIdFromQuery ? `/checkout?orderId=${orderIdFromQuery}` : '/checkout';
+        router.push(`/login?redirect=${encodeURIComponent(redirectTarget)}`);
+      } else if (orderIdFromQuery) {
+        fetchExistingOrder(orderIdFromQuery);
       } else {
         fetchCart();
       }
     }
-  }, [user, authLoading]);
+  }, [user, authLoading, orderIdFromQuery]);
 
   // Bộ đếm ngược giữ chỗ 15 phút
   useEffect(() => {
@@ -166,7 +221,9 @@ export default function CheckoutPage() {
           </div>
 
           <div className="space-y-1">
-            <h2 className="text-xl font-extrabold text-foreground">Đơn hàng đã được khởi tạo!</h2>
+            <h2 className="text-xl font-extrabold text-foreground">
+              {orderIdFromQuery ? 'Tiếp tục thanh toán đơn hàng' : 'Đơn hàng đã được khởi tạo!'}
+            </h2>
             <p className="text-xs text-muted">Mã đơn hàng: <span className="font-bold text-foreground">{createdOrder.orderCode}</span></p>
           </div>
 

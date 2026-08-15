@@ -17,8 +17,9 @@ export class UsersService {
    * @returns Bản ghi User hoặc null nếu không tìm thấy
    */
   async findByEmail(email: string): Promise<User | null> {
+    const normalizedEmail = email?.trim().toLowerCase();
     return this.prisma.user.findUnique({
-      where: { email },
+      where: { email: normalizedEmail },
     });
   }
 

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../../../lib/api';
-import { Ticket, Check, X, AlertCircle, CheckCircle, Calendar, MapPin, Building, Clock } from 'lucide-react';
+import { Ticket, Check, X, AlertCircle, CheckCircle, Calendar, MapPin, Building, Clock, TrendingUp, Package } from 'lucide-react';
 
 interface Branch {
   branchId: string;
@@ -39,6 +39,20 @@ export default function AdminVouchersApprovalPage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const summary = React.useMemo(() => {
+    const totalCapacity = pendingCampaigns.reduce((sum, campaign) => sum + campaign.capacity, 0);
+    const totalDiscountValue = pendingCampaigns.reduce((sum, campaign) => {
+      const discount = Math.max(campaign.originalPrice - campaign.salePrice, 0);
+      return sum + discount * Math.max(campaign.capacity, 0);
+    }, 0);
+
+    return {
+      totalCampaigns: pendingCampaigns.length,
+      totalCapacity,
+      totalDiscountValue,
+    };
+  }, [pendingCampaigns]);
 
   const loadPendingCampaigns = async () => {
     try {
@@ -122,6 +136,34 @@ export default function AdminVouchersApprovalPage() {
           <p className="font-medium">{errorMsg}</p>
         </div>
       )}
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted">Chờ duyệt</span>
+            <Ticket className="h-4 w-4 text-primary" />
+          </div>
+          <div className="mt-3 text-2xl font-bold text-foreground">{summary.totalCampaigns}</div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted">Tổng khối lượng</span>
+            <Package className="h-4 w-4 text-primary" />
+          </div>
+          <div className="mt-3 text-2xl font-bold text-foreground">{summary.totalCapacity}</div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted">Giá trị giảm</span>
+            <TrendingUp className="h-4 w-4 text-primary" />
+          </div>
+          <div className="mt-3 text-2xl font-bold text-foreground">
+            {summary.totalDiscountValue.toLocaleString('vi-VN')}đ
+          </div>
+        </div>
+      </div>
 
       {/* DANH SÁCH VOUCHER CHỜ DUYỆT */}
       {pendingCampaigns.length === 0 ? (

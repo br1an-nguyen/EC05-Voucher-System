@@ -217,7 +217,7 @@ export default function CustomerOrdersPage() {
                       {/* Nút thanh toán lại nếu chưa trả tiền */}
                       {order.orderStatus === 'PENDING' && order.paymentStatus === 'UNPAID' && (
                         <Link
-                          href={`/checkout`}
+                          href={`/checkout?orderId=${order.orderId}`}
                           className="inline-flex items-center gap-1 bg-primary hover:bg-primary-hover text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-colors shadow-sm"
                         >
                           <CreditCard className="h-3.5 w-3.5" />
