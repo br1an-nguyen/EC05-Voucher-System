@@ -344,6 +344,34 @@ export class PartnersService {
   // ================= ADMIN OPERATIONS =================
 
   /**
+   * Admin: Lấy tổng quan dashboard hệ thống.
+   */
+  async getAdminDashboard() {
+    const [partnerCount, campaignCount, successfulOrderCount, revenueSummary] = await Promise.all([
+      this.prisma.partner.count(),
+      this.prisma.voucherCampaign.count(),
+      this.prisma.order.count({
+        where: {
+          paymentStatus: 'PAID',
+        },
+      }),
+      this.prisma.order.aggregate({
+        _sum: { totalAmount: true },
+        where: {
+          paymentStatus: 'PAID',
+        },
+      }),
+    ]);
+
+    return {
+      totalPartners: partnerCount,
+      totalCampaigns: campaignCount,
+      totalSuccessfulOrders: successfulOrderCount,
+      totalRevenue: Number(revenueSummary._sum.totalAmount ?? 0),
+    };
+  }
+
+  /**
    * Admin: Lấy danh sách toàn bộ đối tác trên hệ thống kèm thông tin tài khoản để kiểm tra duyệt.
    */
   async adminListPartners() {

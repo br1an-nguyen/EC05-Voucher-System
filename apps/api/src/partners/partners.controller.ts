@@ -136,6 +136,16 @@ export class PartnersController {
   // ================= ADMIN ENDPOINTS =================
 
   /**
+   * Admin: Tổng quan dashboard hệ thống.
+   * GET /partners/admin/dashboard
+   */
+  @Get('admin/dashboard')
+  @Roles(UserRole.ADMIN)
+  async adminDashboard() {
+    return this.partnersService.getAdminDashboard();
+  }
+
+  /**
    * Admin: Xem danh sách đối tác chờ duyệt hoặc đã duyệt.
    * GET /partners/admin/list
    */
