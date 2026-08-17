@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Req } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  UseGuards,
+  Req,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { PaymentFinalizationService } from './payment-finalization.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -73,8 +82,13 @@ export class PaymentsController {
    * GET /payments/:paymentId/status
    */
   @Get(':paymentId/status')
-  async getPaymentStatus(@Param('paymentId') paymentId: string) {
-    const payment = await this.paymentsService.getPaymentDetails(paymentId);
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER, UserRole.ADMIN)
+  async getPaymentStatus(@Req() req: any, @Param('paymentId') paymentId: string) {
+    const payment = await this.paymentsService.getPaymentDetailsForActor(
+      paymentId,
+      req.user,
+    );
     return {
       paymentId: payment.paymentId,
       orderId: payment.orderId,
@@ -89,7 +103,13 @@ export class PaymentsController {
    * POST /payments/:paymentId/mock-success
    */
   @Post(':paymentId/mock-success')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   async mockSuccess(@Param('paymentId') paymentId: string) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException('Endpoint mô phỏng bị vô hiệu hóa trong production.');
+    }
+
     const providerTransactionId = `MOCK-TX-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const order = await this.paymentFinalizationService.finalizePayment(paymentId, providerTransactionId);
     return {
@@ -188,10 +208,14 @@ export class PaymentsController {
    * POST /payments/paypal/capture
    */
   @Post('paypal/capture')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER)
   async handlePaypalCapture(
-    @Body() dto: { paypalOrderId: string; paymentId: string }
+    @Req() req: any,
+    @Body() dto: { paypalOrderId: string; paymentId: string },
   ) {
     try {
+      await this.paymentsService.assertPaymentOwner(dto.paymentId, req.user.userId);
       const result = await this.paypalAdapter.captureOrder(dto.paypalOrderId);
 
       if (result.status === 'SUCCESS') {
