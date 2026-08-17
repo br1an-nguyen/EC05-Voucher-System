@@ -1,7 +1,14 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CheckoutDto } from './dto/checkout.dto';
-import { OrderStatus, PaymentStatus, ReservationStatus } from '@prisma/client';
+import {
+  OrderStatus,
+  PaymentStatus,
+  Prisma,
+  ReservationStatus,
+  VoucherStatus,
+} from '@prisma/client';
 
 @Injectable()
 export class OrdersService {
@@ -15,29 +22,34 @@ export class OrdersService {
    * @returns Đơn hàng vừa tạo
    */
   async checkout(customerId: string, dto: CheckoutDto) {
-    // Bước 1: Lấy giỏ hàng của khách hàng
-    const cartItems = await this.prisma.cartItem.findMany({
-      where: { customerId },
-      include: { campaign: true },
-    });
-
-    if (cartItems.length === 0) {
-      throw new BadRequestException('Giỏ hàng của bạn đang trống.');
-    }
-
-    // Khởi chạy database transaction để đảm bảo tính nguyên tử (Atomicity)
     return this.prisma.$transaction(async (tx) => {
-      let totalAmount = 0;
+      // Serialize checkout attempts for the same customer. This prevents two
+      // concurrent requests from creating orders from the same cart.
+      await tx.$executeRawUnsafe(
+        `SELECT user_id FROM "Users" WHERE user_id = $1::uuid FOR UPDATE`,
+        customerId,
+      );
 
-      // Bước 2: Duyệt qua từng sản phẩm trong giỏ hàng để khóa dòng (SELECT FOR UPDATE)
+      const cartItems = await tx.cartItem.findMany({
+        where: { customerId },
+        orderBy: { campaignId: 'asc' },
+      });
+
+      if (cartItems.length === 0) {
+        throw new BadRequestException('Giỏ hàng của bạn đang trống.');
+      }
+
+      let totalAmount = new Prisma.Decimal(0);
+      const currentUnitPrices = new Map<string, Prisma.Decimal>();
+      const now = new Date();
+
+      // Lock campaigns in a stable order to avoid deadlocks between checkouts.
       for (const item of cartItems) {
-        // Thực hiện khóa dòng chiến dịch voucher tại DB để tránh tranh chấp từ các luồng khác
         await tx.$executeRawUnsafe(
           `SELECT campaign_id FROM "Voucher_Campaigns" WHERE campaign_id = $1::uuid FOR UPDATE`,
           item.campaignId,
         );
 
-        // Lấy thông tin voucher mới nhất sau khi đã khóa dòng thành công
         const campaign = await tx.voucherCampaign.findUnique({
           where: { campaignId: item.campaignId },
         });
@@ -46,7 +58,16 @@ export class OrdersService {
           throw new NotFoundException(`Chiến dịch voucher không tồn tại.`);
         }
 
-        // Bước 3: Kiểm tra tồn kho thực tế (Sức chứa - Đã bán - Đang giữ chỗ)
+        if (
+          campaign.status !== VoucherStatus.APPROVED ||
+          campaign.saleStartTime > now ||
+          campaign.saleEndTime <= now
+        ) {
+          throw new BadRequestException(
+            `Voucher "${campaign.title}" hiện không mở bán.`,
+          );
+        }
+
         const available = campaign.capacity - (campaign.soldQuantity + campaign.reservedStock);
         if (available < item.quantity) {
           throw new BadRequestException(
@@ -54,11 +75,10 @@ export class OrdersService {
           );
         }
 
-        // Tích lũy tổng tiền của đơn hàng
-        totalAmount += Number(campaign.salePrice) * item.quantity;
+        currentUnitPrices.set(item.campaignId, campaign.salePrice);
+        totalAmount = totalAmount.add(campaign.salePrice.mul(item.quantity));
       }
 
-      // Bước 4: Tăng số lượng giữ chỗ (reservedStock) cho từng chiến dịch voucher
       for (const item of cartItems) {
         await tx.voucherCampaign.update({
           where: { campaignId: item.campaignId },
@@ -68,9 +88,8 @@ export class OrdersService {
         });
       }
 
-      // Bước 5: Khởi tạo đơn hàng (Order) ở trạng thái PENDING & UNPAID
-      const orderCode = `ORD${Date.now().toString().slice(-6)}${Math.floor(100 + Math.random() * 900)}`;
-      const reservationExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // Giữ chỗ trong 15 phút (RB-15)
+      const orderCode = `ORD-${randomBytes(12).toString('hex').toUpperCase()}`;
+      const reservationExpiresAt = new Date(now.getTime() + 15 * 60 * 1000);
 
       const order = await tx.order.create({
         data: {
@@ -85,19 +104,21 @@ export class OrdersService {
         },
       });
 
-      // Bước 6: Thêm các chi tiết đơn hàng (OrderItem) và tạo phiếu giữ chỗ (InventoryReservation)
       for (const item of cartItems) {
-        // Tạo chi tiết đơn hàng
+        const unitPrice = currentUnitPrices.get(item.campaignId);
+        if (!unitPrice) {
+          throw new BadRequestException('Không thể xác định giá voucher hiện tại.');
+        }
+
         await tx.orderItem.create({
           data: {
             orderId: order.orderId,
             campaignId: item.campaignId,
             quantity: item.quantity,
-            unitPrice: item.campaign.salePrice,
+            unitPrice,
           },
         });
 
-        // Tạo bản ghi giữ chỗ tồn kho (InventoryReservation)
         await tx.inventoryReservation.create({
           data: {
             orderId: order.orderId,
@@ -109,7 +130,6 @@ export class OrdersService {
         });
       }
 
-      // Bước 7: Xóa giỏ hàng của khách hàng sau khi tạo đơn hàng thành công
       await tx.cartItem.deleteMany({
         where: { customerId },
       });
