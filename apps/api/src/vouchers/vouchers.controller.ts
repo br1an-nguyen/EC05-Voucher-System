@@ -6,6 +6,8 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '@prisma/client';
+import { RedeemVoucherDto } from './dto/redeem-voucher.dto';
+import { PublicCatalogQueryDto } from './dto/public-catalog-query.dto';
 
 /**
  * Controller tiếp nhận REST API phục vụ việc khởi tạo, chỉnh sửa và phê duyệt các chiến dịch voucher.
@@ -19,20 +21,8 @@ export class VouchersController {
    * GET /vouchers
    */
   @Get()
-  async findPublicCatalog(
-    @Query('keyword') keyword?: string,
-    @Query('category') category?: string,
-    @Query('minPrice') minPrice?: string,
-    @Query('maxPrice') maxPrice?: string,
-    @Query('branchId') branchId?: string,
-  ) {
-    return this.vouchersService.findPublicCatalog({
-      keyword,
-      category,
-      minPrice: minPrice ? Number(minPrice) : undefined,
-      maxPrice: maxPrice ? Number(maxPrice) : undefined,
-      branchId,
-    });
+  async findPublicCatalog(@Query() query: PublicCatalogQueryDto) {
+    return this.vouchersService.findPublicCatalog(query);
   }
 
   /**
@@ -66,7 +56,7 @@ export class VouchersController {
   @Roles(UserRole.PARTNER, UserRole.PARTNER_STAFF, UserRole.ADMIN)
   async redeemVoucher(
     @Req() req: any,
-    @Body() dto: { uniqueCode: string; branchId: string },
+    @Body() dto: RedeemVoucherDto,
   ) {
     return this.vouchersService.redeemVoucher(
       req.user,
