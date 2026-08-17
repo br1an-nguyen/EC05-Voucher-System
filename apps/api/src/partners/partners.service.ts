@@ -220,17 +220,18 @@ export class PartnersService {
       throw new NotFoundException('Chi nhánh không tồn tại hoặc không thuộc sở hữu của đối tác.');
     }
 
-    // 2. Kiểm tra email/phone trùng lặp trên hệ thống
-    const existingUser = await this.prisma.user.findFirst({
-      where: {
-        OR: [
-          { email: dto.email },
-          dto.phone ? { phone: dto.phone } : undefined,
-        ].filter(Boolean) as any,
-      },
-    });
-    if (existingUser) {
-      throw new ConflictException('Email hoặc số điện thoại này đã đăng ký tài khoản khác.');
+    // 2. Kiểm tra trùng lặp theo từng trường để frontend có thể gắn lỗi đúng ô nhập liệu
+    const [existingEmail, existingPhone] = await Promise.all([
+      this.prisma.user.findFirst({ where: { email: dto.email }, select: { userId: true } }),
+      this.prisma.user.findFirst({ where: { phone: dto.phone }, select: { userId: true } }),
+    ]);
+
+    if (existingEmail) {
+      throw new ConflictException('Email đã được đăng ký tài khoản khác.');
+    }
+
+    if (existingPhone) {
+      throw new ConflictException('Số điện thoại đã được đăng ký tài khoản khác.');
     }
 
     // 3. Mã hóa mật khẩu

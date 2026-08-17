@@ -1,4 +1,5 @@
-import { IsEmail, IsString, MinLength, IsUUID, IsOptional } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsEmail, IsString, MinLength, IsUUID, Matches } from 'class-validator';
 
 export class CreateStaffDto {
   @IsEmail({}, { message: 'Email không hợp lệ.' })
@@ -14,7 +15,9 @@ export class CreateStaffDto {
   @IsUUID('4', { message: 'ID chi nhánh không hợp lệ.' })
   branchId: string;
 
-  @IsOptional()
-  @IsString()
-  phone?: string;
+  @IsString({ message: 'Vui lòng nhập số điện thoại.' })
+  @MinLength(1, { message: 'Vui lòng nhập số điện thoại.' })
+  @Transform(({ value }) => String(value ?? '').trim())
+  @Matches(/^\+?[0-9\s\-()]{9,15}$/, { message: 'Số điện thoại không hợp lệ.' })
+  phone: string;
 }
