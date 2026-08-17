@@ -3,6 +3,13 @@ import { PassportStrategy } from '@nestjs/passport';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { UsersService } from '../../users/users.service';
 import { UserStatus } from '@prisma/client';
+import { getJwtSecret } from '../jwt-secret';
+
+interface AccessTokenPayload {
+  sub?: string;
+  purpose?: string;
+  iat?: number;
+}
 
 /**
  * Strategy giải mã và kiểm tra độ tin cậy của JWT được gửi kèm trong header Authorization Bearer.
@@ -13,8 +20,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      // Trong môi trường thực tế, JWT_SECRET phải được tải từ biến môi trường
-      secretOrKey: process.env.JWT_SECRET || 'secretKey_EC05_Voucher_System',
+      secretOrKey: getJwtSecret(),
     });
   }
 
@@ -24,18 +30,36 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
    * @returns Đối tượng User đã đăng nhập
    * @throws UnauthorizedException nếu không tìm thấy user hoặc tài khoản đã bị khóa (RB-08)
    */
-  async validate(payload: any) {
+  async validate(payload: AccessTokenPayload) {
+    if (payload?.purpose !== 'access') {
+      throw new UnauthorizedException('Token không đúng mục đích truy cập.');
+    }
+
+    if (!payload.sub) {
+      throw new UnauthorizedException('Token không chứa định danh người dùng.');
+    }
+
     const user = await this.usersService.findById(payload.sub);
     
     if (!user) {
       throw new UnauthorizedException('Người dùng không tồn tại trên hệ thống.');
     }
 
-    // Chặn tức thì các request từ tài khoản đã bị khóa (RB-08)
-    if (user.status === UserStatus.LOCKED) {
-      throw new UnauthorizedException('Tài khoản này đã bị khóa. Vui lòng liên hệ Admin.');
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException('Tài khoản chưa được kích hoạt hoặc đã bị khóa.');
     }
 
-    return user;
+    const issuedAt = typeof payload.iat === 'number' ? payload.iat * 1000 : 0;
+    if (user.passwordChangedAt && issuedAt < user.passwordChangedAt.getTime()) {
+      throw new UnauthorizedException('Phiên đăng nhập đã hết hiệu lực sau khi đổi mật khẩu.');
+    }
+
+    return {
+      userId: user.userId,
+      role: user.role,
+      partnerId: user.partnerId,
+      branchId: user.branchId,
+      status: user.status,
+    };
   }
 }

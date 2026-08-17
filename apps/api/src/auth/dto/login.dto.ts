@@ -1,4 +1,11 @@
-import { IsEmail, IsString, IsNotEmpty, MinLength, IsOptional } from 'class-validator';
+import {
+  IsEmail,
+  IsString,
+  IsNotEmpty,
+  MinLength,
+  MaxLength,
+  IsOptional,
+} from 'class-validator';
 
 /**
  * DTO dữ liệu đầu vào cho yêu cầu đăng nhập.
@@ -15,5 +22,6 @@ export class LoginDto {
   @IsString({ message: 'Mật khẩu phải là chuỗi ký tự.' })
   @IsNotEmpty({ message: 'Mật khẩu không được để trống.' })
   @MinLength(6, { message: 'Mật khẩu phải chứa ít nhất 6 ký tự.' })
+  @MaxLength(128, { message: 'Mật khẩu không được vượt quá 128 ký tự.' })
   password!: string;
 }

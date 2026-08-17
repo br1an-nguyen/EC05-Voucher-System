@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ConflictException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -6,8 +11,22 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
-import { UserRole, UserStatus, PartnerApprovalStatus, PartnerAccountStatus } from '@prisma/client';
+import {
+  PartnerAccountStatus,
+  PartnerApprovalStatus,
+  User,
+  UserRole,
+  UserStatus,
+} from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { createHash } from 'crypto';
+
+const PUBLIC_REGISTRATION_ROLES = new Set<UserRole>([
+  UserRole.CUSTOMER,
+  UserRole.PARTNER,
+]);
+const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const PASSWORD_RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
 
 /**
  * Service xử lý logic liên quan đến xác thực và phân quyền:
@@ -31,6 +50,12 @@ export class AuthService {
   async register(registerDto: RegisterDto) {
     const { email, phone, password, fullName, role, companyName, taxCode, representative } = registerDto;
     const normalizedEmail = email?.trim().toLowerCase() || null;
+
+    if (!PUBLIC_REGISTRATION_ROLES.has(role)) {
+      throw new BadRequestException(
+        'Đăng ký công khai chỉ hỗ trợ tài khoản CUSTOMER hoặc PARTNER.',
+      );
+    }
 
     // Bước 1: Kiểm tra ràng buộc phải có email hoặc phone (được quy định ở quy tắc BR-CUS-01)
     if (!normalizedEmail && !phone) {
@@ -98,8 +123,7 @@ export class AuthService {
       }
 
       // Ẩn hash mật khẩu trước khi trả về kết quả
-      const { passwordHash: _, ...result } = user;
-      return result;
+      return this.toPublicUser(user);
     });
   }
 
@@ -125,9 +149,8 @@ export class AuthService {
       throw new BadRequestException('Tài khoản hoặc mật khẩu không chính xác.');
     }
 
-    // Kiểm tra tài khoản có bị khóa hay không (RB-08)
-    if (user.status === UserStatus.LOCKED) {
-      throw new BadRequestException('Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Admin.');
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException('Tài khoản chưa được kích hoạt hoặc đã bị khóa.');
     }
 
     // So khớp mật khẩu đã mã hóa
@@ -137,32 +160,38 @@ export class AuthService {
     }
 
     // Ký và sinh Access Token & Refresh Token
-    const tokens = await this.generateTokens(user.userId, user.role);
+    const tokens = this.generateTokens(user.userId, user.role);
+    await this.prisma.user.update({
+      where: { userId: user.userId },
+      data: {
+        refreshTokenHash: this.hashToken(tokens.refreshToken),
+        refreshTokenExpiresAt: tokens.refreshTokenExpiresAt,
+      },
+    });
 
-    const { passwordHash: _, ...userData } = user;
     return {
-      user: userData,
-      ...tokens,
+      user: this.toPublicUser(user),
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
     };
   }
 
   /**
    * Sinh bộ đôi Access Token (15 phút) và Refresh Token (7 ngày).
    */
-  private async generateTokens(userId: string, role: UserRole) {
-    const payload = { sub: userId, role };
-    
-    const accessToken = this.jwtService.sign(payload, {
+  private generateTokens(userId: string, role: UserRole) {
+    const accessToken = this.jwtService.sign({ sub: userId, role, purpose: 'access' }, {
       expiresIn: '15m',
     });
 
-    const refreshToken = this.jwtService.sign(payload, {
+    const refreshToken = this.jwtService.sign({ sub: userId, purpose: 'refresh' }, {
       expiresIn: '7d',
     });
 
     return {
       accessToken,
       refreshToken,
+      refreshTokenExpiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
     };
   }
 
@@ -170,12 +199,74 @@ export class AuthService {
    * Quay vòng Access Token bằng Refresh Token hợp lệ.
    */
   async refresh(token: string) {
+    let payload: { sub?: string; purpose?: string };
     try {
-      const payload = this.jwtService.verify(token);
-      return this.generateTokens(payload.sub, payload.role);
-    } catch (e) {
-      throw new BadRequestException('Refresh token không hợp lệ hoặc đã hết hạn.');
+      payload = this.jwtService.verify(token);
+    } catch {
+      throw new UnauthorizedException('Refresh token không hợp lệ hoặc đã hết hạn.');
     }
+
+    if (!payload.sub || payload.purpose !== 'refresh') {
+      throw new UnauthorizedException('Token không đúng mục đích làm mới phiên.');
+    }
+
+    const user = await this.usersService.findById(payload.sub);
+    const tokenHash = this.hashToken(token);
+    if (
+      !user ||
+      user.status !== UserStatus.ACTIVE ||
+      user.refreshTokenHash !== tokenHash ||
+      !user.refreshTokenExpiresAt ||
+      user.refreshTokenExpiresAt <= new Date()
+    ) {
+      throw new UnauthorizedException('Phiên đăng nhập không còn hợp lệ.');
+    }
+
+    const tokens = this.generateTokens(user.userId, user.role);
+    const rotated = await this.prisma.user.updateMany({
+      where: {
+        userId: user.userId,
+        refreshTokenHash: tokenHash,
+        status: UserStatus.ACTIVE,
+      },
+      data: {
+        refreshTokenHash: this.hashToken(tokens.refreshToken),
+        refreshTokenExpiresAt: tokens.refreshTokenExpiresAt,
+      },
+    });
+
+    if (rotated.count !== 1) {
+      throw new UnauthorizedException('Refresh token đã được sử dụng hoặc thu hồi.');
+    }
+
+    return {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+    };
+  }
+
+  async logout(token: string): Promise<void> {
+    let payload: { sub?: string; purpose?: string };
+    try {
+      payload = this.jwtService.verify(token);
+    } catch {
+      return;
+    }
+
+    if (!payload.sub || payload.purpose !== 'refresh') {
+      return;
+    }
+
+    await this.prisma.user.updateMany({
+      where: {
+        userId: payload.sub,
+        refreshTokenHash: this.hashToken(token),
+      },
+      data: {
+        refreshTokenHash: null,
+        refreshTokenExpiresAt: null,
+      },
+    });
   }
 
   /**
@@ -206,13 +297,26 @@ export class AuthService {
       { expiresIn: '15m' },
     );
 
+    await this.prisma.user.update({
+      where: { userId: user.userId },
+      data: {
+        passwordResetTokenHash: this.hashToken(resetToken),
+        passwordResetExpiresAt: new Date(Date.now() + PASSWORD_RESET_TOKEN_TTL_MS),
+      },
+    });
+
     const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
 
-    return {
+    const response: Record<string, string> = {
       message: 'Nếu tài khoản tồn tại, hệ thống đã gửi hướng dẫn đặt lại mật khẩu qua email.',
-      resetToken,
-      resetUrl,
     };
+
+    if (process.env.NODE_ENV !== 'production') {
+      response.resetToken = resetToken;
+      response.resetUrl = resetUrl;
+    }
+
+    return response;
   }
 
   /**
@@ -225,34 +329,63 @@ export class AuthService {
       throw new BadRequestException('Token đặt lại mật khẩu không hợp lệ.');
     }
 
-    if (!newPassword || newPassword.length < 6) {
-      throw new BadRequestException('Mật khẩu mới phải có ít nhất 6 ký tự.');
+    if (!newPassword || newPassword.length < 8 || newPassword.length > 128) {
+      throw new BadRequestException('Mật khẩu mới phải có độ dài từ 8 đến 128 ký tự.');
     }
 
+    let payload: { sub?: string; purpose?: string };
     try {
-      const payload = this.jwtService.verify(token);
-
-      if (payload.purpose !== 'password-reset') {
-        throw new BadRequestException('Token không đúng mục đích đặt lại mật khẩu.');
-      }
-
-      const user = await this.usersService.findById(payload.sub);
-      if (!user) {
-        throw new BadRequestException('Tài khoản không tồn tại hoặc token không hợp lệ.');
-      }
-
-      const passwordHash = await bcrypt.hash(newPassword, 10);
-
-      await this.prisma.user.update({
-        where: { userId: user.userId },
-        data: { passwordHash },
-      });
-
-      return {
-        message: 'Mật khẩu đã được cập nhật thành công.',
-      };
-    } catch (error) {
+      payload = this.jwtService.verify(token);
+    } catch {
       throw new BadRequestException('Token đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.');
     }
+
+    if (!payload.sub || payload.purpose !== 'password-reset') {
+      throw new BadRequestException('Token không đúng mục đích đặt lại mật khẩu.');
+    }
+
+    const tokenHash = this.hashToken(token);
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    const updated = await this.prisma.user.updateMany({
+      where: {
+        userId: payload.sub,
+        passwordResetTokenHash: tokenHash,
+        passwordResetExpiresAt: { gt: new Date() },
+      },
+      data: {
+        passwordHash,
+        passwordChangedAt: new Date(),
+        passwordResetTokenHash: null,
+        passwordResetExpiresAt: null,
+        refreshTokenHash: null,
+        refreshTokenExpiresAt: null,
+      },
+    });
+
+    if (updated.count !== 1) {
+      throw new BadRequestException('Token đặt lại mật khẩu đã hết hạn hoặc đã được sử dụng.');
+    }
+
+    return {
+      message: 'Mật khẩu đã được cập nhật thành công.',
+    };
+  }
+
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  private toPublicUser(user: User) {
+    return {
+      userId: user.userId,
+      email: user.email,
+      phone: user.phone,
+      fullName: user.fullName,
+      role: user.role,
+      partnerId: user.partnerId,
+      branchId: user.branchId,
+      status: user.status,
+      createdAt: user.createdAt,
+    };
   }
 }

@@ -5,6 +5,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { UsersModule } from '../users/users.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { getJwtSecret } from './jwt-secret';
 
 /**
  * Module quản lý toàn bộ các cấu hình xác thực JWT, Passport và kết nối UsersModule.
@@ -14,8 +15,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     UsersModule,
     PassportModule,
     JwtModule.register({
-      // Secret key ký token
-      secret: process.env.JWT_SECRET || 'secretKey_EC05_Voucher_System',
+      secret: getJwtSecret(),
       signOptions: { expiresIn: '15m' },
     }),
   ],
