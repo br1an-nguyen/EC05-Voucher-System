@@ -1,5 +1,11 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class ReviewsService {
@@ -59,21 +65,31 @@ export class ReviewsService {
     }
 
     // 5. Lưu đánh giá mới vào cơ sở dữ liệu
-    return this.prisma.voucherReview.create({
-      data: {
-        customerId,
-        campaignId,
-        rating,
-        comment,
-      },
-      include: {
-        customer: {
-          select: {
-            fullName: true,
+    try {
+      return await this.prisma.voucherReview.create({
+        data: {
+          customerId,
+          campaignId,
+          rating,
+          comment,
+        },
+        include: {
+          customer: {
+            select: {
+              fullName: true,
+            },
           },
         },
-      },
-    });
+      });
+    } catch (error: unknown) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('Bạn đã gửi đánh giá cho chiến dịch voucher này rồi.');
+      }
+      throw error;
+    }
   }
 
   /**
@@ -97,7 +113,7 @@ export class ReviewsService {
     const totalCount = reviews.length;
     const averageRating =
       totalCount > 0
-        ? Number((reviews.reduce((acc: number, curr: any) => acc + curr.rating, 0) / totalCount).toFixed(1))
+        ? Number((reviews.reduce((acc, curr) => acc + curr.rating, 0) / totalCount).toFixed(1))
         : 0;
 
     return {
