@@ -3,9 +3,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { UpdatePartnerDto } from './dto/update-partner.dto';
-import { PartnerApprovalStatus, UserStatus } from '@prisma/client';
+import { PartnerApprovalStatus, Prisma, UserStatus } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { CreateStaffDto } from './dto/create-staff.dto';
+import { UpdateStaffDto } from './dto/update-staff.dto';
 import * as bcrypt from 'bcrypt';
 
 /**
@@ -147,8 +148,6 @@ export class PartnersService {
         partnerId,
         name: createBranchDto.name,
         address: createBranchDto.address,
-        latitude: createBranchDto.latitude,
-        longitude: createBranchDto.longitude,
       },
     });
   }
@@ -171,8 +170,6 @@ export class PartnersService {
       data: {
         name: updateBranchDto.name,
         address: updateBranchDto.address,
-        latitude: updateBranchDto.latitude,
-        longitude: updateBranchDto.longitude,
       },
     });
   }
@@ -267,7 +264,15 @@ export class PartnersService {
   async listStaff(partnerId: string) {
     return this.prisma.user.findMany({
       where: { partnerId, role: 'PARTNER_STAFF' },
-      include: {
+      select: {
+        userId: true,
+        email: true,
+        phone: true,
+        fullName: true,
+        role: true,
+        status: true,
+        branchId: true,
+        createdAt: true,
         branch: {
           select: { name: true, branchId: true },
         },
@@ -282,7 +287,7 @@ export class PartnersService {
   async updateStaff(
     partnerId: string,
     staffUserId: string,
-    dto: { fullName?: string; branchId?: string; password?: string },
+    dto: UpdateStaffDto,
   ) {
     // 1. Kiểm tra tài khoản nhân viên thuộc đối tác quản lý
     const staff = await this.prisma.user.findFirst({
@@ -292,7 +297,7 @@ export class PartnersService {
       throw new NotFoundException('Không tìm thấy tài khoản nhân viên cần chỉnh sửa.');
     }
 
-    const updateData: any = {};
+    const updateData: Prisma.UserUncheckedUpdateInput = {};
 
     if (dto.fullName) {
       updateData.fullName = dto.fullName;
@@ -311,6 +316,9 @@ export class PartnersService {
 
     if (dto.password) {
       updateData.passwordHash = await bcrypt.hash(dto.password, 10);
+      updateData.passwordChangedAt = new Date();
+      updateData.refreshTokenHash = null;
+      updateData.refreshTokenExpiresAt = null;
     }
 
     return this.prisma.user.update({
@@ -339,6 +347,7 @@ export class PartnersService {
 
     return this.prisma.user.delete({
       where: { userId: staffUserId },
+      select: { userId: true },
     });
   }
 

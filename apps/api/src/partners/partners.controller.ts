@@ -8,6 +8,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '@prisma/client';
 import { CreateStaffDto } from './dto/create-staff.dto';
+import { UpdateStaffDto } from './dto/update-staff.dto';
 
 /**
  * Controller tiếp nhận REST API cho các tác vụ liên quan đến Đối tác và Chi nhánh.
@@ -118,7 +119,7 @@ export class PartnersController {
   async updateStaff(
     @Req() req: any,
     @Param('id') staffUserId: string,
-    @Body() dto: { fullName?: string; branchId?: string; password?: string },
+    @Body() dto: UpdateStaffDto,
   ) {
     return this.partnersService.updateStaff(req.user.userId, staffUserId, dto);
   }

@@ -1,6 +1,7 @@
 import { Controller, Patch, Delete, Body, UseGuards, Req } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 /**
  * Controller tiếp nhận các tác vụ tự chỉnh sửa thông tin cá nhân của người dùng hiện tại.
@@ -15,7 +16,7 @@ export class UsersController {
    * PATCH /users/profile
    */
   @Patch('profile')
-  async updateProfile(@Req() req: any, @Body() dto: any) {
+  async updateProfile(@Req() req: any, @Body() dto: UpdateProfileDto) {
     return this.usersService.updateProfile(req.user.userId, dto);
   }
 

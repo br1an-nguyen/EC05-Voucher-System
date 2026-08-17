@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, User, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 /**
  * Service quản lý người dùng (Users), bao gồm các thao tác tìm kiếm,
@@ -73,13 +74,13 @@ export class UsersService {
   /**
    * Cập nhật thông tin cá nhân của người dùng.
    */
-  async updateProfile(userId: string, dto: any) {
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
     const user = await this.prisma.user.findUnique({ where: { userId } });
     if (!user) {
       throw new NotFoundException('Người dùng không tồn tại.');
     }
 
-    const updateData: any = {};
+    const updateData: Prisma.UserUpdateInput = {};
 
     // 1. Chỉ đổi tên nếu là CUSTOMER
     if (dto.fullName) {
@@ -112,6 +113,9 @@ export class UsersService {
         throw new BadRequestException('Mật khẩu hiện tại không chính xác.');
       }
       updateData.passwordHash = await bcrypt.hash(dto.newPassword, 10);
+      updateData.passwordChangedAt = new Date();
+      updateData.refreshTokenHash = null;
+      updateData.refreshTokenExpiresAt = null;
     }
 
     return this.prisma.user.update({
@@ -140,6 +144,7 @@ export class UsersService {
 
     return this.prisma.user.delete({
       where: { userId },
+      select: { userId: true },
     });
   }
 }
