@@ -193,7 +193,6 @@ model VoucherCampaign {
   reviews               VoucherReview[]
 
   @@unique([partnerId, campaignId])
-  @@index([status, category, saleEndTime, saleStartTime, createdAt], map: "Voucher_Campaigns_catalog_idx")
   @@index([partnerId, createdAt(sort: Desc)], map: "Voucher_Campaigns_partner_created_at_idx")
   @@map("Voucher_Campaigns")
 }
@@ -205,7 +204,7 @@ model CampaignBranch {
 
   // Relations
   campaign VoucherCampaign @relation(fields: [partnerId, campaignId], references: [partnerId, campaignId], onDelete: Cascade)
-  branch   Branch          @relation(fields: [partnerId, branchId], references: [partnerId, branchId], onDelete: Cascade)
+  branch   Branch          @relation(fields: [partnerId, branchId], references: [partnerId, branchId], onDelete: Restrict)
 
   @@id([campaignId, branchId])
   @@index([partnerId, campaignId], map: "Campaign_Branches_partner_campaign_idx")
@@ -263,7 +262,7 @@ model InventoryReservation {
   status        ReservationStatus @default(ACTIVE) @map("status")
   expiresAt     DateTime          @map("expires_at") @db.Timestamptz
   createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+  updatedAt     DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
   order    Order           @relation(fields: [orderId], references: [orderId], onDelete: Cascade)
@@ -292,7 +291,7 @@ model PaymentTransaction {
   expiresAt             DateTime?                @map("expires_at") @db.Timestamptz
   paidAt                DateTime?                @map("paid_at") @db.Timestamptz
   createdAt             DateTime                 @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt             DateTime                 @updatedAt @map("updated_at") @db.Timestamptz
+  updatedAt             DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
   order         Order                 @relation(fields: [orderId], references: [orderId], onDelete: Cascade)
@@ -300,9 +299,6 @@ model PaymentTransaction {
   refunds       PaymentRefund[]
 
   @@unique([orderId, attemptNo])
-  @@unique([provider, providerOrderId])
-  @@unique([provider, providerTransactionId])
-  @@index([orderId, status, createdAt(sort: Desc)], map: "Payment_Transactions_order_status_created_at_idx")
   @@map("Payment_Transactions")
 }
 
@@ -323,7 +319,6 @@ model PaymentWebhookEvent {
 
   @@unique([provider, providerEventId])
   @@index([paymentId], map: "Payment_Webhook_Events_payment_id_idx")
-  @@index([processingStatus, receivedAt], map: "Payment_Webhook_Events_processing_received_at_idx")
   @@map("Payment_Webhook_Events")
 }
 
@@ -337,13 +332,12 @@ model PaymentRefund {
   idempotencyKey   String              @unique @map("idempotency_key") @db.VarChar(100)
   reason           String              @map("reason") @db.VarChar(255)
   createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+  updatedAt        DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
   payment PaymentTransaction @relation(fields: [paymentId], references: [paymentId], onDelete: Restrict)
 
   @@index([paymentId], map: "Payment_Refunds_payment_id_idx")
-  @@index([status, createdAt(sort: Desc)], map: "Payment_Refunds_status_created_at_idx")
   @@map("Payment_Refunds")
 }
 
@@ -360,7 +354,7 @@ model VoucherCode {
   customer  User              @relation(fields: [customerId], references: [userId], onDelete: Restrict)
   usageLogs VoucherUsageLog[]
 
-  @@index([customerId, status, issuedAt(sort: Desc)], map: "Voucher_Codes_customer_status_issued_at_idx")
+  @@index([customerId, issuedAt(sort: Desc)], map: "Voucher_Codes_customer_issued_at_idx")
   @@index([itemId], map: "Voucher_Codes_item_id_idx")
   @@map("Voucher_Codes")
 }
@@ -393,7 +387,7 @@ model AuditLog {
   // Relations
   admin User @relation(fields: [adminId], references: [userId], onDelete: Restrict)
 
-  @@index([adminId, timestamp(sort: Desc)], map: "Audit_Logs_admin_timestamp_idx")
+  @@index([adminId], map: "Audit_Logs_admin_id_idx")
   @@index([timestamp(sort: Desc)], map: "Audit_Logs_timestamp_idx")
   @@map("Audit_Logs")
 }
@@ -404,14 +398,13 @@ model CartItem {
   campaignId String   @map("campaign_id") @db.Uuid
   quantity   Int      @map("quantity")
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
   customer User            @relation(fields: [customerId], references: [userId], onDelete: Cascade)
   campaign VoucherCampaign @relation(fields: [campaignId], references: [campaignId], onDelete: Cascade)
 
   @@unique([customerId, campaignId])
-  @@index([customerId, createdAt(sort: Desc)], map: "Cart_Items_customer_created_at_idx")
   @@index([campaignId], map: "Cart_Items_campaign_id_idx")
   @@map("Cart_Items")
 }
