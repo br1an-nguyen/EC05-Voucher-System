@@ -110,6 +110,11 @@ model User {
   branchId      String?    @map("branch_id") @db.Uuid
   status        UserStatus @default(PENDING_VERIFICATION) @map("status")
   createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  refreshTokenHash       String?    @map("refresh_token_hash") @db.VarChar(255)
+  refreshTokenExpiresAt  DateTime?  @map("refresh_token_expires_at") @db.Timestamptz
+  passwordResetTokenHash String?    @map("password_reset_token_hash") @db.VarChar(255)
+  passwordResetExpiresAt DateTime?  @map("password_reset_expires_at") @db.Timestamptz
+  passwordChangedAt      DateTime?  @map("password_changed_at") @db.Timestamptz
 
   // Relations
   partnerProfile Partner?  @relation("UserToPartnerProfile")
