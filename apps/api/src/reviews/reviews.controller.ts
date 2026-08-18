@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '@prisma/client';
+import { CreateReviewDto } from './dto/create-review.dto';
 
 @Controller('reviews')
 export class ReviewsController {
@@ -18,7 +19,7 @@ export class ReviewsController {
   @Roles(UserRole.CUSTOMER)
   async createReview(
     @Req() req: any,
-    @Body() dto: { campaignId: string; rating: number; comment?: string },
+    @Body() dto: CreateReviewDto,
   ) {
     return this.reviewsService.createReview(
       req.user.userId,

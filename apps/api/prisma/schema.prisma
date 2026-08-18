@@ -100,32 +100,33 @@ enum VoucherCodeStatus {
 }
 
 model User {
-  userId        String     @id @default(dbgenerated("gen_random_uuid()")) @map("user_id") @db.Uuid
-  email         String?    @unique @map("email") @db.VarChar(255)
-  phone         String?    @unique @map("phone") @db.VarChar(20)
-  passwordHash  String     @map("password_hash") @db.VarChar(255)
-  fullName      String?    @map("full_name") @db.VarChar(255)
-  role          UserRole   @map("role")
-  partnerId     String?    @map("partner_id") @db.Uuid
-  branchId      String?    @map("branch_id") @db.Uuid
-  status        UserStatus @default(PENDING_VERIFICATION) @map("status")
-  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz
-  refreshTokenHash       String?    @map("refresh_token_hash") @db.VarChar(255)
+  userId                 String     @id @default(dbgenerated("gen_random_uuid()")) @map("user_id") @db.Uuid
+  email                  String?    @unique @map("email") @db.VarChar(255)
+  phone                  String?    @unique @map("phone") @db.VarChar(20)
+  passwordHash           String     @map("password_hash") @db.VarChar(255)
+  fullName               String?    @map("full_name") @db.VarChar(255)
+  role                   UserRole   @map("role")
+  partnerId              String?    @map("partner_id") @db.Uuid
+  branchId               String?    @map("branch_id") @db.Uuid
+  status                 UserStatus @default(PENDING_VERIFICATION) @map("status")
+  refreshTokenHash       String?    @map("refresh_token_hash") @db.Char(64)
   refreshTokenExpiresAt  DateTime?  @map("refresh_token_expires_at") @db.Timestamptz
-  passwordResetTokenHash String?    @map("password_reset_token_hash") @db.VarChar(255)
+  passwordResetTokenHash String?    @map("password_reset_token_hash") @db.Char(64)
   passwordResetExpiresAt DateTime?  @map("password_reset_expires_at") @db.Timestamptz
   passwordChangedAt      DateTime?  @map("password_changed_at") @db.Timestamptz
+  createdAt              DateTime   @default(now()) @map("created_at") @db.Timestamptz
 
   // Relations
-  partnerProfile Partner?  @relation("UserToPartnerProfile")
-  partnerStaffOf Partner?  @relation("PartnerToStaff", fields: [partnerId], references: [partnerId], onDelete: Restrict)
-  branch         Branch?   @relation(fields: [partnerId, branchId], references: [partnerId, branchId], onDelete: Restrict)
+  partnerProfile Partner?        @relation("UserToPartnerProfile")
+  partnerStaffOf Partner?        @relation("PartnerToStaff", fields: [partnerId], references: [partnerId], onDelete: Restrict)
+  branch         Branch?         @relation(fields: [partnerId, branchId], references: [partnerId, branchId], onDelete: Restrict)
   orders         Order[]
   voucherCodes   VoucherCode[]
   auditLogs      AuditLog[]
   cartItems      CartItem[]
   reviews        VoucherReview[]
 
+  @@index([partnerId, branchId], map: "Users_partner_branch_idx")
   @@map("Users")
 }
 
@@ -139,25 +140,23 @@ model Partner {
   createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz
 
   // Relations
-  user           User                  @relation("UserToPartnerProfile", fields: [partnerId], references: [userId], onDelete: Restrict)
-  branches       Branch[]
-  staff          User[]                @relation("PartnerToStaff")
-  campaigns      VoucherCampaign[]
+  user      User              @relation("UserToPartnerProfile", fields: [partnerId], references: [userId], onDelete: Restrict)
+  branches  Branch[]
+  staff     User[]            @relation("PartnerToStaff")
+  campaigns VoucherCampaign[]
 
   @@map("Partners")
 }
 
 model Branch {
-  branchId   String          @id @default(dbgenerated("gen_random_uuid()")) @map("branch_id") @db.Uuid
-  partnerId  String          @map("partner_id") @db.Uuid
-  name       String          @map("name") @db.VarChar(255)
-  address    String?         @map("address") @db.Text
-  // latitude   Float?          @map("latitude")
-  // longitude  Float?          @map("longitude")
+  branchId  String  @id @default(dbgenerated("gen_random_uuid()")) @map("branch_id") @db.Uuid
+  partnerId String  @map("partner_id") @db.Uuid
+  name      String  @map("name") @db.VarChar(255)
+  address   String? @map("address") @db.Text
 
   // Relations
-  partner    Partner         @relation(fields: [partnerId], references: [partnerId], onDelete: Restrict)
-  staff      User[]
+  partner          Partner           @relation(fields: [partnerId], references: [partnerId], onDelete: Restrict)
+  staff            User[]
   campaignBranches CampaignBranch[]
   voucherUsageLogs VoucherUsageLog[]
 
@@ -166,79 +165,84 @@ model Branch {
 }
 
 model VoucherCampaign {
-  campaignId       String          @id @default(dbgenerated("gen_random_uuid()")) @map("campaign_id") @db.Uuid
-  partnerId        String          @map("partner_id") @db.Uuid
-  title            String          @map("title") @db.VarChar(255)
-  description      String?         @map("description") @db.Text
-  category         String?         @map("category") @db.VarChar(100)
-  originalPrice    Decimal         @map("original_price") @db.Decimal(12, 2)
-  salePrice        Decimal         @map("sale_price") @db.Decimal(12, 2)
-  saleStartTime    DateTime        @map("sale_start_time") @db.Timestamptz
-  saleEndTime      DateTime        @map("sale_end_time") @db.Timestamptz
-  usageStartTime   DateTime        @map("usage_start_time") @db.Timestamptz
-  usageEndTime     DateTime        @map("usage_end_time") @db.Timestamptz
-  capacity         Int             @map("capacity")
-  soldQuantity     Int             @default(0) @map("sold_quantity")
-  reservedStock    Int             @default(0) @map("reserved_stock")
-  status           VoucherStatus   @default(DRAFT) @map("status")
-  isMultiUse       Boolean         @default(false) @map("is_multi_use")
-  maxUsesPerCode   Int?            @map("max_uses_per_code")
-  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz
-  thumbnail_url    String?
-
+  campaignId     String        @id @default(dbgenerated("gen_random_uuid()")) @map("campaign_id") @db.Uuid
+  partnerId      String        @map("partner_id") @db.Uuid
+  title          String        @map("title") @db.VarChar(255)
+  description    String?       @map("description") @db.Text
+  category       String?       @map("category") @db.VarChar(100)
+  originalPrice  Decimal       @map("original_price") @db.Decimal(12, 2)
+  salePrice      Decimal       @map("sale_price") @db.Decimal(12, 2)
+  saleStartTime  DateTime      @map("sale_start_time") @db.Timestamptz
+  saleEndTime    DateTime      @map("sale_end_time") @db.Timestamptz
+  usageStartTime DateTime      @map("usage_start_time") @db.Timestamptz
+  usageEndTime   DateTime      @map("usage_end_time") @db.Timestamptz
+  capacity       Int           @map("capacity")
+  soldQuantity   Int           @default(0) @map("sold_quantity")
+  reservedStock  Int           @default(0) @map("reserved_stock")
+  status         VoucherStatus @default(DRAFT) @map("status")
+  isMultiUse     Boolean       @default(false) @map("is_multi_use")
+  maxUsesPerCode Int?          @map("max_uses_per_code")
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  thumbnail_url  String?
   // Relations
-  partner          Partner         @relation(fields: [partnerId], references: [partnerId], onDelete: Restrict)
-  campaignBranches CampaignBranch[]
-  orderItems       OrderItem[]
+  partner               Partner                @relation(fields: [partnerId], references: [partnerId], onDelete: Restrict)
+  campaignBranches      CampaignBranch[]
+  orderItems            OrderItem[]
   inventoryReservations InventoryReservation[]
-  cartItems        CartItem[]
-  reviews          VoucherReview[]
+  cartItems             CartItem[]
+  reviews               VoucherReview[]
 
   @@unique([partnerId, campaignId])
+  @@index([partnerId, createdAt(sort: Desc)], map: "Voucher_Campaigns_partner_created_at_idx")
   @@map("Voucher_Campaigns")
 }
 
 model CampaignBranch {
-  partnerId  String          @map("partner_id") @db.Uuid
-  campaignId String          @map("campaign_id") @db.Uuid
-  branchId   String          @map("branch_id") @db.Uuid
+  partnerId  String @map("partner_id") @db.Uuid
+  campaignId String @map("campaign_id") @db.Uuid
+  branchId   String @map("branch_id") @db.Uuid
 
   // Relations
-  campaign   VoucherCampaign @relation(fields: [partnerId, campaignId], references: [partnerId, campaignId], onDelete: Cascade)
-  branch     Branch          @relation(fields: [partnerId, branchId], references: [partnerId, branchId], onDelete: Cascade)
+  campaign VoucherCampaign @relation(fields: [partnerId, campaignId], references: [partnerId, campaignId], onDelete: Cascade)
+  branch   Branch          @relation(fields: [partnerId, branchId], references: [partnerId, branchId], onDelete: Restrict)
 
   @@id([campaignId, branchId])
+  @@index([partnerId, campaignId], map: "Campaign_Branches_partner_campaign_idx")
+  @@index([partnerId, branchId], map: "Campaign_Branches_partner_branch_idx")
+  @@index([branchId, campaignId], map: "Campaign_Branches_branch_campaign_idx")
   @@map("Campaign_Branches")
 }
 
 model Order {
-  orderId                  String               @id @default(dbgenerated("gen_random_uuid()")) @map("order_id") @db.Uuid
-  orderCode                String               @unique @map("order_code") @db.VarChar(32)
-  customerId               String               @map("customer_id") @db.Uuid
-  recipientNote            String?              @map("recipient_note") @db.Text
-  totalAmount              Decimal              @map("total_amount") @db.Decimal(12, 2)
-  baseCurrency             String               @default("VND") @map("base_currency") @db.Char(3)
-  selectedPaymentProvider  PaymentProviderType? @map("selected_payment_provider")
-  orderStatus              OrderStatus          @default(PENDING) @map("order_status")
-  paymentStatus            PaymentStatus        @default(UNPAID) @map("payment_status")
-  reservationExpiresAt     DateTime             @map("reservation_expires_at") @db.Timestamptz
-  createdAt                DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  orderId                 String               @id @default(dbgenerated("gen_random_uuid()")) @map("order_id") @db.Uuid
+  orderCode               String               @unique @map("order_code") @db.VarChar(32)
+  customerId              String               @map("customer_id") @db.Uuid
+  recipientNote           String?              @map("recipient_note") @db.Text
+  totalAmount             Decimal              @map("total_amount") @db.Decimal(12, 2)
+  baseCurrency            String               @default("VND") @map("base_currency") @db.Char(3)
+  selectedPaymentProvider PaymentProviderType? @map("selected_payment_provider")
+  orderStatus             OrderStatus          @default(PENDING) @map("order_status")
+  paymentStatus           PaymentStatus        @default(UNPAID) @map("payment_status")
+  reservationExpiresAt    DateTime             @map("reservation_expires_at") @db.Timestamptz
+  createdAt               DateTime             @default(now()) @map("created_at") @db.Timestamptz
 
   // Relations
-  customer                 User                 @relation(fields: [customerId], references: [userId], onDelete: Restrict)
-  orderItems               OrderItem[]
-  inventoryReservations    InventoryReservation[]
-  paymentTransactions      PaymentTransaction[]
+  customer              User                   @relation(fields: [customerId], references: [userId], onDelete: Restrict)
+  orderItems            OrderItem[]
+  inventoryReservations InventoryReservation[]
+  paymentTransactions   PaymentTransaction[]
 
+  @@index([customerId, createdAt(sort: Desc)], map: "Orders_customer_created_at_idx")
+  @@index([createdAt(sort: Desc)], map: "Orders_created_at_idx")
   @@map("Orders")
 }
 
 model OrderItem {
-  itemId       String          @id @default(dbgenerated("gen_random_uuid()")) @map("item_id") @db.Uuid
-  orderId      String          @map("order_id") @db.Uuid
-  campaignId   String          @map("campaign_id") @db.Uuid
-  quantity     Int             @map("quantity")
-  unitPrice    Decimal         @map("unit_price") @db.Decimal(12, 2)
+  itemId     String  @id @default(dbgenerated("gen_random_uuid()")) @map("item_id") @db.Uuid
+  orderId    String  @map("order_id") @db.Uuid
+  campaignId String  @map("campaign_id") @db.Uuid
+  quantity   Int     @map("quantity")
+  unitPrice  Decimal @map("unit_price") @db.Decimal(12, 2)
 
   // Relations
   order        Order           @relation(fields: [orderId], references: [orderId], onDelete: Cascade)
@@ -246,6 +250,7 @@ model OrderItem {
   voucherCodes VoucherCode[]
 
   @@unique([orderId, campaignId])
+  @@index([campaignId], map: "Order_Items_campaign_id_idx")
   @@map("Order_Items")
 }
 
@@ -257,44 +262,43 @@ model InventoryReservation {
   status        ReservationStatus @default(ACTIVE) @map("status")
   expiresAt     DateTime          @map("expires_at") @db.Timestamptz
   createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+  updatedAt     DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
-  order         Order             @relation(fields: [orderId], references: [orderId], onDelete: Cascade)
-  campaign      VoucherCampaign   @relation(fields: [campaignId], references: [campaignId], onDelete: Restrict)
+  order    Order           @relation(fields: [orderId], references: [orderId], onDelete: Cascade)
+  campaign VoucherCampaign @relation(fields: [campaignId], references: [campaignId], onDelete: Restrict)
 
   @@unique([orderId, campaignId])
+  @@index([campaignId], map: "Inventory_Reservations_campaign_id_idx")
   @@map("Inventory_Reservations")
 }
 
 model PaymentTransaction {
-  paymentId              String                   @id @default(dbgenerated("gen_random_uuid()")) @map("payment_id") @db.Uuid
-  orderId                String                   @map("order_id") @db.Uuid
-  provider               PaymentProviderType      @map("provider")
-  attemptNo              Int                      @map("attempt_no")
-  status                 PaymentTransactionStatus @map("status")
-  idempotencyKey         String                   @unique @map("idempotency_key") @db.VarChar(100)
-  providerOrderId        String?                  @map("provider_order_id") @db.VarChar(255)
-  providerTransactionId  String?                  @map("provider_transaction_id") @db.VarChar(255)
-  baseAmount             Decimal                  @map("base_amount") @db.Decimal(12, 2)
-  requestAmountMinor     BigInt                   @map("request_amount_minor")
-  requestCurrency        String                   @map("request_currency") @db.Char(3)
-  exchangeRate           Decimal?                 @map("exchange_rate") @db.Decimal(18, 8)
-  failureCode            String?                  @map("failure_code") @db.VarChar(100)
-  failureMessage         String?                  @map("failure_message") @db.Text
-  expiresAt              DateTime?                @map("expires_at") @db.Timestamptz
-  paidAt                 DateTime?                @map("paid_at") @db.Timestamptz
-  createdAt              DateTime                 @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt              DateTime                 @updatedAt @map("updated_at") @db.Timestamptz
+  paymentId             String                   @id @default(dbgenerated("gen_random_uuid()")) @map("payment_id") @db.Uuid
+  orderId               String                   @map("order_id") @db.Uuid
+  provider              PaymentProviderType      @map("provider")
+  attemptNo             Int                      @map("attempt_no")
+  status                PaymentTransactionStatus @map("status")
+  idempotencyKey        String                   @unique @map("idempotency_key") @db.VarChar(100)
+  providerOrderId       String?                  @map("provider_order_id") @db.VarChar(255)
+  providerTransactionId String?                  @map("provider_transaction_id") @db.VarChar(255)
+  baseAmount            Decimal                  @map("base_amount") @db.Decimal(12, 2)
+  requestAmountMinor    BigInt                   @map("request_amount_minor")
+  requestCurrency       String                   @map("request_currency") @db.Char(3)
+  exchangeRate          Decimal?                 @map("exchange_rate") @db.Decimal(18, 8)
+  failureCode           String?                  @map("failure_code") @db.VarChar(100)
+  failureMessage        String?                  @map("failure_message") @db.Text
+  expiresAt             DateTime?                @map("expires_at") @db.Timestamptz
+  paidAt                DateTime?                @map("paid_at") @db.Timestamptz
+  createdAt             DateTime                 @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
-  order                  Order                    @relation(fields: [orderId], references: [orderId], onDelete: Cascade)
-  webhookEvents          PaymentWebhookEvent[]
-  refunds                PaymentRefund[]
+  order         Order                 @relation(fields: [orderId], references: [orderId], onDelete: Cascade)
+  webhookEvents PaymentWebhookEvent[]
+  refunds       PaymentRefund[]
 
   @@unique([orderId, attemptNo])
-  @@unique([provider, providerOrderId])
-  @@unique([provider, providerTransactionId])
   @@map("Payment_Transactions")
 }
 
@@ -311,9 +315,10 @@ model PaymentWebhookEvent {
   processedAt      DateTime?                      @map("processed_at") @db.Timestamptz
 
   // Relations
-  payment          PaymentTransaction?            @relation(fields: [paymentId], references: [paymentId], onDelete: SetNull)
+  payment PaymentTransaction? @relation(fields: [paymentId], references: [paymentId], onDelete: SetNull)
 
   @@unique([provider, providerEventId])
+  @@index([paymentId], map: "Payment_Webhook_Events_payment_id_idx")
   @@map("Payment_Webhook_Events")
 }
 
@@ -327,40 +332,45 @@ model PaymentRefund {
   idempotencyKey   String              @unique @map("idempotency_key") @db.VarChar(100)
   reason           String              @map("reason") @db.VarChar(255)
   createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+  updatedAt        DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
-  payment          PaymentTransaction  @relation(fields: [paymentId], references: [paymentId], onDelete: Restrict)
+  payment PaymentTransaction @relation(fields: [paymentId], references: [paymentId], onDelete: Restrict)
 
+  @@index([paymentId], map: "Payment_Refunds_payment_id_idx")
   @@map("Payment_Refunds")
 }
 
 model VoucherCode {
-  codeId       String            @id @default(dbgenerated("gen_random_uuid()")) @map("code_id") @db.Uuid
-  itemId       String            @map("item_id") @db.Uuid
-  uniqueCode   String            @unique @map("unique_code") @db.VarChar(64)
-  customerId   String            @map("customer_id") @db.Uuid
-  status       VoucherCodeStatus @default(AVAILABLE) @map("status")
-  issuedAt     DateTime          @default(now()) @map("issued_at") @db.Timestamptz
+  codeId     String            @id @default(dbgenerated("gen_random_uuid()")) @map("code_id") @db.Uuid
+  itemId     String            @map("item_id") @db.Uuid
+  uniqueCode String            @unique @map("unique_code") @db.VarChar(64)
+  customerId String            @map("customer_id") @db.Uuid
+  status     VoucherCodeStatus @default(AVAILABLE) @map("status")
+  issuedAt   DateTime          @default(now()) @map("issued_at") @db.Timestamptz
 
   // Relations
-  orderItem    OrderItem         @relation(fields: [itemId], references: [itemId], onDelete: Restrict)
-  customer     User              @relation(fields: [customerId], references: [userId], onDelete: Restrict)
-  usageLogs    VoucherUsageLog[]
+  orderItem OrderItem         @relation(fields: [itemId], references: [itemId], onDelete: Restrict)
+  customer  User              @relation(fields: [customerId], references: [userId], onDelete: Restrict)
+  usageLogs VoucherUsageLog[]
 
+  @@index([customerId, issuedAt(sort: Desc)], map: "Voucher_Codes_customer_issued_at_idx")
+  @@index([itemId], map: "Voucher_Codes_item_id_idx")
   @@map("Voucher_Codes")
 }
 
 model VoucherUsageLog {
-  usageId  String      @id @default(dbgenerated("gen_random_uuid()")) @map("usage_id") @db.Uuid
-  codeId   String      @map("code_id") @db.Uuid
-  branchId String      @map("branch_id") @db.Uuid
-  usedAt   DateTime    @default(now()) @map("used_at") @db.Timestamptz
+  usageId  String   @id @default(dbgenerated("gen_random_uuid()")) @map("usage_id") @db.Uuid
+  codeId   String   @map("code_id") @db.Uuid
+  branchId String   @map("branch_id") @db.Uuid
+  usedAt   DateTime @default(now()) @map("used_at") @db.Timestamptz
 
   // Relations
   voucherCode VoucherCode @relation(fields: [codeId], references: [codeId], onDelete: Restrict)
   branch      Branch      @relation(fields: [branchId], references: [branchId], onDelete: Restrict)
 
+  @@index([codeId, usedAt(sort: Desc)], map: "Voucher_Usage_Log_code_used_at_idx")
+  @@index([branchId, usedAt(sort: Desc)], map: "Voucher_Usage_Log_branch_used_at_idx")
   @@map("Voucher_Usage_Log")
 }
 
@@ -375,8 +385,10 @@ model AuditLog {
   timestamp          DateTime @default(now()) @map("timestamp") @db.Timestamptz
 
   // Relations
-  admin              User     @relation(fields: [adminId], references: [userId], onDelete: Restrict)
+  admin User @relation(fields: [adminId], references: [userId], onDelete: Restrict)
 
+  @@index([adminId], map: "Audit_Logs_admin_id_idx")
+  @@index([timestamp(sort: Desc)], map: "Audit_Logs_timestamp_idx")
   @@map("Audit_Logs")
 }
 
@@ -386,13 +398,14 @@ model CartItem {
   campaignId String   @map("campaign_id") @db.Uuid
   quantity   Int      @map("quantity")
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
-  customer   User     @relation(fields: [customerId], references: [userId], onDelete: Cascade)
-  campaign   VoucherCampaign @relation(fields: [campaignId], references: [campaignId], onDelete: Cascade)
+  customer User            @relation(fields: [customerId], references: [userId], onDelete: Cascade)
+  campaign VoucherCampaign @relation(fields: [campaignId], references: [campaignId], onDelete: Cascade)
 
   @@unique([customerId, campaignId])
+  @@index([campaignId], map: "Cart_Items_campaign_id_idx")
   @@map("Cart_Items")
 }
 
@@ -405,8 +418,10 @@ model VoucherReview {
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   // Relations
-  customer   User     @relation(fields: [customerId], references: [userId], onDelete: Cascade)
-  campaign   VoucherCampaign @relation(fields: [campaignId], references: [campaignId], onDelete: Cascade)
+  customer User            @relation(fields: [customerId], references: [userId], onDelete: Cascade)
+  campaign VoucherCampaign @relation(fields: [campaignId], references: [campaignId], onDelete: Cascade)
 
+  @@unique([customerId, campaignId])
+  @@index([campaignId, createdAt(sort: Desc)], map: "Voucher_Reviews_campaign_created_at_idx")
   @@map("Voucher_Reviews")
 }

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../../../lib/api';
-import { MapPin, Plus, Edit2, Trash2, X, AlertCircle, CheckCircle, Navigation } from 'lucide-react';
+import { MapPin, Plus, Edit2, Trash2, X, AlertCircle, CheckCircle } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -10,8 +10,6 @@ import * as z from 'zod';
 const branchSchema = z.object({
   name: z.string().min(1, 'Tên chi nhánh không được để trống.'),
   address: z.string().min(1, 'Địa chỉ không được để trống.'),
-  latitude: z.string().optional(),
-  longitude: z.string().optional(),
 });
 
 type BranchSchemaType = z.infer<typeof branchSchema>;
@@ -20,8 +18,6 @@ interface Branch {
   branchId: string;
   name: string;
   address: string | null;
-  latitude: number | null;
-  longitude: number | null;
 }
 
 export default function PartnerBranchesPage() {
@@ -62,8 +58,6 @@ export default function PartnerBranchesPage() {
     reset({
       name: '',
       address: '',
-      latitude: '',
-      longitude: '',
     });
     setErrorMsg(null);
     setModalOpen(true);
@@ -73,8 +67,6 @@ export default function PartnerBranchesPage() {
     setEditingBranch(branch);
     setValue('name', branch.name);
     setValue('address', branch.address || '');
-    setValue('latitude', branch.latitude?.toString() || '');
-    setValue('longitude', branch.longitude?.toString() || '');
     setErrorMsg(null);
     setModalOpen(true);
   };
@@ -84,8 +76,6 @@ export default function PartnerBranchesPage() {
     const payload = {
       name: data.name,
       address: data.address,
-      latitude: data.latitude ? Number(data.latitude) : undefined,
-      longitude: data.longitude ? Number(data.longitude) : undefined,
     };
     try {
       if (editingBranch) {
@@ -200,12 +190,6 @@ export default function PartnerBranchesPage() {
                   <MapPin className="h-4 w-4 shrink-0 text-primary mt-0.5" />
                   <p>{branch.address || 'Không có thông tin địa chỉ'}</p>
                 </div>
-                {(branch.latitude !== null && branch.longitude !== null) && (
-                  <div className="mt-2.5 flex items-center gap-2 text-[11px] text-muted/80 bg-slate-50 border border-slate-100 rounded-md px-2 py-1 w-max">
-                    <Navigation className="h-3 w-3 text-primary" />
-                    <span>Tọa độ: {branch.latitude}, {branch.longitude}</span>
-                  </div>
-                )}
               </div>
 
               {/* HÀNH ĐỘNG */}
@@ -281,40 +265,6 @@ export default function PartnerBranchesPage() {
                 {errors.address && (
                   <p className="mt-1 text-xs text-primary">{errors.address.message}</p>
                 )}
-              </div>
-
-              {/* TỌA ĐỘ VĨ ĐỘ & KINH ĐỘ */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-foreground mb-1.5">
-                    Vĩ độ (Latitude)
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    {...register('latitude')}
-                    placeholder="10.7626"
-                    className="block w-full rounded-lg border border-border bg-background py-2 px-3 text-foreground placeholder-slate-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary text-sm transition-all"
-                  />
-                  {errors.latitude && (
-                    <p className="mt-1 text-xs text-primary">{errors.latitude.message}</p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-foreground mb-1.5">
-                    Kinh độ (Longitude)
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    {...register('longitude')}
-                    placeholder="106.6822"
-                    className="block w-full rounded-lg border border-border bg-background py-2 px-3 text-foreground placeholder-slate-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary text-sm transition-all"
-                  />
-                  {errors.longitude && (
-                    <p className="mt-1 text-xs text-primary">{errors.longitude.message}</p>
-                  )}
-                </div>
               </div>
 
               {/* Nút Submit */}

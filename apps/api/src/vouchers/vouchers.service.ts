@@ -2,7 +2,8 @@ import { Injectable, NotFoundException, BadRequestException, ForbiddenException 
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 import { UpdateCampaignDto } from './dto/update-campaign.dto';
-import { VoucherStatus, PartnerApprovalStatus } from '@prisma/client';
+import { Prisma, VoucherStatus, PartnerApprovalStatus, UserRole } from '@prisma/client';
+import { PublicCatalogQueryDto } from './dto/public-catalog-query.dto';
 import { AuditService } from '../audit/audit.service';
 
 /**
@@ -14,6 +15,26 @@ export class VouchersService {
     private prisma: PrismaService,
     private auditService: AuditService,
   ) {}
+
+  private resolveActorPartnerId(actorUser: {
+    userId: string;
+    role: string;
+    partnerId?: string | null;
+  }): string | null {
+    if (actorUser.role === UserRole.ADMIN) {
+      return null;
+    }
+
+    if (actorUser.role === UserRole.PARTNER) {
+      return actorUser.userId;
+    }
+
+    if (actorUser.role === UserRole.PARTNER_STAFF && actorUser.partnerId) {
+      return actorUser.partnerId;
+    }
+
+    throw new ForbiddenException('Tài khoản không có phạm vi đối tác hợp lệ.');
+  }
 
   /**
    * Tạo chiến dịch voucher mới ở trạng thái DRAFT.
@@ -269,18 +290,12 @@ export class VouchersService {
    * Lấy danh sách voucher công khai để hiển thị trên trang chủ cho khách hàng.
    * Hỗ trợ tìm kiếm từ khóa, danh mục, khoảng giá và chi nhánh áp dụng.
    */
-  async findPublicCatalog(query: {
-    keyword?: string;
-    category?: string;
-    minPrice?: number;
-    maxPrice?: number;
-    branchId?: string;
-  }) {
+  async findPublicCatalog(query: PublicCatalogQueryDto) {
     const { keyword, category, minPrice, maxPrice, branchId } = query;
     const now = new Date();
 
     // Ràng buộc: Chiến dịch phải được phê duyệt và đang trong thời gian mở bán
-    const whereClause: any = {
+    const whereClause: Prisma.VoucherCampaignWhereInput = {
       status: VoucherStatus.APPROVED,
       saleStartTime: { lte: now },
       saleEndTime: { gte: now },
@@ -465,12 +480,18 @@ export class VouchersService {
     }
 
     const campaign = voucher.orderItem.campaign;
+    const actorPartnerId = this.resolveActorPartnerId(actorUser);
 
-    // Phân quyền: Đối tác quét phải sở hữu chiến dịch này
-    if (actorUser.role === 'PARTNER' || actorUser.role === 'PARTNER_STAFF') {
-      if (campaign.partnerId !== actorUser.partnerId) {
-        throw new BadRequestException('Mã voucher này thuộc về đối tác khác. Bạn không có quyền truy cập.');
-      }
+    if (actorPartnerId && campaign.partnerId !== actorPartnerId) {
+      throw new ForbiddenException('Mã voucher này thuộc về đối tác khác.');
+    }
+
+    if (
+      actorUser.role === UserRole.PARTNER_STAFF &&
+      actorUser.branchId &&
+      !campaign.campaignBranches.some((item) => item.branchId === actorUser.branchId)
+    ) {
+      throw new ForbiddenException('Voucher không áp dụng tại chi nhánh được phân công.');
     }
 
     // Trả về trạng thái chi tiết của voucher để hiển thị
@@ -546,18 +567,18 @@ export class VouchersService {
       }
 
       const campaign = voucher.orderItem.campaign;
+      const actorPartnerId = this.resolveActorPartnerId(actorUser);
 
-      // 2. Kiểm tra phân quyền truy cập của người quét (RB-09)
-      if (actorUser.role === 'PARTNER' || actorUser.role === 'PARTNER_STAFF') {
-        // Chiến dịch phải thuộc quyền sở hữu của đối tác này
-        if (campaign.partnerId !== actorUser.partnerId) {
-          throw new BadRequestException('Mã voucher này thuộc về đối tác khác. Bạn không có quyền quét.');
-        }
+      if (actorPartnerId && campaign.partnerId !== actorPartnerId) {
+        throw new ForbiddenException('Mã voucher này thuộc về đối tác khác.');
+      }
 
-        // Nếu là nhân viên chi nhánh, bắt buộc phải đúng chi nhánh được phân công (nếu có scope)
-        if (actorUser.role === 'PARTNER_STAFF' && actorUser.branchId && actorUser.branchId !== branchId) {
-          throw new BadRequestException('Bạn không được phép quét mã tại chi nhánh khác chi nhánh phân công.');
-        }
+      if (
+        actorUser.role === UserRole.PARTNER_STAFF &&
+        actorUser.branchId &&
+        actorUser.branchId !== branchId
+      ) {
+        throw new ForbiddenException('Bạn không được phép quét tại chi nhánh khác.');
       }
 
       // 3. Kiểm tra chi nhánh áp dụng của chiến dịch voucher (RB-09)
