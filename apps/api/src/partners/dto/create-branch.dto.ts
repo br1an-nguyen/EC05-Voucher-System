@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsNumber } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
 
 /**
  * DTO dữ liệu đầu vào khi tạo chi nhánh mới.
@@ -12,11 +12,4 @@ export class CreateBranchDto {
   @IsOptional()
   address?: string;
 
-  @IsNumber({}, { message: 'Vĩ độ phải là số thực.' })
-  @IsOptional()
-  latitude?: number;
-
-  @IsNumber({}, { message: 'Kinh độ phải là số thực.' })
-  @IsOptional()
-  longitude?: number;
 }
