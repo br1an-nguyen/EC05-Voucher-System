@@ -215,6 +215,8 @@ async function main() {
   const oneMonthAgo = new Date();
   oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
 
+  const oneMonthAgoPlus15Minutes = new Date(oneMonthAgo.getTime() + 15 * 60 * 1000);
+
   const oneMonthHence = new Date();
   oneMonthHence.setMonth(oneMonthHence.getMonth() + 1);
 
@@ -395,7 +397,7 @@ async function main() {
       selectedPaymentProvider: "STRIPE",
       orderStatus: "CONFIRMED",
       paymentStatus: "PAID",
-      reservationExpiresAt: oneMonthAgo,
+      reservationExpiresAt: oneMonthAgoPlus15Minutes,
       createdAt: oneMonthAgo,
     },
   });
@@ -448,7 +450,7 @@ async function main() {
       selectedPaymentProvider: "PAYPAL",
       orderStatus: "CONFIRMED",
       paymentStatus: "PAID",
-      reservationExpiresAt: oneMonthAgo,
+      reservationExpiresAt: oneMonthAgoPlus15Minutes,
       createdAt: oneMonthAgo,
     },
   });
