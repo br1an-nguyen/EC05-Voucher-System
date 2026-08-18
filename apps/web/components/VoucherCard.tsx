@@ -12,6 +12,7 @@ export interface VoucherCardProps {
     salePrice: number;
     capacity: number;
     soldQuantity: number;
+    thumbnail_url?: string | null;
     partner: { companyName: string };
     campaignBranches: { branch: { name: string } }[];
   };
@@ -42,9 +43,18 @@ export default function VoucherCard({ campaign: c, index = 0 }: VoucherCardProps
       className="group flex flex-col bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden"
     >
       {/* Top Image / Gradient Area */}
-      <div className={`relative h-40 w-full bg-gradient-to-br ${bgGradient} p-4 flex flex-col justify-between overflow-hidden`}>
-        {/* Subtle overlay pattern */}
-        <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white via-transparent to-transparent"></div>
+      <div className={`relative h-40 w-full p-4 flex flex-col justify-between overflow-hidden ${!c.thumbnail_url ? `bg-gradient-to-br ${bgGradient}` : 'bg-slate-100'}`}>
+        {/* Background Image / Pattern */}
+        {c.thumbnail_url ? (
+          <>
+            {/* Lớp nền mờ (Blurred background) để lấp đầy khoảng trống */}
+            <img src={c.thumbnail_url} alt="" className="absolute inset-0 w-full h-full object-cover blur-md opacity-40 scale-110" />
+            {/* Ảnh chính thu nhỏ lại hiển thị trọn vẹn */}
+            <img src={c.thumbnail_url} alt={c.title} className="absolute inset-0 w-full h-full object-contain p-1 drop-shadow-md" />
+          </>
+        ) : (
+          <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white via-transparent to-transparent"></div>
+        )}
         
         <div className="relative flex justify-between items-start">
           <span className="inline-block text-[10px] font-black text-slate-800 bg-white/90 backdrop-blur-md rounded-full px-2.5 py-1 uppercase tracking-wider shadow-sm">
@@ -57,13 +67,6 @@ export default function VoucherCard({ campaign: c, index = 0 }: VoucherCardProps
             </div>
           )}
         </div>
-        
-        <div className="relative mt-auto">
-          <div className="text-white text-xs font-medium opacity-90 flex items-center gap-1">
-            <Store className="h-3.5 w-3.5" />
-            <span className="truncate">{c.partner.companyName}</span>
-          </div>
-        </div>
       </div>
 
       {/* Content Area */}
@@ -73,6 +76,13 @@ export default function VoucherCard({ campaign: c, index = 0 }: VoucherCardProps
         </h3>
         
         <div className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-500">
+          <Store className="h-3.5 w-3.5 shrink-0 text-primary/70" />
+          <span className="truncate max-w-[45%] font-semibold text-slate-600" title={c.partner.companyName}>
+            {c.partner.companyName}
+          </span>
+          
+          <span className="text-slate-300 mx-0.5">•</span>
+          
           <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" />
           <span className="truncate" title={c.campaignBranches.map(cb => cb.branch.name).join(', ')}>
             {c.campaignBranches.length > 0 ? c.campaignBranches[0].branch.name : 'Nhiều chi nhánh'}

@@ -129,8 +129,8 @@ async function main() {
       partnerId: partner1.partnerId,
       name: "Chi nhánh ABC Quận 1",
       address: "123 Lê Lợi, Quận 1, Tp. HCM",
-      latitude: 10.776,
-      longitude: 106.701,
+      // latitude: 10.776,
+      // longitude: 106.701,
     },
   });
 
@@ -139,8 +139,8 @@ async function main() {
       partnerId: partner1.partnerId,
       name: "Chi nhánh ABC Quận 3",
       address: "456 Nguyễn Đình Chiểu, Quận 3, Tp. HCM",
-      latitude: 10.772,
-      longitude: 106.685,
+      // latitude: 10.772,
+      // longitude: 106.685,
     },
   });
 
@@ -150,8 +150,8 @@ async function main() {
       partnerId: partner2.partnerId,
       name: "Cửa hàng XYZ Quận 1",
       address: "789 Nguyễn Trãi, Quận 1, Tp. HCM",
-      latitude: 10.758,
-      longitude: 106.689,
+      // latitude: 10.758,
+      // longitude: 106.689,
     },
   });
 
@@ -160,8 +160,8 @@ async function main() {
       partnerId: partner2.partnerId,
       name: "Cửa hàng XYZ Bình Thạnh",
       address: "101 Điện Biên Phủ, Bình Thạnh, Tp. HCM",
-      latitude: 10.798,
-      longitude: 106.711,
+      // latitude: 10.798,
+      // longitude: 106.711,
     },
   });
 

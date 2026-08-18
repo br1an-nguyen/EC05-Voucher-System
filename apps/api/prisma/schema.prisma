@@ -152,8 +152,8 @@ model Branch {
   partnerId  String          @map("partner_id") @db.Uuid
   name       String          @map("name") @db.VarChar(255)
   address    String?         @map("address") @db.Text
-  latitude   Float?          @map("latitude")
-  longitude  Float?          @map("longitude")
+  // latitude   Float?          @map("latitude")
+  // longitude  Float?          @map("longitude")
 
   // Relations
   partner    Partner         @relation(fields: [partnerId], references: [partnerId], onDelete: Restrict)
@@ -184,6 +184,7 @@ model VoucherCampaign {
   isMultiUse       Boolean         @default(false) @map("is_multi_use")
   maxUsesPerCode   Int?            @map("max_uses_per_code")
   createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  thumbnail_url    String?
 
   // Relations
   partner          Partner         @relation(fields: [partnerId], references: [partnerId], onDelete: Restrict)
