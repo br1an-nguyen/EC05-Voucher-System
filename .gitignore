@@ -125,3 +125,6 @@ skills-lock.json
 
 # Local planning docs
 Tech-Plan.md
+# Ignore custom test env files
+.env.test.md
+apps/api/.env.test_md

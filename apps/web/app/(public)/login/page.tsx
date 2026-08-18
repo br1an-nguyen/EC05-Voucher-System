@@ -7,7 +7,7 @@ import * as z from 'zod';
 import { useAuth } from '../../../context/AuthContext';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Mail, Lock, Ticket, ArrowRight, AlertCircle, Info, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, Ticket, ArrowRight, AlertCircle, Info, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 
 const loginSchema = z.object({
   identifier: z.string().min(1, 'Vui lòng nhập Email hoặc Số điện thoại.'),
@@ -169,14 +169,20 @@ function LoginForm() {
           </button>
         </form>
 
-        {/* LINK CHUYỂN TRANG ĐĂNG KÝ */}
-        <div className="text-center text-sm text-muted pt-4 border-t border-border/60">
-          Chưa có tài khoản?{' '}
-          <Link
-            href="/register"
-            className="font-bold text-primary hover:text-primary-hover transition-colors"
-          >
-            Đăng ký ngay
+        {/* LINK CHUYỂN TRANG ĐĂNG KÝ VÀ TRỞ VỀ */}
+        <div className="text-center text-sm text-muted pt-6 border-t border-border/60 flex flex-col items-center gap-4">
+          <div>
+            Chưa có tài khoản?{' '}
+            <Link
+              href="/register"
+              className="font-bold text-primary hover:text-primary-hover transition-colors"
+            >
+              Đăng ký ngay
+            </Link>
+          </div>
+          <Link href="/" className="inline-flex items-center gap-1.5 text-slate-500 hover:text-primary font-medium transition-colors">
+            <ArrowLeft className="h-4 w-4" />
+            Trở về trang chủ
           </Link>
         </div>
 

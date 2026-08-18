@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useAuth } from '../../../context/AuthContext';
 import Link from 'next/link';
-import { Ticket, ArrowRight, AlertCircle, User, Briefcase, Mail, Phone, Lock, Building, FileText, Eye, EyeOff } from 'lucide-react';
+import { Ticket, ArrowRight, AlertCircle, User, Briefcase, Mail, Phone, Lock, Building, FileText, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 
 const registerSchema = z.object({
   role: z.enum(['CUSTOMER', 'PARTNER']),
@@ -352,14 +352,20 @@ export default function RegisterPage() {
           </button>
         </form>
 
-        {/* LINK QUAY LẠI TRANG ĐĂNG NHẬP */}
-        <div className="text-center text-sm text-muted pt-4 border-t border-border/60">
-          Đã có tài khoản?{' '}
-          <Link
-            href="/login"
-            className="font-bold text-primary hover:text-primary-hover transition-colors"
-          >
-            Đăng nhập ngay
+        {/* LINK QUAY LẠI TRANG ĐĂNG NHẬP VÀ TRANG CHỦ */}
+        <div className="text-center text-sm text-muted pt-6 border-t border-border/60 flex flex-col items-center gap-4">
+          <div>
+            Đã có tài khoản?{' '}
+            <Link
+              href="/login"
+              className="font-bold text-primary hover:text-primary-hover transition-colors"
+            >
+              Đăng nhập ngay
+            </Link>
+          </div>
+          <Link href="/" className="inline-flex items-center gap-1.5 text-slate-500 hover:text-primary font-medium transition-colors">
+            <ArrowLeft className="h-4 w-4" />
+            Trở về trang chủ
           </Link>
         </div>
 

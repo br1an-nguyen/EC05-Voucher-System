@@ -1,15 +1,15 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f7fafc; /* Warm Cream background */
-  --foreground: #2d3133; /* Charcoal Black text */
+  --background: #f5f5f5; /* Light gray background like e-commerce sites */
+  --foreground: #0f172a; /* Slate 900 */
   --card: #ffffff; /* Pure White card surfaces */
-  --primary: #ae2825; /* Coral Red action color */
-  --primary-hover: #d1413b;
-  --secondary: #fff2f0; /* Light Salmon hover state bg */
-  --muted: #717d84; /* Slate Gray meta-information */
-  --border: #efe6e0; /* Warm Sand border lines */
-  --base-font-scale: 1.08;
+  --primary: #ee4d2d; /* Shopee Orange/Red */
+  --primary-hover: #f05d40;
+  --secondary: #fff5f3; /* Light orange for hover states */
+  --muted: #64748b; /* Slate 500 */
+  --border: #e2e8f0; /* Slate 200 */
+  --base-font-scale: 1.05;
 }
 
 @theme {

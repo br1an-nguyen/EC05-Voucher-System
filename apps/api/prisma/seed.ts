@@ -129,6 +129,8 @@ async function main() {
       partnerId: partner1.partnerId,
       name: "Chi nhánh ABC Quận 1",
       address: "123 Lê Lợi, Quận 1, Tp. HCM",
+      // latitude: 10.776,
+      // longitude: 106.701,
     },
   });
 
@@ -137,6 +139,8 @@ async function main() {
       partnerId: partner1.partnerId,
       name: "Chi nhánh ABC Quận 3",
       address: "456 Nguyễn Đình Chiểu, Quận 3, Tp. HCM",
+      // latitude: 10.772,
+      // longitude: 106.685,
     },
   });
 
@@ -146,6 +150,8 @@ async function main() {
       partnerId: partner2.partnerId,
       name: "Cửa hàng XYZ Quận 1",
       address: "789 Nguyễn Trãi, Quận 1, Tp. HCM",
+      // latitude: 10.758,
+      // longitude: 106.689,
     },
   });
 
@@ -154,6 +160,8 @@ async function main() {
       partnerId: partner2.partnerId,
       name: "Cửa hàng XYZ Bình Thạnh",
       address: "101 Điện Biên Phủ, Bình Thạnh, Tp. HCM",
+      // latitude: 10.798,
+      // longitude: 106.711,
     },
   });
 
@@ -214,8 +222,6 @@ async function main() {
   // Các mốc thời gian mẫu
   const oneMonthAgo = new Date();
   oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-
-  const oneMonthAgoPlus15Minutes = new Date(oneMonthAgo.getTime() + 15 * 60 * 1000);
 
   const oneMonthHence = new Date();
   oneMonthHence.setMonth(oneMonthHence.getMonth() + 1);
@@ -397,7 +403,7 @@ async function main() {
       selectedPaymentProvider: "STRIPE",
       orderStatus: "CONFIRMED",
       paymentStatus: "PAID",
-      reservationExpiresAt: oneMonthAgoPlus15Minutes,
+      reservationExpiresAt: oneMonthAgo,
       createdAt: oneMonthAgo,
     },
   });
@@ -450,7 +456,7 @@ async function main() {
       selectedPaymentProvider: "PAYPAL",
       orderStatus: "CONFIRMED",
       paymentStatus: "PAID",
-      reservationExpiresAt: oneMonthAgoPlus15Minutes,
+      reservationExpiresAt: oneMonthAgo,
       createdAt: oneMonthAgo,
     },
   });

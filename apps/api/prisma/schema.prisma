@@ -183,7 +183,7 @@ model VoucherCampaign {
   isMultiUse     Boolean       @default(false) @map("is_multi_use")
   maxUsesPerCode Int?          @map("max_uses_per_code")
   createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz
-
+  thumbnail_url  String?
   // Relations
   partner               Partner                @relation(fields: [partnerId], references: [partnerId], onDelete: Restrict)
   campaignBranches      CampaignBranch[]
