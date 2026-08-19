@@ -26,6 +26,15 @@ export class VouchersController {
   }
 
   /**
+   * Danh mục chuẩn hóa có số lượng voucher đang mở bán.
+   * GET /vouchers/categories
+   */
+  @Get('categories')
+  async findPublicCategories() {
+    return this.vouchersService.findPublicCategories();
+  }
+
+  /**
    * Tạo chiến dịch voucher mới ở dạng nháp.
    * POST /vouchers
    */

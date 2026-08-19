@@ -149,10 +149,14 @@ model Partner {
 }
 
 model Branch {
-  branchId  String  @id @default(dbgenerated("gen_random_uuid()")) @map("branch_id") @db.Uuid
-  partnerId String  @map("partner_id") @db.Uuid
-  name      String  @map("name") @db.VarChar(255)
-  address   String? @map("address") @db.Text
+  branchId       String    @id @default(dbgenerated("gen_random_uuid()")) @map("branch_id") @db.Uuid
+  partnerId      String    @map("partner_id") @db.Uuid
+  name           String    @map("name") @db.VarChar(255)
+  address        String?   @map("address") @db.Text
+  sourceUrl      String?   @map("source_url") @db.Text
+  externalSource String?   @map("external_source") @db.VarChar(100)
+  externalId     String?   @map("external_id") @db.VarChar(255)
+  importedAt     DateTime? @map("imported_at") @db.Timestamptz
 
   // Relations
   partner          Partner           @relation(fields: [partnerId], references: [partnerId], onDelete: Restrict)
@@ -161,40 +165,119 @@ model Branch {
   voucherUsageLogs VoucherUsageLog[]
 
   @@unique([partnerId, branchId])
+  @@unique([externalSource, externalId])
   @@map("Branches")
 }
 
 model VoucherCampaign {
-  campaignId     String        @id @default(dbgenerated("gen_random_uuid()")) @map("campaign_id") @db.Uuid
-  partnerId      String        @map("partner_id") @db.Uuid
-  title          String        @map("title") @db.VarChar(255)
-  description    String?       @map("description") @db.Text
-  category       String?       @map("category") @db.VarChar(100)
-  originalPrice  Decimal       @map("original_price") @db.Decimal(12, 2)
-  salePrice      Decimal       @map("sale_price") @db.Decimal(12, 2)
-  saleStartTime  DateTime      @map("sale_start_time") @db.Timestamptz
-  saleEndTime    DateTime      @map("sale_end_time") @db.Timestamptz
-  usageStartTime DateTime      @map("usage_start_time") @db.Timestamptz
-  usageEndTime   DateTime      @map("usage_end_time") @db.Timestamptz
-  capacity       Int           @map("capacity")
-  soldQuantity   Int           @default(0) @map("sold_quantity")
-  reservedStock  Int           @default(0) @map("reserved_stock")
-  status         VoucherStatus @default(DRAFT) @map("status")
-  isMultiUse     Boolean       @default(false) @map("is_multi_use")
-  maxUsesPerCode Int?          @map("max_uses_per_code")
-  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz
-  thumbnail_url  String?
+  campaignId            String                 @id @default(dbgenerated("gen_random_uuid()")) @map("campaign_id") @db.Uuid
+  partnerId             String                 @map("partner_id") @db.Uuid
+  title                 String                 @map("title") @db.VarChar(255)
+  description           String?                @map("description") @db.Text
+  termsAndConditions    String?                @map("terms_and_conditions") @db.Text
+  category              String?                @map("category") @db.VarChar(100)
+  originalPrice         Decimal                @map("original_price") @db.Decimal(12, 2)
+  salePrice             Decimal                @map("sale_price") @db.Decimal(12, 2)
+  currency              String                 @default("VND") @map("currency") @db.Char(3)
+  saleStartTime         DateTime               @map("sale_start_time") @db.Timestamptz
+  saleEndTime           DateTime               @map("sale_end_time") @db.Timestamptz
+  usageStartTime        DateTime               @map("usage_start_time") @db.Timestamptz
+  usageEndTime          DateTime               @map("usage_end_time") @db.Timestamptz
+  capacity              Int                    @map("capacity")
+  soldQuantity          Int                    @default(0) @map("sold_quantity")
+  reservedStock         Int                    @default(0) @map("reserved_stock")
+  status                VoucherStatus          @default(DRAFT) @map("status")
+  isMultiUse            Boolean                @default(false) @map("is_multi_use")
+  maxUsesPerCode        Int?                   @map("max_uses_per_code")
+  usageValidityDays     Int?                   @map("usage_validity_days")
+  thumbnailUrl          String?                @map("thumbnail_url") @db.Text
+  sourceUrl             String?                @map("source_url") @db.Text
+  externalSource        String?                @map("external_source") @db.VarChar(100)
+  externalId            String?                @map("external_id") @db.VarChar(255)
+  sourceContentHash     String?                @map("source_content_hash") @db.Char(64)
+  importedAt            DateTime?              @map("imported_at") @db.Timestamptz
+  lastSeenAt            DateTime?              @map("last_seen_at") @db.Timestamptz
+  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz
   // Relations
   partner               Partner                @relation(fields: [partnerId], references: [partnerId], onDelete: Restrict)
   campaignBranches      CampaignBranch[]
+  campaignBrands        CampaignBrand[]
+  campaignCategories    CampaignCategory[]
   orderItems            OrderItem[]
   inventoryReservations InventoryReservation[]
   cartItems             CartItem[]
   reviews               VoucherReview[]
 
   @@unique([partnerId, campaignId])
+  @@unique([externalSource, externalId])
   @@index([partnerId, createdAt(sort: Desc)], map: "Voucher_Campaigns_partner_created_at_idx")
   @@map("Voucher_Campaigns")
+}
+
+model CatalogBrand {
+  brandId        String   @id @default(dbgenerated("gen_random_uuid()")) @map("brand_id") @db.Uuid
+  displayName    String   @map("display_name") @db.VarChar(255)
+  logoUrl        String?  @map("logo_url") @db.Text
+  sourceUrl      String?  @map("source_url") @db.Text
+  externalSource String   @map("external_source") @db.VarChar(100)
+  externalId     String   @map("external_id") @db.VarChar(255)
+  importedAt     DateTime @default(now()) @map("imported_at") @db.Timestamptz
+  lastSeenAt     DateTime @default(now()) @map("last_seen_at") @db.Timestamptz
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  campaignBrands CampaignBrand[]
+
+  @@unique([externalSource, externalId])
+  @@index([displayName], map: "Catalog_Brands_display_name_idx")
+  @@map("Catalog_Brands")
+}
+
+model VoucherCategory {
+  categoryId     String   @id @default(dbgenerated("gen_random_uuid()")) @map("category_id") @db.Uuid
+  code           String   @unique @map("code") @db.VarChar(50)
+  nameVi         String   @map("name_vi") @db.VarChar(100)
+  parentId       String?  @map("parent_id") @db.Uuid
+  externalSource String?  @map("external_source") @db.VarChar(100)
+  externalId     String?  @map("external_id") @db.VarChar(255)
+  displayOrder   Int      @default(0) @map("display_order")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  parent             VoucherCategory?   @relation("VoucherCategoryHierarchy", fields: [parentId], references: [categoryId], onDelete: Restrict)
+  children           VoucherCategory[]  @relation("VoucherCategoryHierarchy")
+  campaignCategories CampaignCategory[]
+
+  @@unique([externalSource, externalId])
+  @@index([parentId, displayOrder], map: "Voucher_Categories_parent_order_idx")
+  @@map("Voucher_Categories")
+}
+
+model CampaignBrand {
+  campaignId String   @map("campaign_id") @db.Uuid
+  brandId    String   @map("brand_id") @db.Uuid
+  isPrimary  Boolean  @default(false) @map("is_primary")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  campaign VoucherCampaign @relation(fields: [campaignId], references: [campaignId], onDelete: Cascade)
+  brand    CatalogBrand    @relation(fields: [brandId], references: [brandId], onDelete: Restrict)
+
+  @@id([campaignId, brandId])
+  @@index([brandId, campaignId], map: "Campaign_Brands_brand_campaign_idx")
+  @@map("Campaign_Brands")
+}
+
+model CampaignCategory {
+  campaignId String   @map("campaign_id") @db.Uuid
+  categoryId String   @map("category_id") @db.Uuid
+  isPrimary  Boolean  @default(false) @map("is_primary")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  campaign VoucherCampaign @relation(fields: [campaignId], references: [campaignId], onDelete: Cascade)
+  category VoucherCategory @relation(fields: [categoryId], references: [categoryId], onDelete: Restrict)
+
+  @@id([campaignId, categoryId])
+  @@index([categoryId, campaignId], map: "Campaign_Categories_category_campaign_idx")
+  @@map("Campaign_Categories")
 }
 
 model CampaignBranch {

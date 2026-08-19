@@ -20,6 +20,11 @@ export class PublicCatalogQueryDto {
   category?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  categoryCode?: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsNumber({ allowNaN: false, allowInfinity: false })
   @Min(0)
