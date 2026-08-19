@@ -16,6 +16,26 @@ export class VouchersService {
     private auditService: AuditService,
   ) {}
 
+  private mapCatalogPresentation<T extends {
+    campaignBrands?: Array<{ isPrimary: boolean; brand: unknown }>;
+    campaignCategories?: Array<{ isPrimary: boolean; category: unknown }>;
+  }>(campaign: T) {
+    const { campaignBrands = [], campaignCategories = [], ...base } = campaign;
+    return {
+      ...base,
+      primaryBrand:
+        campaignBrands.find((relation) => relation.isPrimary)?.brand ??
+        campaignBrands[0]?.brand ??
+        null,
+      brands: campaignBrands.map((relation) => relation.brand),
+      primaryCategory:
+        campaignCategories.find((relation) => relation.isPrimary)?.category ??
+        campaignCategories[0]?.category ??
+        null,
+      categories: campaignCategories.map((relation) => relation.category),
+    };
+  }
+
   private resolveActorPartnerId(actorUser: {
     userId: string;
     role: string;
@@ -271,10 +291,22 @@ export class VouchersService {
       where: { campaignId },
       include: {
         partner: {
-          select: { companyName: true },
+          select: { companyName: true, representative: true },
         },
         campaignBranches: {
           include: { branch: true },
+        },
+        campaignBrands: {
+          include: { brand: true },
+          orderBy: { isPrimary: 'desc' },
+        },
+        campaignCategories: {
+          include: {
+            category: {
+              include: { parent: true },
+            },
+          },
+          orderBy: { isPrimary: 'desc' },
         },
       },
     });
@@ -283,7 +315,85 @@ export class VouchersService {
       throw new NotFoundException('Không tìm thấy chiến dịch voucher.');
     }
 
-    return campaign;
+    return this.mapCatalogPresentation(campaign);
+  }
+
+  /**
+   * Danh mục cấp cao nhất dùng cho bộ lọc catalog. Count chỉ gồm voucher còn hàng,
+   * đã được duyệt và đang trong thời gian mở bán.
+   */
+  async findPublicCategories() {
+    const now = new Date();
+    const activeCampaignWhere: Prisma.CampaignCategoryWhereInput = {
+      campaign: {
+        status: VoucherStatus.APPROVED,
+        saleStartTime: { lte: now },
+        saleEndTime: { gte: now },
+      },
+    };
+    const categories = await this.prisma.voucherCategory.findMany({
+      where: { parentId: null, isActive: true },
+      orderBy: [{ displayOrder: 'asc' }, { nameVi: 'asc' }],
+      include: {
+        campaignCategories: {
+          where: activeCampaignWhere,
+          select: {
+            campaignId: true,
+            campaign: { select: { capacity: true, soldQuantity: true } },
+          },
+        },
+        children: {
+          where: { isActive: true },
+          orderBy: [{ displayOrder: 'asc' }, { nameVi: 'asc' }],
+          include: {
+            campaignCategories: {
+              where: activeCampaignWhere,
+              select: {
+                campaignId: true,
+                campaign: { select: { capacity: true, soldQuantity: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const allCampaignIds = new Set<string>();
+    const categoryItems = categories.map((category) => {
+      const direct = category.campaignCategories.filter(
+        (relation) => relation.campaign.soldQuantity < relation.campaign.capacity,
+      );
+      const children = category.children.map((child) => ({
+        code: child.code,
+        name: child.nameVi,
+        campaignCount: child.campaignCategories.filter(
+          (relation) => relation.campaign.soldQuantity < relation.campaign.capacity,
+        ).length,
+      }));
+      const campaignIds = new Set([
+        ...direct.map((relation) => relation.campaignId),
+        ...category.children.flatMap((child) =>
+          child.campaignCategories
+            .filter(
+              (relation) => relation.campaign.soldQuantity < relation.campaign.capacity,
+            )
+            .map((relation) => relation.campaignId),
+        ),
+      ]);
+      campaignIds.forEach((campaignId) => allCampaignIds.add(campaignId));
+
+      return {
+        code: category.code,
+        name: category.nameVi,
+        campaignCount: campaignIds.size,
+        children,
+      };
+    });
+
+    return {
+      totalCampaignCount: allCampaignIds.size,
+      categories: categoryItems,
+    };
   }
 
   /**
@@ -291,7 +401,7 @@ export class VouchersService {
    * Hỗ trợ tìm kiếm từ khóa, danh mục, khoảng giá và chi nhánh áp dụng.
    */
   async findPublicCatalog(query: PublicCatalogQueryDto) {
-    const { keyword, category, minPrice, maxPrice, branchId } = query;
+    const { keyword, category, categoryCode, minPrice, maxPrice, branchId } = query;
     const now = new Date();
 
     // Ràng buộc: Chiến dịch phải được phê duyệt và đang trong thời gian mở bán
@@ -301,7 +411,18 @@ export class VouchersService {
       saleEndTime: { gte: now },
     };
 
-    if (category) {
+    if (categoryCode) {
+      whereClause.campaignCategories = {
+        some: {
+          category: {
+            OR: [
+              { code: categoryCode },
+              { parent: { is: { code: categoryCode } } },
+            ],
+          },
+        },
+      };
+    } else if (category) {
       whereClause.category = category;
     }
 
@@ -319,6 +440,14 @@ export class VouchersService {
       whereClause.OR = [
         { title: { contains: keyword, mode: 'insensitive' } },
         { description: { contains: keyword, mode: 'insensitive' } },
+        { termsAndConditions: { contains: keyword, mode: 'insensitive' } },
+        {
+          campaignBrands: {
+            some: {
+              brand: { displayName: { contains: keyword, mode: 'insensitive' } },
+            },
+          },
+        },
       ];
     }
 
@@ -339,12 +468,26 @@ export class VouchersService {
         campaignBranches: {
           include: { branch: true },
         },
+        campaignBrands: {
+          include: { brand: true },
+          orderBy: { isPrimary: 'desc' },
+        },
+        campaignCategories: {
+          include: {
+            category: {
+              include: { parent: true },
+            },
+          },
+          orderBy: { isPrimary: 'desc' },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
 
     // Lọc bỏ những chiến dịch đã hết hàng trong kho (Đã bán >= Sức chứa)
-    return campaigns.filter((c) => c.soldQuantity < c.capacity);
+    return campaigns
+      .filter((campaign) => campaign.soldQuantity < campaign.capacity)
+      .map((campaign) => this.mapCatalogPresentation(campaign));
   }
 
   // ================= ADMIN OPERATIONS =================

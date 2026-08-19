@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { Suspense, useEffect, useState, useCallback, useRef } from 'react';
 import { apiRequest } from '../lib/api';
 import Header from '../components/Header';
 import HeroBanner from '../components/HeroBanner';
@@ -9,48 +9,95 @@ import VoucherCard from '../components/VoucherCard';
 import { ShieldAlert, Ticket, Grid } from 'lucide-react';
 import { useSearchParams, useRouter } from 'next/navigation';
 
-export default function HomePage() {
+interface CatalogCategory {
+  code: string;
+  name: string;
+  campaignCount: number;
+  children: Array<{
+    code: string;
+    name: string;
+    campaignCount: number;
+  }>;
+}
+
+interface CatalogFilters {
+  keyword: string;
+  categoryCode: string;
+  maxPrice: string;
+}
+
+function buildCatalogUrl(filters: CatalogFilters) {
+  const params = new URLSearchParams();
+  if (filters.keyword) params.set('keyword', filters.keyword);
+  if (filters.categoryCode) params.set('categoryCode', filters.categoryCode);
+  if (filters.maxPrice) params.set('maxPrice', filters.maxPrice);
+  const queryString = params.toString();
+  return `/vouchers${queryString ? `?${queryString}` : ''}`;
+}
+
+function HomePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const initialFilters = useRef<CatalogFilters>({
+    keyword: searchParams.get('keyword') || '',
+    categoryCode: searchParams.get('category') || '',
+    maxPrice: searchParams.get('maxPrice') || '',
+  });
   
   const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [categories, setCategories] = useState<CatalogCategory[]>([]);
+  const [totalCampaigns, setTotalCampaigns] = useState(0);
   const [loading, setLoading] = useState(true);
   
   // States for filtering
-  const [keyword, setKeyword] = useState(searchParams.get('keyword') || '');
-  const [category, setCategory] = useState(searchParams.get('category') || '');
-  const [maxPrice, setMaxPrice] = useState('');
+  const [keyword, setKeyword] = useState(initialFilters.current.keyword);
+  const [category, setCategory] = useState(initialFilters.current.categoryCode);
+  const [maxPrice, setMaxPrice] = useState(initialFilters.current.maxPrice);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const fetchCatalog = useCallback(async (overrides?: { kw?: string, cat?: string, maxP?: string }) => {
+  const fetchCatalog = useCallback(async (filters: CatalogFilters) => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const params = new URLSearchParams();
-      
-      const currentKeyword = overrides?.kw !== undefined ? overrides.kw : keyword;
-      const currentCategory = overrides?.cat !== undefined ? overrides.cat : category;
-      const currentMaxPrice = overrides?.maxP !== undefined ? overrides.maxP : maxPrice;
-      
-      if (currentKeyword) params.append('keyword', currentKeyword);
-      if (currentCategory) params.append('category', currentCategory);
-      if (currentMaxPrice) params.append('maxPrice', currentMaxPrice);
-
-      const queryString = params.toString();
-      const url = `/vouchers${queryString ? `?${queryString}` : ''}`;
-      
-      const data = await apiRequest(url);
+      const data = await apiRequest(buildCatalogUrl(filters));
       setCampaigns(data);
     } catch (err: any) {
       setErrorMsg(err.message || 'Không thể tải danh sách voucher.');
     } finally {
       setLoading(false);
     }
-  }, [keyword, category, maxPrice]);
+  }, []);
 
   useEffect(() => {
-    fetchCatalog();
-  }, [category, fetchCatalog]);
+    async function loadInitialCatalog() {
+      setLoading(true);
+      setErrorMsg(null);
+      try {
+        const [catalogData, categoryData] = await Promise.all([
+          apiRequest(buildCatalogUrl(initialFilters.current)),
+          apiRequest('/vouchers/categories'),
+        ]);
+        setCampaigns(catalogData);
+        setCategories(categoryData.categories);
+        setTotalCampaigns(categoryData.totalCampaignCount);
+      } catch (err: any) {
+        setErrorMsg(err.message || 'Không thể tải catalog voucher.');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    void loadInitialCatalog();
+  }, []);
+
+  const updateBrowserFilters = (filters: CatalogFilters) => {
+    const params = new URLSearchParams();
+    if (filters.keyword) params.set('keyword', filters.keyword);
+    if (filters.categoryCode) params.set('category', filters.categoryCode);
+    if (filters.maxPrice) params.set('maxPrice', filters.maxPrice);
+    const queryString = params.toString();
+    router.push(queryString ? `/?${queryString}` : '/', { scroll: false });
+  };
 
   const scrollToProducts = () => {
     document.getElementById('product-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -58,18 +105,25 @@ export default function HomePage() {
 
   const handleHeaderSearch = (newKeyword: string) => {
     setKeyword(newKeyword);
-    const params = new URLSearchParams(searchParams.toString());
-    if (newKeyword) params.set('keyword', newKeyword);
-    else params.delete('keyword');
-    router.push(`/?${params.toString()}`, { scroll: false });
-    
-    fetchCatalog({ kw: newKeyword });
+    const filters = { keyword: newKeyword, categoryCode: category, maxPrice };
+    updateBrowserFilters(filters);
+    void fetchCatalog(filters);
     setTimeout(scrollToProducts, 50);
   };
 
   const handleSidebarFilter = () => {
-    fetchCatalog();
+    const filters = { keyword, categoryCode: category, maxPrice };
+    updateBrowserFilters(filters);
+    void fetchCatalog(filters);
     scrollToProducts();
+  };
+
+  const handleCategoryChange = (categoryCode: string) => {
+    setCategory(categoryCode);
+    const filters = { keyword, categoryCode, maxPrice };
+    updateBrowserFilters(filters);
+    void fetchCatalog(filters);
+    setTimeout(scrollToProducts, 50);
   };
 
   const handleClearFilters = () => {
@@ -78,7 +132,7 @@ export default function HomePage() {
     setMaxPrice('');
     router.push('/', { scroll: false });
     
-    fetchCatalog({ kw: '', cat: '', maxP: '' });
+    void fetchCatalog({ keyword: '', categoryCode: '', maxPrice: '' });
     setTimeout(scrollToProducts, 50);
   };
 
@@ -97,7 +151,9 @@ export default function HomePage() {
             keyword={keyword}
             setKeyword={setKeyword}
             category={category}
-            setCategory={setCategory}
+            categories={categories}
+            totalCampaigns={totalCampaigns}
+            onCategoryChange={handleCategoryChange}
             maxPrice={maxPrice}
             setMaxPrice={setMaxPrice}
             onFilter={handleSidebarFilter}
@@ -167,5 +223,13 @@ export default function HomePage() {
         </div>
       </footer>
     </div>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-background" />}>
+      <HomePageContent />
+    </Suspense>
   );
 }

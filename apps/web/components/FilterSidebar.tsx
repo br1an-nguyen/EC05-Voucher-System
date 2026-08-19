@@ -3,36 +3,64 @@
 import React from 'react';
 import { Tag, X, Filter } from 'lucide-react';
 
+interface CategoryFilterOption {
+  code: string;
+  name: string;
+  campaignCount: number;
+  children?: CategoryFilterOption[];
+}
+
 export interface FilterSidebarProps {
   keyword: string;
   setKeyword: (val: string) => void;
   category: string;
-  setCategory: (val: string) => void;
+  categories: CategoryFilterOption[];
+  totalCampaigns: number;
+  onCategoryChange: (value: string) => void;
   maxPrice: string;
   setMaxPrice: (val: string) => void;
   onFilter: () => void;
   onClear: () => void;
 }
 
-const categories = [
-  { label: 'Tất cả', value: '' },
-  { label: ' Buffets & Ăn uống', value: 'Food & Beverage' },
-  { label: ' Mua sắm & Tiêu dùng', value: 'Shopping' },
-  { label: ' Spa & Làm đẹp', value: 'Beauty & Spa' },
-  { label: ' Giải trí & Vui chơi', value: 'Entertainment' },
-  { label: ' Khác', value: 'Other' },
-];
-
 export default function FilterSidebar({
   keyword,
   setKeyword,
   category,
-  setCategory,
+  categories,
+  totalCampaigns,
+  onCategoryChange,
   maxPrice,
   setMaxPrice,
   onFilter,
   onClear
 }: FilterSidebarProps) {
+  const renderCategoryButton = (option: CategoryFilterOption, nested = false) => {
+    const isActive = category === option.code;
+    return (
+      <button
+        key={option.code || 'all'}
+        onClick={() => onCategoryChange(option.code)}
+        className={`flex w-full items-center justify-between px-3 py-2.5 text-xs font-semibold rounded-xl text-left transition-all ${
+          nested ? 'pl-6' : ''
+        } ${
+          isActive
+            ? 'bg-primary text-white shadow-md'
+            : nested
+              ? 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+              : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'
+        }`}
+      >
+        <span>{option.name}</span>
+        <span className="flex items-center gap-2">
+          <span className={isActive ? 'text-white/80' : 'text-slate-400'}>
+            {option.campaignCount}
+          </span>
+          {isActive && <Tag className="h-3.5 w-3.5 text-white/90" />}
+        </span>
+      </button>
+    );
+  };
   
   return (
     <aside className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm space-y-6">
@@ -67,23 +95,13 @@ export default function FilterSidebar({
       <div className="space-y-3">
         <label className="block text-xs font-bold text-slate-700">Danh mục</label>
         <div className="flex flex-col gap-1.5">
-          {categories.map((cat) => {
-            const isActive = category === cat.value;
-            return (
-              <button
-                key={cat.label}
-                onClick={() => setCategory(cat.value)}
-                className={`flex items-center justify-between px-3 py-2.5 text-xs font-semibold rounded-xl text-left transition-all ${
-                  isActive
-                    ? 'bg-primary text-white shadow-md'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'
-                }`}
-              >
-                <span>{cat.label}</span>
-                {isActive && <Tag className="h-3.5 w-3.5 text-white/90" />}
-              </button>
-            );
-          })}
+          {renderCategoryButton({ code: '', name: 'Tất cả', campaignCount: totalCampaigns })}
+          {categories.map((parent) => (
+            <div key={parent.code} className="space-y-1">
+              {renderCategoryButton(parent)}
+              {parent.children?.map((child) => renderCategoryButton(child, true))}
+            </div>
+          ))}
         </div>
       </div>
 
