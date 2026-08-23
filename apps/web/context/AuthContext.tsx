@@ -15,11 +15,31 @@ interface User {
   status: string;
 }
 
+interface LoginData {
+  email?: string;
+  phone?: string;
+  password: string;
+}
+
+interface RegisterData extends LoginData {
+  role: 'CUSTOMER' | 'PARTNER';
+  fullName: string;
+  companyName?: string;
+  taxCode?: string;
+  representative?: string;
+}
+
+interface AuthResponse {
+  accessToken: string;
+  refreshToken: string;
+  user: User;
+}
+
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (loginData: any) => Promise<void>;
-  register: (registerData: any) => Promise<void>;
+  login: (loginData: LoginData) => Promise<void>;
+  register: (registerData: RegisterData) => Promise<void>;
   logout: () => void;
   setUser: React.Dispatch<React.SetStateAction<User | null>>;
 }
@@ -36,24 +56,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Bước 1: Khôi phục phiên làm việc từ localStorage khi component mount
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    let active = true;
+
+    queueMicrotask(() => {
+      if (!active) return;
+
       const storedUser = localStorage.getItem('user');
       const token = localStorage.getItem('accessToken');
       if (storedUser && token) {
-        setUser(JSON.parse(storedUser));
+        try {
+          setUser(JSON.parse(storedUser) as User);
+        } catch {
+          localStorage.removeItem('user');
+        }
       }
       setLoading(false);
-    }
+    });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   /**
    * Đăng nhập tài khoản và lưu tokens, thông tin user.
    * Điều hướng dựa theo vai trò (Role-based Routing) sau khi đăng nhập thành công.
    */
-  const login = async (loginData: any) => {
+  const login = async (loginData: LoginData) => {
     setLoading(true);
     try {
-      const res = await apiRequest('/auth/login', {
+      const res = await apiRequest<AuthResponse>('/auth/login', {
         method: 'POST',
         body: JSON.stringify(loginData),
       });
@@ -81,10 +113,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   /**
    * Đăng ký tài khoản mới.
    */
-  const register = async (registerData: any) => {
+  const register = async (registerData: RegisterData) => {
     setLoading(true);
     try {
-      await apiRequest('/auth/register', {
+      await apiRequest<void>('/auth/register', {
         method: 'POST',
         body: JSON.stringify(registerData),
       });

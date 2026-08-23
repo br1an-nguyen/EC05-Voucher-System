@@ -11,8 +11,6 @@ interface CategoryFilterOption {
 }
 
 export interface FilterSidebarProps {
-  keyword: string;
-  setKeyword: (val: string) => void;
   category: string;
   categories: CategoryFilterOption[];
   totalCampaigns: number;
@@ -24,8 +22,6 @@ export interface FilterSidebarProps {
 }
 
 export default function FilterSidebar({
-  keyword,
-  setKeyword,
   category,
   categories,
   totalCampaigns,

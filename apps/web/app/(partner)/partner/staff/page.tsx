@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { apiRequest } from '../../../../lib/api';
+import { getErrorMessage } from '../../../../lib/errors';
 import { useAuth } from '../../../../context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { 
@@ -20,9 +21,33 @@ import {
   Eye,
   EyeOff
 } from 'lucide-react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../../../components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '../../../../components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../../../../components/ui/alert-dialog';
 
 // Form validation schema for creating staff
 const createStaffSchema = z.object({
@@ -128,6 +153,7 @@ export default function PartnerStaffPage() {
   // Modals state
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<StaffUser | null>(null);
+  const [staffToDelete, setStaffToDelete] = useState<StaffUser | null>(null);
 
   // Visibility password toggles
   const [showPass, setShowPass] = useState(false);
@@ -144,6 +170,7 @@ export default function PartnerStaffPage() {
     reset: resetCreate,
     setError: setCreateError,
     clearErrors: clearCreateErrors,
+    control: controlCreate,
     formState: { errors: errorsCreate },
   } = useForm<CreateStaffFormInput>({
     resolver: zodResolver(createStaffSchema),
@@ -165,6 +192,7 @@ export default function PartnerStaffPage() {
     handleSubmit: handleSubmitEdit,
     reset: resetEdit,
     setValue: setEditValue,
+    control: controlEdit,
     formState: { errors: errorsEdit },
   } = useForm<EditStaffFormInput>({
     resolver: zodResolver(editStaffSchema),
@@ -193,7 +221,9 @@ export default function PartnerStaffPage() {
     const firstInvalidField = orderedFields.find((field) => Boolean(errorsCreate[field]));
     if (!firstInvalidField) return;
 
-    const target = createFormRef.current.querySelector<HTMLElement>(`[name="${firstInvalidField}"]`);
+    const target = createFormRef.current.querySelector<HTMLElement>(
+      `[data-field-name="${firstInvalidField}"], [name="${firstInvalidField}"]`,
+    );
     if (!target) return;
 
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -213,7 +243,9 @@ export default function PartnerStaffPage() {
     const firstInvalidField = orderedFields.find((field) => Boolean(errorsEdit[field]));
     if (!firstInvalidField) return;
 
-    const target = editFormRef.current.querySelector<HTMLElement>(`[name="${firstInvalidField}"]`);
+    const target = editFormRef.current.querySelector<HTMLElement>(
+      `[data-field-name="${firstInvalidField}"], [name="${firstInvalidField}"]`,
+    );
     if (!target) return;
 
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -225,13 +257,13 @@ export default function PartnerStaffPage() {
     setErrorMsg(null);
     try {
       const [staffData, branchData] = await Promise.all([
-        apiRequest('/partners/staff'),
-        apiRequest('/partners/branches'),
+        apiRequest<StaffUser[]>('/partners/staff'),
+        apiRequest<Branch[]>('/partners/branches'),
       ]);
       setStaffList(staffData);
       setBranches(branchData);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Không thể tải dữ liệu nhân viên.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Không thể tải dữ liệu nhân viên.'));
     } finally {
       setLoading(false);
     }
@@ -242,22 +274,24 @@ export default function PartnerStaffPage() {
       if (!user || user.role !== 'PARTNER') {
         router.push('/login?redirect=/partner/staff');
       } else {
-        loadData();
+        queueMicrotask(() => {
+          void loadData();
+        });
       }
     }
-  }, [user, authLoading]);
+  }, [user, authLoading, router]);
 
-  // Set default values when editing a staff user
-  useEffect(() => {
-    if (editingStaff) {
-      setEditValue('fullName', editingStaff.fullName || '');
-      setEditValue('branchId', editingStaff.branchId || '');
-      setEditValue('password', '');
-      setEditValue('confirmPassword', '');
-      setShowEditPass(false);
-      setShowEditConfirmPass(false);
-    }
-  }, [editingStaff]);
+  const openEditModal = (staff: StaffUser) => {
+    setSuccessMsg(null);
+    setErrorMsg(null);
+    setEditingStaff(staff);
+    setEditValue('fullName', staff.fullName || '');
+    setEditValue('branchId', staff.branchId || '');
+    setEditValue('password', '');
+    setEditValue('confirmPassword', '');
+    setShowEditPass(false);
+    setShowEditConfirmPass(false);
+  };
 
   // Handle create
   const onCreateSubmit = async (data: CreateStaffFormInput) => {
@@ -266,7 +300,7 @@ export default function PartnerStaffPage() {
     setSuccessMsg(null);
     clearCreateErrors(['email', 'phone']);
     try {
-      await apiRequest('/partners/staff', {
+      await apiRequest<void>('/partners/staff', {
         method: 'POST',
         body: JSON.stringify(data),
       });
@@ -274,8 +308,8 @@ export default function PartnerStaffPage() {
       resetCreate();
       setCreateModalOpen(false);
       loadData();
-    } catch (err: any) {
-      const message = String(err?.message || '');
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, 'Tạo nhân viên thất bại. Vui lòng thử lại.');
 
       if (message.includes('Email')) {
         setCreateError('email', { type: 'server', message });
@@ -301,7 +335,7 @@ export default function PartnerStaffPage() {
     setSuccessMsg(null);
     try {
       // Build request body dynamically
-      const body: any = {
+      const body: { fullName: string; branchId: string; password?: string } = {
         fullName: data.fullName,
         branchId: data.branchId,
       };
@@ -309,7 +343,7 @@ export default function PartnerStaffPage() {
         body.password = data.password;
       }
 
-      await apiRequest(`/partners/staff/${editingStaff.userId}`, {
+      await apiRequest<void>(`/partners/staff/${editingStaff.userId}`, {
         method: 'PATCH',
         body: JSON.stringify(body),
       });
@@ -317,8 +351,8 @@ export default function PartnerStaffPage() {
       setEditingStaff(null);
       resetEdit();
       loadData();
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Cập nhật nhân viên thất bại.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Cập nhật nhân viên thất bại.'));
     } finally {
       setSubmitting(false);
     }
@@ -326,19 +360,16 @@ export default function PartnerStaffPage() {
 
   // Handle delete
   const handleDeleteStaff = async (staff: StaffUser) => {
-    const confirm = window.confirm(`Bạn có chắc chắn muốn xóa vĩnh viễn tài khoản nhân viên "${staff.fullName}"?`);
-    if (!confirm) return;
-
     setErrorMsg(null);
     setSuccessMsg(null);
     try {
-      await apiRequest(`/partners/staff/${staff.userId}`, {
+      await apiRequest<void>(`/partners/staff/${staff.userId}`, {
         method: 'DELETE',
       });
       setSuccessMsg(`Đã xóa thành công tài khoản nhân viên "${staff.fullName}".`);
       loadData();
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Không thể xóa tài khoản nhân viên này.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Không thể xóa tài khoản nhân viên này.'));
     }
   };
 
@@ -405,7 +436,7 @@ export default function PartnerStaffPage() {
           <Users className="h-10 w-10 text-muted mx-auto" />
           <h3 className="text-sm font-bold text-foreground">Chưa có tài khoản nhân viên nào</h3>
           <p className="text-xs text-muted max-w-sm mx-auto">
-            Hãy nhấp vào nút "Thêm nhân viên mới" để tạo tài khoản phân quyền quét mã cho cửa hàng.
+            Hãy nhấp vào nút &quot;Thêm nhân viên mới&quot; để tạo tài khoản phân quyền quét mã cho cửa hàng.
           </p>
         </div>
       ) : (
@@ -418,18 +449,14 @@ export default function PartnerStaffPage() {
                 {/* Actions overlay buttons on card top-right */}
                 <div className="absolute top-4 right-4 flex items-center gap-1.5">
                   <button
-                    onClick={() => {
-                      setSuccessMsg(null);
-                      setErrorMsg(null);
-                      setEditingStaff(staff);
-                    }}
+                    onClick={() => openEditModal(staff)}
                     className="p-1.5 text-muted hover:text-primary hover:bg-slate-100 rounded-lg transition-colors"
                     title="Chỉnh sửa tài khoản"
                   >
                     <Edit2 className="h-3.5 w-3.5" />
                   </button>
                   <button
-                    onClick={() => handleDeleteStaff(staff)}
+                    onClick={() => setStaffToDelete(staff)}
                     className="p-1.5 text-muted hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     title="Xóa nhân viên"
                   >
@@ -477,33 +504,51 @@ export default function PartnerStaffPage() {
       )}
 
       {/* MODAL 1: THÊM NHÂN VIÊN MỚI */}
-      {createModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-card border border-border rounded-2xl w-[min(92vw,520px)] h-[84vh] max-h-[720px] p-3.5 sm:p-4 relative shadow-2xl space-y-2.5 animate-scale-up flex flex-col overflow-hidden">
-            
-            <div className="pb-2 border-b border-border">
-              <h3 className="font-extrabold text-foreground text-sm">Thêm nhân viên mới</h3>
-              <p className="text-[10px] text-muted">Tạo tài khoản phụ trách cho nhân viên đứng quầy thu ngân.</p>
-            </div>
+      <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
+        <DialogContent className="flex h-[min(84vh,720px)] w-[min(92vw,520px)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-[520px]">
+            <DialogHeader className="shrink-0 border-b border-border px-4 py-3 pr-12 text-left">
+              <DialogTitle className="text-sm">Thêm nhân viên mới</DialogTitle>
+              <DialogDescription className="text-[10px]">
+                Tạo tài khoản phụ trách cho nhân viên đứng quầy thu ngân.
+              </DialogDescription>
+            </DialogHeader>
 
-            <form ref={createFormRef} onSubmit={handleSubmitCreate(onCreateSubmit)} className="space-y-2 overflow-y-auto pr-0.5 flex-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <form ref={createFormRef} onSubmit={handleSubmitCreate(onCreateSubmit)} className="flex-1 space-y-2 overflow-y-auto p-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
               
               {/* Chi nhánh */}
               <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Chi nhánh gán cố định</label>
-                <select
-                  {...registerCreate('branchId')}
-                  className="block w-full rounded-lg border border-border bg-card py-1.5 px-2.5 text-[11px] text-foreground focus:border-primary focus:outline-none"
-                >
-                  <option value="">-- Chọn chi nhánh cửa hàng --</option>
-                  {branches.map((b) => (
-                    <option key={b.branchId} value={b.branchId}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
+                <label id="create-staff-branch-label" className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Chi nhánh gán cố định</label>
+                <Controller
+                  name="branchId"
+                  control={controlCreate}
+                  render={({ field }) => (
+                    <Select
+                      name={field.name}
+                      items={branches.map((branch) => ({ label: branch.name, value: branch.branchId }))}
+                      value={field.value || null}
+                      onValueChange={(value) => field.onChange(value ?? '')}
+                    >
+                      <SelectTrigger
+                        data-field-name="branchId"
+                        aria-labelledby="create-staff-branch-label"
+                        aria-invalid={Boolean(errorsCreate.branchId)}
+                        className="w-full text-[11px]"
+                        size="sm"
+                      >
+                        <SelectValue placeholder="Chọn chi nhánh cửa hàng" />
+                      </SelectTrigger>
+                      <SelectContent align="start" alignItemWithTrigger={false}>
+                        {branches.map((branch) => (
+                          <SelectItem key={branch.branchId} value={branch.branchId}>
+                            {branch.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
                 {errorsCreate.branchId && (
-                  <p className="text-[9px] text-primary">{errorsCreate.branchId.message}</p>
+                  <p className="text-[9px] text-danger">{errorsCreate.branchId.message}</p>
                 )}
               </div>
 
@@ -625,37 +670,62 @@ export default function PartnerStaffPage() {
               </div>
 
             </form>
-          </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
 
       {/* MODAL 2: CHỈNH SỬA NHÂN VIÊN */}
-      {editingStaff && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-card border border-border rounded-2xl w-[min(92vw,520px)] h-[84vh] max-h-[720px] p-3.5 sm:p-4 relative shadow-2xl space-y-2.5 animate-scale-up flex flex-col overflow-hidden">
-            
-            <div className="pb-2 border-b border-border">
-              <h3 className="font-extrabold text-foreground text-sm">Chỉnh sửa thông tin nhân viên</h3>
-              <p className="text-[10px] text-muted">Email đăng nhập gán cố định: <span className="font-bold text-foreground">{editingStaff.email}</span></p>
-            </div>
+      <Dialog
+        open={Boolean(editingStaff)}
+        onOpenChange={(open) => {
+          if (!open) setEditingStaff(null);
+        }}
+      >
+        {editingStaff && (
+          <DialogContent className="flex h-[min(84vh,720px)] w-[min(92vw,520px)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-[520px]">
+            <DialogHeader className="shrink-0 border-b border-border px-4 py-3 pr-12 text-left">
+              <DialogTitle className="text-sm">Chỉnh sửa thông tin nhân viên</DialogTitle>
+              <DialogDescription className="text-[10px]">
+                Email đăng nhập gán cố định:{' '}
+                <span className="font-bold text-foreground">{editingStaff.email}</span>
+              </DialogDescription>
+            </DialogHeader>
 
-            <form ref={editFormRef} onSubmit={handleSubmitEdit(onEditSubmit)} className="space-y-2 overflow-y-auto pr-0.5 flex-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <form ref={editFormRef} onSubmit={handleSubmitEdit(onEditSubmit)} className="flex-1 space-y-2 overflow-y-auto p-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
               
               {/* Chi nhánh */}
               <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Chi nhánh gán làm việc</label>
-                <select
-                  {...registerEdit('branchId')}
-                  className="block w-full rounded-lg border border-border bg-card py-1.5 px-2.5 text-[11px] text-foreground focus:border-primary focus:outline-none"
-                >
-                  {branches.map((b) => (
-                    <option key={b.branchId} value={b.branchId}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
+                <label id="edit-staff-branch-label" className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Chi nhánh gán làm việc</label>
+                <Controller
+                  name="branchId"
+                  control={controlEdit}
+                  render={({ field }) => (
+                    <Select
+                      name={field.name}
+                      items={branches.map((branch) => ({ label: branch.name, value: branch.branchId }))}
+                      value={field.value || null}
+                      onValueChange={(value) => field.onChange(value ?? '')}
+                    >
+                      <SelectTrigger
+                        data-field-name="branchId"
+                        aria-labelledby="edit-staff-branch-label"
+                        aria-invalid={Boolean(errorsEdit.branchId)}
+                        className="w-full text-[11px]"
+                        size="sm"
+                      >
+                        <SelectValue placeholder="Chọn chi nhánh cửa hàng" />
+                      </SelectTrigger>
+                      <SelectContent align="start" alignItemWithTrigger={false}>
+                        {branches.map((branch) => (
+                          <SelectItem key={branch.branchId} value={branch.branchId}>
+                            {branch.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
                 {errorsEdit.branchId && (
-                  <p className="text-[9px] text-primary">{errorsEdit.branchId.message}</p>
+                  <p className="text-[9px] text-danger">{errorsEdit.branchId.message}</p>
                 )}
               </div>
 
@@ -742,9 +812,37 @@ export default function PartnerStaffPage() {
               </div>
 
             </form>
-          </div>
-        </div>
-      )}
+          </DialogContent>
+        )}
+      </Dialog>
+
+      {/* ALERT DIALOG XÓA NHÂN VIÊN */}
+      <AlertDialog
+        open={Boolean(staffToDelete)}
+        onOpenChange={(open) => {
+          if (!open) setStaffToDelete(null);
+        }}
+      >
+        {staffToDelete && (
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Xóa nhân viên &quot;{staffToDelete.fullName || staffToDelete.email}&quot;?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                Tài khoản nhân viên sẽ bị xóa vĩnh viễn và không thể tiếp tục đăng nhập để
+                quét voucher. Thao tác này không thể hoàn tác.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Hủy bỏ</AlertDialogCancel>
+              <AlertDialogAction onClick={() => void handleDeleteStaff(staffToDelete)}>
+                Xóa nhân viên
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        )}
+      </AlertDialog>
 
     </div>
   );

@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { Manrope } from "next/font/google";
+import "../styles/tokens.css";
 import "./globals.css";
 import { AuthProvider } from "../context/AuthContext";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -17,12 +19,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="vi"
-      className={`${manrope.variable} h-full antialiased`}
+      className={`${manrope.variable} h-full font-sans antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+        <TooltipProvider delay={350}>
+          <AuthProvider>
+            {children}
+          </AuthProvider>
+        </TooltipProvider>
       </body>
     </html>
   );

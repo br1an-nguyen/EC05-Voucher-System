@@ -6,7 +6,16 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
  * @param endpoint Đường dẫn API endpoint (vd: '/auth/login')
  * @param options Cấu hình RequestInit
  */
-export async function apiRequest(endpoint: string, options: RequestInit = {}): Promise<any> {
+interface RefreshTokenResponse {
+  accessToken: string;
+  refreshToken: string;
+}
+
+interface ApiErrorResponse {
+  message?: string;
+}
+
+export async function apiRequest<T = unknown>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers || {});
   
   // Bước 1: Đọc Access Token từ localStorage để chèn vào Header Authorization
@@ -41,7 +50,7 @@ export async function apiRequest(endpoint: string, options: RequestInit = {}): P
         });
 
         if (refreshResponse.ok) {
-          const data = await refreshResponse.json();
+          const data = await refreshResponse.json() as RefreshTokenResponse;
           
           // Lưu cặp tokens mới vào localStorage
           localStorage.setItem('accessToken', data.accessToken);
@@ -66,15 +75,15 @@ export async function apiRequest(endpoint: string, options: RequestInit = {}): P
 
   // Bước 3: Xử lý lỗi từ server
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
+    const errorData = await response.json().catch(() => ({})) as ApiErrorResponse;
     throw new Error(errorData.message || `Lỗi từ hệ thống (Mã: ${response.status})`);
   }
 
   if (response.status === 204) {
-    return null;
+    return undefined as T;
   }
 
-  return response.json();
+  return response.json() as Promise<T>;
 }
 
 /**
@@ -89,7 +98,7 @@ function logoutUser() {
     // Chỉ chuyển hướng nếu đang không nằm ở trang login/register để tránh lặp vô tận
     const path = window.location.pathname;
     if (path !== '/login' && path !== '/register') {
-      window.location.href = '/login';
+      window.location.replace('/login');
     }
   }
 }

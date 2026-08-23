@@ -2,22 +2,27 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../../../lib/api';
+import { getErrorMessage } from '../../../../lib/errors';
 import { useAuth } from '../../../../context/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { 
   Ticket, 
-  Search, 
   Calendar, 
   MapPin, 
   QrCode, 
-  CheckCircle, 
-  Clock, 
-  X,
   AlertCircle,
   Copy,
   ChevronRight
 } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '../../../../components/ui/dialog';
 
 interface Branch {
   name: string;
@@ -77,10 +82,10 @@ export default function CustomerVouchersPage() {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const data = await apiRequest('/vouchers/customer/wallet');
+      const data = await apiRequest<VoucherCode[]>('/vouchers/customer/wallet');
       setVouchers(data);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Không thể tải ví voucher của bạn.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Không thể tải ví voucher của bạn.'));
     } finally {
       setLoading(false);
     }
@@ -91,10 +96,12 @@ export default function CustomerVouchersPage() {
       if (!user) {
         router.push('/login?redirect=/customer/vouchers');
       } else {
-        fetchWallet();
+        queueMicrotask(() => {
+          void fetchWallet();
+        });
       }
     }
-  }, [user, authLoading]);
+  }, [user, authLoading, router]);
 
   const handleCopyCode = (code: string) => {
     navigator.clipboard.writeText(code);
@@ -321,34 +328,31 @@ export default function CustomerVouchersPage() {
         )}
 
         {/* MODAL HIỂN THỊ QR CODE ĐỂ QUÉT REDEEM */}
-        {selectedVoucher && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-card border border-border rounded-2xl max-w-sm w-full p-6 relative shadow-2xl text-center space-y-6 animate-scale-up">
-              
-              {/* Close Button */}
-              <button
-                onClick={() => setSelectedVoucher(null)}
-                className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-secondary text-muted hover:text-foreground transition-all"
-              >
-                <X className="h-5 w-5" />
-              </button>
-
-              <div className="space-y-1 pt-2">
+        <Dialog
+          open={Boolean(selectedVoucher)}
+          onOpenChange={(open) => {
+            if (!open) setSelectedVoucher(null);
+          }}
+        >
+          {selectedVoucher && (
+            <DialogContent className="max-w-sm gap-6 p-6 text-center sm:max-w-sm">
+              <DialogHeader className="space-y-1 pt-2 text-center sm:text-center">
                 <span className="text-[10px] font-extrabold text-primary bg-primary/5 px-2.5 py-1 rounded-full uppercase tracking-wider">
                   {selectedVoucher.orderItem.campaign.partner.companyName}
                 </span>
-                <h3 className="font-extrabold text-foreground text-sm leading-snug line-clamp-2 px-4 pt-1">
+                <DialogTitle className="line-clamp-2 px-4 pt-1 text-sm leading-snug">
                   {selectedVoucher.orderItem.campaign.title}
-                </h3>
-              </div>
+                </DialogTitle>
+              </DialogHeader>
 
               {/* QR Image Container */}
               <div className="bg-white border-2 border-border p-4 rounded-2xl inline-block mx-auto shadow-inner relative group">
-                <img
+                <Image
                   src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${selectedVoucher.uniqueCode}`}
                   alt="Voucher QR Code"
                   width={200}
                   height={200}
+                  unoptimized
                   className="mx-auto"
                 />
               </div>
@@ -366,14 +370,14 @@ export default function CustomerVouchersPage() {
                   </button>
                 </div>
                 
-                <p className="text-[10px] text-muted max-w-xs mx-auto leading-relaxed px-4">
+                <DialogDescription className="mx-auto max-w-xs px-4 text-[10px] leading-relaxed">
                   Đưa mã QR này hoặc cung cấp chuỗi ký tự trên cho nhân viên chi nhánh áp dụng tại quầy thu ngân để tiến hành xác thực quét đổi voucher.
-                </p>
+                </DialogDescription>
               </div>
 
-            </div>
-          </div>
-        )}
+            </DialogContent>
+          )}
+        </Dialog>
 
       </div>
     </div>

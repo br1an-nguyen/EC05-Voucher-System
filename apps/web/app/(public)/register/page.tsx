@@ -7,6 +7,7 @@ import * as z from 'zod';
 import { useAuth } from '../../../context/AuthContext';
 import Link from 'next/link';
 import { Ticket, ArrowRight, AlertCircle, User, Briefcase, Mail, Phone, Lock, Building, FileText, Eye, EyeOff, ArrowLeft } from 'lucide-react';
+import { getErrorMessage } from '../../../lib/errors';
 
 const registerSchema = z.object({
   role: z.enum(['CUSTOMER', 'PARTNER']),
@@ -78,25 +79,21 @@ export default function RegisterPage() {
     setErrorMsg(null);
     
     // Chuẩn bị payload gửi lên API
-    const payload: any = {
+    const payload = {
       role: data.role,
       password: data.password,
       fullName: data.fullName,
+      email: data.email || undefined,
+      phone: data.phone || undefined,
+      companyName: data.role === 'PARTNER' ? data.companyName : undefined,
+      taxCode: data.role === 'PARTNER' ? data.taxCode : undefined,
+      representative: data.role === 'PARTNER' ? (data.representative || data.fullName) : undefined,
     };
-    
-    if (data.email) payload.email = data.email;
-    if (data.phone) payload.phone = data.phone;
-    
-    if (data.role === 'PARTNER') {
-      payload.companyName = data.companyName;
-      payload.taxCode = data.taxCode;
-      payload.representative = data.representative || data.fullName; // lấy họ tên làm người đại diện nếu không nhập
-    }
 
     try {
       await authRegister(payload);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Đăng ký thất bại. Vui lòng kiểm tra lại thông tin.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Đăng ký thất bại. Vui lòng kiểm tra lại thông tin.'));
     }
   };
 

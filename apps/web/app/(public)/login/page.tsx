@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, Suspense } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -8,6 +8,7 @@ import { useAuth } from '../../../context/AuthContext';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Mail, Lock, Ticket, ArrowRight, AlertCircle, Info, Eye, EyeOff, ArrowLeft } from 'lucide-react';
+import { getErrorMessage } from '../../../lib/errors';
 
 const loginSchema = z.object({
   identifier: z.string().min(1, 'Vui lòng nhập Email hoặc Số điện thoại.'),
@@ -20,14 +21,8 @@ function LoginForm() {
   const { login, loading } = useAuth();
   const searchParams = useSearchParams();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [showPartnerInfo, setShowPartnerInfo] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-
-  useEffect(() => {
-    if (searchParams.get('registered') === 'partner') {
-      setShowPartnerInfo(true);
-    }
-  }, [searchParams]);
+  const showPartnerInfo = searchParams.get('registered') === 'partner';
 
   const {
     register: formRegister,
@@ -48,8 +43,8 @@ function LoginForm() {
 
     try {
       await login(payload);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.'));
     }
   };
 

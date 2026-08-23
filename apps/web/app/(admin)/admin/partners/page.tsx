@@ -2,7 +2,18 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../../../lib/api';
-import { Users, Check, X, AlertCircle, CheckCircle, Search, Mail, Phone, Shield } from 'lucide-react';
+import { getErrorMessage } from '../../../../lib/errors';
+import { Users, Check, X, AlertCircle, CheckCircle, Search, Mail, Phone } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../../../../components/ui/alert-dialog';
 
 interface Partner {
   partnerId: string;
@@ -26,53 +37,57 @@ export default function AdminPartnersPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [partnerAction, setPartnerAction] = useState<{
+    partner: Partner;
+    type: 'approve' | 'reject';
+  } | null>(null);
 
   const loadPartners = async () => {
     try {
-      const data = await apiRequest('/partners/admin/list');
+      const data = await apiRequest<Partner[]>('/partners/admin/list');
       setPartners(data);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Không thể tải danh sách đối tác.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Không thể tải danh sách đối tác.'));
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadPartners();
+    queueMicrotask(() => {
+      void loadPartners();
+    });
   }, []);
 
   const handleApprove = async (partnerId: string) => {
-    if (!confirm('Xác nhận PHÊ DUYỆT đối tác này và KÍCH HOẠT tài khoản đăng nhập?')) return;
     setErrorMsg(null);
     setSuccessMsg(null);
 
     try {
-      await apiRequest(`/partners/admin/${partnerId}/approve`, {
+      await apiRequest<void>(`/partners/admin/${partnerId}/approve`, {
         method: 'PATCH',
       });
       setSuccessMsg('Đã phê duyệt đối tác và kích hoạt tài khoản thành công!');
       loadPartners();
       setTimeout(() => setSuccessMsg(null), 3000);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Lỗi xảy ra khi duyệt đối tác.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Lỗi xảy ra khi duyệt đối tác.'));
     }
   };
 
   const handleReject = async (partnerId: string) => {
-    if (!confirm('Xác nhận TỪ CHỐI đối tác này và KHÓA tài khoản đăng nhập?')) return;
     setErrorMsg(null);
     setSuccessMsg(null);
 
     try {
-      await apiRequest(`/partners/admin/${partnerId}/reject`, {
+      await apiRequest<void>(`/partners/admin/${partnerId}/reject`, {
         method: 'PATCH',
       });
       setSuccessMsg('Đã từ chối đối tác thành công.');
       loadPartners();
       setTimeout(() => setSuccessMsg(null), 3000);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Lỗi xảy ra khi từ chối đối tác.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Lỗi xảy ra khi từ chối đối tác.'));
     }
   };
 
@@ -208,7 +223,7 @@ export default function AdminPartnersPage() {
                       {partner.approvalStatus === 'PENDING' ? (
                         <div className="flex items-center justify-end gap-2">
                           <button
-                            onClick={() => handleApprove(partner.partnerId)}
+                            onClick={() => setPartnerAction({ partner, type: 'approve' })}
                             className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors"
                             title="Phê duyệt"
                           >
@@ -216,7 +231,7 @@ export default function AdminPartnersPage() {
                             Duyệt
                           </button>
                           <button
-                            onClick={() => handleReject(partner.partnerId)}
+                            onClick={() => setPartnerAction({ partner, type: 'reject' })}
                             className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors"
                             title="Từ chối"
                           >
@@ -236,6 +251,42 @@ export default function AdminPartnersPage() {
           </div>
         </div>
       )}
+
+      <AlertDialog
+        open={Boolean(partnerAction)}
+        onOpenChange={(open) => {
+          if (!open) setPartnerAction(null);
+        }}
+      >
+        {partnerAction && (
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {partnerAction.type === 'approve' ? 'Phê duyệt' : 'Từ chối'} đối tác
+                &nbsp;&quot;{partnerAction.partner.companyName}&quot;?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {partnerAction.type === 'approve'
+                  ? 'Hồ sơ đối tác sẽ được phê duyệt và tài khoản đăng nhập được kích hoạt.'
+                  : 'Hồ sơ đối tác sẽ bị từ chối và tài khoản đăng nhập bị khóa.'}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Quay lại kiểm tra</AlertDialogCancel>
+              <AlertDialogAction
+                variant={partnerAction.type === 'approve' ? 'default' : 'destructive'}
+                onClick={() =>
+                  void (partnerAction.type === 'approve'
+                    ? handleApprove(partnerAction.partner.partnerId)
+                    : handleReject(partnerAction.partner.partnerId))
+                }
+              >
+                {partnerAction.type === 'approve' ? 'Phê duyệt đối tác' : 'Từ chối đối tác'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        )}
+      </AlertDialog>
 
     </div>
   );
