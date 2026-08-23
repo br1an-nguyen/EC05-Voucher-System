@@ -2,7 +2,18 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../../../lib/api';
+import { getErrorMessage } from '../../../../lib/errors';
 import { Ticket, Check, X, AlertCircle, CheckCircle, Calendar, MapPin, Building, Clock, TrendingUp, Package } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../../../../components/ui/alert-dialog';
 
 interface Branch {
   branchId: string;
@@ -39,6 +50,10 @@ export default function AdminVouchersApprovalPage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [campaignAction, setCampaignAction] = useState<{
+    campaign: VoucherCampaign;
+    type: 'approve' | 'reject';
+  } | null>(null);
 
   const summary = React.useMemo(() => {
     const totalCapacity = pendingCampaigns.reduce((sum, campaign) => sum + campaign.capacity, 0);
@@ -56,50 +71,50 @@ export default function AdminVouchersApprovalPage() {
 
   const loadPendingCampaigns = async () => {
     try {
-      const data = await apiRequest('/vouchers/admin/pending');
+      const data = await apiRequest<VoucherCampaign[]>('/vouchers/admin/pending');
       setPendingCampaigns(data);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Không thể tải danh sách voucher chờ duyệt.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Không thể tải danh sách voucher chờ duyệt.'));
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadPendingCampaigns();
+    queueMicrotask(() => {
+      void loadPendingCampaigns();
+    });
   }, []);
 
   const handleApprove = async (campaignId: string) => {
-    if (!confirm('Xác nhận PHÊ DUYỆT chiến dịch voucher này hoạt động và cho phép khách hàng mua?')) return;
     setErrorMsg(null);
     setSuccessMsg(null);
 
     try {
-      await apiRequest(`/vouchers/admin/${campaignId}/approve`, {
+      await apiRequest<void>(`/vouchers/admin/${campaignId}/approve`, {
         method: 'PATCH',
       });
       setSuccessMsg('Đã phê duyệt chiến dịch voucher thành công!');
       loadPendingCampaigns();
       setTimeout(() => setSuccessMsg(null), 3000);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Có lỗi xảy ra khi phê duyệt chiến dịch.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Có lỗi xảy ra khi phê duyệt chiến dịch.'));
     }
   };
 
   const handleReject = async (campaignId: string) => {
-    if (!confirm('Xác nhận TỪ CHỐI chiến dịch voucher này?')) return;
     setErrorMsg(null);
     setSuccessMsg(null);
 
     try {
-      await apiRequest(`/vouchers/admin/${campaignId}/reject`, {
+      await apiRequest<void>(`/vouchers/admin/${campaignId}/reject`, {
         method: 'PATCH',
       });
       setSuccessMsg('Đã từ chối chiến dịch voucher thành công.');
       loadPendingCampaigns();
       setTimeout(() => setSuccessMsg(null), 3000);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Có lỗi xảy ra khi từ chối chiến dịch.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Có lỗi xảy ra khi từ chối chiến dịch.'));
     }
   };
 
@@ -251,14 +266,14 @@ export default function AdminVouchersApprovalPage() {
               {/* HÀNH ĐỘNG DUYỆT / TỪ CHỐI */}
               <div className="border-t border-border/60 pt-4 flex items-center justify-end gap-3">
                 <button
-                  onClick={() => handleReject(campaign.campaignId)}
+                  onClick={() => setCampaignAction({ campaign, type: 'reject' })}
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg border border-border text-foreground hover:bg-slate-50 transition-colors"
                 >
                   <X className="h-4 w-4" />
                   Từ chối
                 </button>
                 <button
-                  onClick={() => handleApprove(campaign.campaignId)}
+                  onClick={() => setCampaignAction({ campaign, type: 'approve' })}
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors shadow-sm"
                 >
                   <Check className="h-4 w-4" />
@@ -270,6 +285,42 @@ export default function AdminVouchersApprovalPage() {
           ))}
         </div>
       )}
+
+      <AlertDialog
+        open={Boolean(campaignAction)}
+        onOpenChange={(open) => {
+          if (!open) setCampaignAction(null);
+        }}
+      >
+        {campaignAction && (
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {campaignAction.type === 'approve' ? 'Phê duyệt' : 'Từ chối'} chiến dịch
+                &nbsp;&quot;{campaignAction.campaign.title}&quot;?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {campaignAction.type === 'approve'
+                  ? 'Chiến dịch sẽ được kích hoạt và khách hàng có thể bắt đầu mua voucher theo thời gian mở bán.'
+                  : 'Chiến dịch sẽ bị từ chối và đối tác cần điều chỉnh trước khi có thể gửi duyệt lại.'}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Quay lại kiểm tra</AlertDialogCancel>
+              <AlertDialogAction
+                variant={campaignAction.type === 'approve' ? 'default' : 'destructive'}
+                onClick={() =>
+                  void (campaignAction.type === 'approve'
+                    ? handleApprove(campaignAction.campaign.campaignId)
+                    : handleReject(campaignAction.campaign.campaignId))
+                }
+              >
+                {campaignAction.type === 'approve' ? 'Phê duyệt chiến dịch' : 'Từ chối chiến dịch'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        )}
+      </AlertDialog>
 
     </div>
   );

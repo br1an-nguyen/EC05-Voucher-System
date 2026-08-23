@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../../../lib/api';
+import { getErrorMessage } from '../../../../lib/errors';
 import { useAuth } from '../../../../context/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -9,15 +10,21 @@ import {
   FileText, 
   CreditCard, 
   Calendar, 
-  CheckCircle, 
-  XCircle, 
   RefreshCw, 
   ChevronRight, 
   AlertCircle,
-  HelpCircle,
-  Clock,
   Ticket
 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../../../../components/ui/alert-dialog';
 
 interface OrderCampaign {
   title: string;
@@ -48,15 +55,16 @@ export default function CustomerOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [refundingOrderId, setRefundingOrderId] = useState<string | null>(null);
+  const [orderToRefund, setOrderToRefund] = useState<Order | null>(null);
 
   const fetchOrders = async () => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const data = await apiRequest('/orders');
+      const data = await apiRequest<Order[]>('/orders');
       setOrders(data);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Không thể tải lịch sử đơn hàng.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Không thể tải lịch sử đơn hàng.'));
     } finally {
       setLoading(false);
     }
@@ -67,28 +75,25 @@ export default function CustomerOrdersPage() {
       if (!user) {
         router.push('/login?redirect=/customer/orders');
       } else {
-        fetchOrders();
+        queueMicrotask(() => {
+          void fetchOrders();
+        });
       }
     }
-  }, [user, authLoading]);
+  }, [user, authLoading, router]);
 
   const handleRefundClick = async (orderId: string) => {
-    const confirm = window.confirm(
-      'Bạn có chắc chắn muốn hủy đơn hàng này và yêu cầu hoàn tiền không?\nToàn bộ mã voucher chưa sử dụng của đơn hàng này sẽ bị vô hiệu hóa.'
-    );
-    if (!confirm) return;
-
     setRefundingOrderId(orderId);
     setErrorMsg(null);
 
     try {
-      await apiRequest(`/orders/${orderId}/refund`, {
+      await apiRequest<void>(`/orders/${orderId}/refund`, {
         method: 'POST',
       });
       alert('Yêu cầu hoàn tiền đã được xử lý thành công! Số tiền đã được hoàn lại tài khoản.');
       fetchOrders(); // Refresh order history
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Yêu cầu hoàn tiền thất bại. Vui lòng kiểm tra lại.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Yêu cầu hoàn tiền thất bại. Vui lòng kiểm tra lại.'));
     } finally {
       setRefundingOrderId(null);
     }
@@ -237,7 +242,7 @@ export default function CustomerOrdersPage() {
                           </Link>
 
                           <button
-                            onClick={() => handleRefundClick(order.orderId)}
+                            onClick={() => setOrderToRefund(order)}
                             disabled={refundingOrderId === order.orderId}
                             className="inline-flex items-center gap-1 border border-red-200 hover:bg-red-50 text-red-600 px-3 py-2 rounded-xl text-xs font-bold transition-colors"
                           >
@@ -254,6 +259,31 @@ export default function CustomerOrdersPage() {
             })}
           </div>
         )}
+
+        <AlertDialog
+          open={Boolean(orderToRefund)}
+          onOpenChange={(open) => {
+            if (!open) setOrderToRefund(null);
+          }}
+        >
+          {orderToRefund && (
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Yêu cầu hoàn tiền đơn #{orderToRefund.orderCode}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Đơn hàng sẽ bị hủy và toàn bộ mã voucher chưa sử dụng của đơn này sẽ bị
+                  vô hiệu hóa. Thao tác này không thể hoàn tác.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Giữ nguyên đơn hàng</AlertDialogCancel>
+                <AlertDialogAction onClick={() => void handleRefundClick(orderToRefund.orderId)}>
+                  Hủy đơn và hoàn tiền
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          )}
+        </AlertDialog>
 
       </div>
     </div>

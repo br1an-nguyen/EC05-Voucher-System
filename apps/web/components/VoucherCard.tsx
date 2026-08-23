@@ -1,24 +1,27 @@
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { MapPin, Store, ArrowRight, Flame } from 'lucide-react';
 import { motion } from 'framer-motion';
 
+export interface VoucherCampaignCard {
+  campaignId: string;
+  title: string;
+  category: string | null;
+  originalPrice: number;
+  salePrice: number;
+  capacity: number;
+  soldQuantity: number;
+  thumbnailUrl?: string | null;
+  thumbnail_url?: string | null;
+  partner: { companyName: string };
+  primaryBrand?: { displayName: string } | null;
+  primaryCategory?: { nameVi: string } | null;
+  campaignBranches: { branch: { name: string } }[];
+}
+
 export interface VoucherCardProps {
-  campaign: {
-    campaignId: string;
-    title: string;
-    category: string | null;
-    originalPrice: number;
-    salePrice: number;
-    capacity: number;
-    soldQuantity: number;
-    thumbnailUrl?: string | null;
-    thumbnail_url?: string | null;
-    partner: { companyName: string };
-    primaryBrand?: { displayName: string } | null;
-    primaryCategory?: { nameVi: string } | null;
-    campaignBranches: { branch: { name: string } }[];
-  };
+  campaign: VoucherCampaignCard;
   index?: number;
 }
 
@@ -54,9 +57,9 @@ export default function VoucherCard({ campaign: c, index = 0 }: VoucherCardProps
         {thumbnailUrl ? (
           <>
             {/* Lớp nền mờ (Blurred background) để lấp đầy khoảng trống */}
-            <img src={thumbnailUrl} alt="" className="absolute inset-0 w-full h-full object-cover blur-md opacity-40 scale-110" />
+            <Image src={thumbnailUrl} alt="" fill sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw" unoptimized className="object-cover blur-md opacity-40 scale-110" />
             {/* Ảnh chính thu nhỏ lại hiển thị trọn vẹn */}
-            <img src={thumbnailUrl} alt={c.title} className="absolute inset-0 w-full h-full object-contain p-1 drop-shadow-md" />
+            <Image src={thumbnailUrl} alt={c.title} fill sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw" unoptimized className="object-contain p-1 drop-shadow-md" />
           </>
         ) : (
           <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white via-transparent to-transparent"></div>

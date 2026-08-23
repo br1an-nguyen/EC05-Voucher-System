@@ -3,8 +3,10 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { apiRequest } from '../../../../lib/api';
+import { getErrorMessage } from '../../../../lib/errors';
 import { useAuth } from '../../../../context/AuthContext';
 import Link from 'next/link';
+import Image from 'next/image';
 import { 
   ArrowLeft, 
   MapPin, 
@@ -85,6 +87,11 @@ interface ReviewStats {
   averageRating: number;
 }
 
+interface ReviewsResponse {
+  reviews: Review[];
+  statistics: ReviewStats;
+}
+
 export default function VoucherDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -109,15 +116,15 @@ export default function VoucherDetailPage() {
   useEffect(() => {
     async function loadCampaignAndReviews() {
       try {
-        const campaignData = await apiRequest(`/vouchers/${campaignId}`);
+        const campaignData = await apiRequest<VoucherCampaign>(`/vouchers/${campaignId}`);
         setCampaign(campaignData);
         
         // Tải danh sách đánh giá của campaign
-        const reviewsData = await apiRequest(`/reviews/campaign/${campaignId}`);
+        const reviewsData = await apiRequest<ReviewsResponse>(`/reviews/campaign/${campaignId}`);
         setReviews(reviewsData.reviews);
         setReviewStats(reviewsData.statistics);
-      } catch (err: any) {
-        setErrorMsg(err.message || 'Không thể tải thông tin chi tiết voucher.');
+      } catch (error: unknown) {
+        setErrorMsg(getErrorMessage(error, 'Không thể tải thông tin chi tiết voucher.'));
       } finally {
         setLoading(false);
       }
@@ -134,7 +141,7 @@ export default function VoucherDetailPage() {
     setReviewSuccess(false);
 
     try {
-      await apiRequest('/reviews', {
+      await apiRequest<void>('/reviews', {
         method: 'POST',
         body: JSON.stringify({
           campaignId,
@@ -147,11 +154,11 @@ export default function VoucherDetailPage() {
       setUserRating(5);
       
       // Tải lại danh sách đánh giá mới nhất
-      const reviewsData = await apiRequest(`/reviews/campaign/${campaignId}`);
+      const reviewsData = await apiRequest<ReviewsResponse>(`/reviews/campaign/${campaignId}`);
       setReviews(reviewsData.reviews);
       setReviewStats(reviewsData.statistics);
-    } catch (err: any) {
-      setReviewError(err.message || 'Gửi đánh giá thất bại. Bạn chỉ có thể đánh giá sau khi đã mua và quét đổi mã voucher thành công.');
+    } catch (error: unknown) {
+      setReviewError(getErrorMessage(error, 'Gửi đánh giá thất bại. Bạn chỉ có thể đánh giá sau khi đã mua và quét đổi mã voucher thành công.'));
     } finally {
       setSubmittingReview(false);
     }
@@ -166,7 +173,7 @@ export default function VoucherDetailPage() {
 
     setErrorMsg(null);
     try {
-      await apiRequest('/cart/items', {
+      await apiRequest<void>('/cart/items', {
         method: 'POST',
         body: JSON.stringify({
           campaignId,
@@ -177,8 +184,8 @@ export default function VoucherDetailPage() {
       setTimeout(() => {
         router.push('/cart');
       }, 1200);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Không thể thêm voucher vào giỏ hàng.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Không thể thêm voucher vào giỏ hàng.'));
     }
   };
 
@@ -234,15 +241,21 @@ export default function VoucherDetailPage() {
             <div className="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-5">
               {campaign.thumbnailUrl && (
                 <div className="relative h-64 overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
-                  <img
+                  <Image
                     src={campaign.thumbnailUrl}
                     alt=""
-                    className="absolute inset-0 h-full w-full scale-110 object-cover opacity-20 blur-lg"
+                    fill
+                    sizes="(max-width: 1024px) 100vw, 66vw"
+                    unoptimized
+                    className="scale-110 object-cover opacity-20 blur-lg"
                   />
-                  <img
+                  <Image
                     src={campaign.thumbnailUrl}
                     alt={campaign.title}
-                    className="relative h-full w-full object-contain p-2"
+                    fill
+                    sizes="(max-width: 1024px) 100vw, 66vw"
+                    unoptimized
+                    className="object-contain p-2"
                   />
                 </div>
               )}

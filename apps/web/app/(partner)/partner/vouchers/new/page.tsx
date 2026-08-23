@@ -1,24 +1,37 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useRouter } from 'next/navigation';
 import { apiRequest } from '../../../../../lib/api';
+import { getErrorMessage } from '../../../../../lib/errors';
 import { 
-  Ticket, 
   ArrowLeft, 
   Save, 
   AlertCircle, 
   MapPin, 
   Info,
   DollarSign,
-  Calendar,
-  Layers,
   Sparkles
 } from 'lucide-react';
 import Link from 'next/link';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../../../../components/ui/select';
+
+const voucherCategories = [
+  { value: 'F&B', label: 'Buffet & Ăn uống (F&B)' },
+  { value: 'Shopping', label: 'Mua sắm & Tiêu dùng (Shopping)' },
+  { value: 'Beauty', label: 'Làm đẹp & Spa (Beauty)' },
+  { value: 'Entertainment', label: 'Giải trí & Vui chơi (Entertainment)' },
+  { value: 'Other', label: 'Khác' },
+];
 
 const campaignSchema = z.object({
   title: z.string().min(1, 'Tiêu đề không được để trống.'),
@@ -68,19 +81,20 @@ export default function CreateVoucherPage() {
   const [loadingBranches, setLoadingBranches] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [isMultiUseSelected, setIsMultiUseSelected] = useState(false);
 
   const {
     register,
     handleSubmit,
     setValue,
-    watch,
+    getValues,
+    control,
     formState: { errors },
   } = useForm<CampaignSchemaType>({
     resolver: zodResolver(campaignSchema),
     defaultValues: {
       isMultiUse: false,
       branchIds: [],
+      category: '',
       originalPrice: '',
       salePrice: '',
       capacity: '',
@@ -88,23 +102,17 @@ export default function CreateVoucherPage() {
     },
   });
 
-  // Tự động đồng bộ trường maxUsesPerCode ẩn/hiện
-  const watchMultiUse = watch('isMultiUse');
-  useEffect(() => {
-    setIsMultiUseSelected(watchMultiUse);
-    if (!watchMultiUse) {
-      setValue('maxUsesPerCode', '');
-    }
-  }, [watchMultiUse, setValue]);
+  const isMultiUseSelected = useWatch({ control, name: 'isMultiUse' });
+  const multiUseRegistration = register('isMultiUse');
 
   // Load danh sách chi nhánh hoạt động của đối tác
   useEffect(() => {
     async function getBranches() {
       try {
-        const data = await apiRequest('/partners/branches');
+        const data = await apiRequest<Branch[]>('/partners/branches');
         setBranches(data);
-      } catch (err: any) {
-        console.error('Không thể tải chi nhánh:', err);
+      } catch (error: unknown) {
+        console.error('Không thể tải chi nhánh:', error);
       } finally {
         setLoadingBranches(false);
       }
@@ -134,20 +142,20 @@ export default function CreateVoucherPage() {
     };
 
     try {
-      await apiRequest('/vouchers', {
+      await apiRequest<void>('/vouchers', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
       router.push('/partner/vouchers');
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Lỗi xảy ra khi lưu chiến dịch voucher.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Lỗi xảy ra khi lưu chiến dịch voucher.'));
     } finally {
       setSaving(false);
     }
   };
 
   const handleBranchCheckboxChange = (branchId: string, checked: boolean) => {
-    const currentBranchIds = watch('branchIds') || [];
+    const currentBranchIds = getValues('branchIds') || [];
     let updatedBranchIds = [...currentBranchIds];
     if (checked) {
       updatedBranchIds.push(branchId);
@@ -211,22 +219,38 @@ export default function CreateVoucherPage() {
           {/* DANH MỤC & SỨC CHỨA */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-foreground mb-1.5">
+              <label id="voucher-category-label" className="block text-xs font-semibold text-foreground mb-1.5">
                 Danh mục Voucher
               </label>
-              <select
-                {...register('category')}
-                className="block w-full rounded-lg border border-border bg-background py-2.5 px-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all"
-              >
-                <option value="">Chọn danh mục...</option>
-                <option value="F&B"> Buffet & Ăn uống (F&B)</option>
-                <option value="Shopping"> Mua sắm & Tiêu dùng (Shopping)</option>
-                <option value="Beauty"> Làm đẹp & Spa (Beauty)</option>
-                <option value="Entertainment"> Giải trí & Vui chơi (Entertainment)</option>
-                <option value="Other">Khác</option>
-              </select>
+              <Controller
+                name="category"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    name={field.name}
+                    items={voucherCategories}
+                    value={field.value || null}
+                    onValueChange={(value) => field.onChange(value ?? '')}
+                  >
+                    <SelectTrigger
+                      aria-labelledby="voucher-category-label"
+                      aria-invalid={Boolean(errors.category)}
+                      className="w-full"
+                    >
+                      <SelectValue placeholder="Chọn danh mục..." />
+                    </SelectTrigger>
+                    <SelectContent align="start" alignItemWithTrigger={false}>
+                      {voucherCategories.map((category) => (
+                        <SelectItem key={category.value} value={category.value}>
+                          {category.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
               {errors.category && (
-                <p className="mt-1 text-xs text-primary">{errors.category.message}</p>
+                <p className="mt-1 text-xs text-danger">{errors.category.message}</p>
               )}
             </div>
 
@@ -419,7 +443,13 @@ export default function CreateVoucherPage() {
               <div className="flex h-5 items-center">
                 <input
                   type="checkbox"
-                  {...register('isMultiUse')}
+                  {...multiUseRegistration}
+                  onChange={(event) => {
+                    void multiUseRegistration.onChange(event);
+                    if (!event.target.checked) {
+                      setValue('maxUsesPerCode', '');
+                    }
+                  }}
                   className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                 />
               </div>

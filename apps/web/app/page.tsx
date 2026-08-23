@@ -1,12 +1,13 @@
 'use client';
 
-import React, { Suspense, useEffect, useState, useCallback, useRef } from 'react';
+import React, { Suspense, useEffect, useState, useCallback } from 'react';
 import { apiRequest } from '../lib/api';
+import { getErrorMessage } from '../lib/errors';
 import Header from '../components/Header';
-import HeroBanner from '../components/HeroBanner';
 import FilterSidebar from '../components/FilterSidebar';
-import VoucherCard from '../components/VoucherCard';
-import { ShieldAlert, Ticket, Grid } from 'lucide-react';
+import VoucherCard, { type VoucherCampaignCard } from '../components/VoucherCard';
+import { ArrowRight, ShieldAlert, Ticket, Grid } from 'lucide-react';
+import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 
 interface CatalogCategory {
@@ -26,6 +27,11 @@ interface CatalogFilters {
   maxPrice: string;
 }
 
+interface CatalogCategoryResponse {
+  categories: CatalogCategory[];
+  totalCampaignCount: number;
+}
+
 function buildCatalogUrl(filters: CatalogFilters) {
   const params = new URLSearchParams();
   if (filters.keyword) params.set('keyword', filters.keyword);
@@ -38,31 +44,31 @@ function buildCatalogUrl(filters: CatalogFilters) {
 function HomePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialFilters = useRef<CatalogFilters>({
+  const [initialFilters] = useState<CatalogFilters>(() => ({
     keyword: searchParams.get('keyword') || '',
     categoryCode: searchParams.get('category') || '',
     maxPrice: searchParams.get('maxPrice') || '',
-  });
+  }));
   
-  const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [campaigns, setCampaigns] = useState<VoucherCampaignCard[]>([]);
   const [categories, setCategories] = useState<CatalogCategory[]>([]);
   const [totalCampaigns, setTotalCampaigns] = useState(0);
   const [loading, setLoading] = useState(true);
   
   // States for filtering
-  const [keyword, setKeyword] = useState(initialFilters.current.keyword);
-  const [category, setCategory] = useState(initialFilters.current.categoryCode);
-  const [maxPrice, setMaxPrice] = useState(initialFilters.current.maxPrice);
+  const [keyword, setKeyword] = useState(initialFilters.keyword);
+  const [category, setCategory] = useState(initialFilters.categoryCode);
+  const [maxPrice, setMaxPrice] = useState(initialFilters.maxPrice);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const fetchCatalog = useCallback(async (filters: CatalogFilters) => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const data = await apiRequest(buildCatalogUrl(filters));
+      const data = await apiRequest<VoucherCampaignCard[]>(buildCatalogUrl(filters));
       setCampaigns(data);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Không thể tải danh sách voucher.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Không thể tải danh sách voucher.'));
     } finally {
       setLoading(false);
     }
@@ -74,21 +80,21 @@ function HomePageContent() {
       setErrorMsg(null);
       try {
         const [catalogData, categoryData] = await Promise.all([
-          apiRequest(buildCatalogUrl(initialFilters.current)),
-          apiRequest('/vouchers/categories'),
+          apiRequest<VoucherCampaignCard[]>(buildCatalogUrl(initialFilters)),
+          apiRequest<CatalogCategoryResponse>('/vouchers/categories'),
         ]);
         setCampaigns(catalogData);
         setCategories(categoryData.categories);
         setTotalCampaigns(categoryData.totalCampaignCount);
-      } catch (err: any) {
-        setErrorMsg(err.message || 'Không thể tải catalog voucher.');
+      } catch (error: unknown) {
+        setErrorMsg(getErrorMessage(error, 'Không thể tải catalog voucher.'));
       } finally {
         setLoading(false);
       }
     }
 
     void loadInitialCatalog();
-  }, []);
+  }, [initialFilters]);
 
   const updateBrowserFilters = (filters: CatalogFilters) => {
     const params = new URLSearchParams();
@@ -140,16 +146,33 @@ function HomePageContent() {
     <div className="min-h-screen bg-background font-sans flex flex-col">
       
       <Header onSearch={handleHeaderSearch} initialKeyword={keyword} />
-      
-      <HeroBanner />
+
+      <section className="mx-auto w-full max-w-7xl px-4 pt-6 sm:px-6 lg:px-8" aria-labelledby="catalog-title">
+        <div className="flex flex-col gap-5 rounded-2xl border border-slate-200 bg-white px-6 py-6 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-8">
+          <div>
+            <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-primary">Kho voucher</p>
+            <h1 id="catalog-title" className="mt-2 font-black tracking-tight text-slate-900">
+              Tìm ưu đãi phù hợp với bạn
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-500">
+              Tìm kiếm, lọc theo danh mục và so sánh các voucher đang mở bán trên hệ thống.
+            </p>
+          </div>
+          <Link
+            href="/for-customers"
+            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-5 py-2.5 text-sm font-extrabold text-primary transition hover:border-orange-300 hover:bg-orange-100"
+          >
+            VoucherNow hoạt động thế nào?
+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </Link>
+        </div>
+      </section>
 
       <main id="product-section" className="flex-grow max-w-7xl w-full mx-auto py-8 px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-4 gap-8">
         
         {/* Sidebar */}
         <div className="lg:col-span-1">
           <FilterSidebar
-            keyword={keyword}
-            setKeyword={setKeyword}
             category={category}
             categories={categories}
             totalCampaigns={totalCampaigns}
@@ -167,7 +190,7 @@ function HomePageContent() {
             <div className="flex items-center gap-2">
               <Grid className="h-6 w-6 text-primary" />
               <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">
-                Gợi ý cho bạn
+                Danh sách voucher
               </h2>
             </div>
             <span className="text-sm font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full">

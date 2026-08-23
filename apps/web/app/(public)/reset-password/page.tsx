@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, Suspense } from 'react';
+import React, { useState, Suspense } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Lock, ArrowLeft, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { apiRequest } from '../../../lib/api';
+import { getErrorMessage } from '../../../lib/errors';
 
 const resetPasswordSchema = z.object({
   newPassword: z.string().min(6, 'Mật khẩu mới phải chứa ít nhất 6 ký tự.'),
@@ -26,16 +27,8 @@ function ResetPasswordForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [token, setToken] = useState<string>('');
-
-  useEffect(() => {
-    const resetToken = searchParams.get('token');
-    if (!resetToken) {
-      setErrorMsg('Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.');
-      return;
-    }
-    setToken(resetToken);
-  }, [searchParams]);
+  const token = searchParams.get('token') ?? '';
+  const displayedError = errorMsg || (!token ? 'Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.' : null);
 
   const {
     register,
@@ -55,7 +48,7 @@ function ResetPasswordForm() {
     setIsLoading(true);
 
     try {
-      await apiRequest('/auth/reset-password', {
+      await apiRequest<void>('/auth/reset-password', {
         method: 'POST',
         body: JSON.stringify({
           token,
@@ -63,8 +56,8 @@ function ResetPasswordForm() {
         }),
       });
       setSuccess(true);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Không thể cập nhật mật khẩu.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Không thể cập nhật mật khẩu.'));
     } finally {
       setIsLoading(false);
     }
@@ -85,10 +78,10 @@ function ResetPasswordForm() {
           </p>
         </div>
 
-        {errorMsg && (
+        {displayedError && (
           <div className="flex items-center gap-3 rounded-lg bg-red-500/10 p-4 border border-red-500/20 text-red-800 text-sm">
             <AlertCircle className="h-5 w-5 shrink-0 text-red-600" />
-            <p className="font-medium">{errorMsg}</p>
+            <p className="font-medium">{displayedError}</p>
           </div>
         )}
 

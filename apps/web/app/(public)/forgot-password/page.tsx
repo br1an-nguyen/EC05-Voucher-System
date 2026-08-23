@@ -7,6 +7,7 @@ import * as z from 'zod';
 import Link from 'next/link';
 import { Mail, ArrowLeft, CheckCircle2, AlertCircle } from 'lucide-react';
 import { apiRequest } from '../../../lib/api';
+import { getErrorMessage } from '../../../lib/errors';
 
 const forgotPasswordSchema = z.object({
   email: z.string().email('Email không đúng định dạng.'),
@@ -32,13 +33,13 @@ export default function ForgotPasswordPage() {
     setIsLoading(true);
 
     try {
-      await apiRequest('/auth/forgot-password', {
+      await apiRequest<void>('/auth/forgot-password', {
         method: 'POST',
         body: JSON.stringify({ email: data.email }),
       });
       setSubmitted(true);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Không thể gửi yêu cầu đặt lại mật khẩu.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Không thể gửi yêu cầu đặt lại mật khẩu.'));
     } finally {
       setIsLoading(false);
     }

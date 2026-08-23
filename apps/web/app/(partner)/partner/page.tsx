@@ -28,7 +28,7 @@ export default function PartnerDashboard() {
   useEffect(() => {
     const loadDashboard = async () => {
       try {
-        const data = await apiRequest('/partners/dashboard');
+        const data = await apiRequest<PartnerDashboardSummary>('/partners/dashboard');
         setSummary(data);
       } catch (error) {
         console.error('Không thể tải dashboard đối tác:', error);

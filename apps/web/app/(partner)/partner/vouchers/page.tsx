@@ -2,8 +2,19 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../../../lib/api';
+import { getErrorMessage } from '../../../../lib/errors';
 import Link from 'next/link';
-import { Ticket, Plus, Send, AlertCircle, CheckCircle, Clock3, Calendar, MapPin, Check, Ban } from 'lucide-react';
+import { Ticket, Plus, Send, AlertCircle, CheckCircle, Clock3, Calendar, MapPin } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../../../../components/ui/alert-dialog';
 
 interface Branch {
   branchId: string;
@@ -51,36 +62,38 @@ export default function PartnerVouchersPage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [campaignToSubmit, setCampaignToSubmit] = useState<VoucherCampaign | null>(null);
 
   const loadCampaigns = async () => {
     try {
-      const data = await apiRequest('/vouchers/partner/list');
+      const data = await apiRequest<VoucherCampaign[]>('/vouchers/partner/list');
       setCampaigns(data);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Không thể tải danh sách chiến dịch.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Không thể tải danh sách chiến dịch.'));
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadCampaigns();
+    queueMicrotask(() => {
+      void loadCampaigns();
+    });
   }, []);
 
   const handleSubmitForApproval = async (campaignId: string) => {
-    if (!confirm('Bạn có chắc chắn muốn gửi duyệt chiến dịch voucher này không? Sau khi gửi, bạn không thể tự ý sửa đổi.')) return;
     setErrorMsg(null);
     setSuccessMsg(null);
 
     try {
-      await apiRequest(`/vouchers/${campaignId}/submit`, {
+      await apiRequest<void>(`/vouchers/${campaignId}/submit`, {
         method: 'POST',
       });
       setSuccessMsg('Gửi yêu cầu phê duyệt voucher thành công!');
       loadCampaigns();
       setTimeout(() => setSuccessMsg(null), 3000);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Gửi yêu cầu phê duyệt thất bại.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Gửi yêu cầu phê duyệt thất bại.'));
     }
   };
 
@@ -234,7 +247,7 @@ export default function PartnerVouchersPage() {
               {(campaign.status === 'DRAFT' || campaign.status === 'REJECTED') && (
                 <div className="mt-5 border-t border-border/60 pt-4 flex items-center justify-end gap-3">
                   <button
-                    onClick={() => handleSubmitForApproval(campaign.campaignId)}
+                    onClick={() => setCampaignToSubmit(campaign)}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-primary text-white hover:bg-primary-hover transition-colors shadow-sm"
                   >
                     <Send className="h-3.5 w-3.5" />
@@ -246,6 +259,36 @@ export default function PartnerVouchersPage() {
           ))}
         </div>
       )}
+
+      <AlertDialog
+        open={Boolean(campaignToSubmit)}
+        onOpenChange={(open) => {
+          if (!open) setCampaignToSubmit(null);
+        }}
+      >
+        {campaignToSubmit && (
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Gửi duyệt chiến dịch &quot;{campaignToSubmit.title}&quot;?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                Sau khi gửi, chiến dịch sẽ chuyển sang trạng thái chờ Admin phê duyệt và bạn
+                không thể tự ý chỉnh sửa cho đến khi có kết quả.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Tiếp tục chỉnh sửa</AlertDialogCancel>
+              <AlertDialogAction
+                variant="default"
+                onClick={() => void handleSubmitForApproval(campaignToSubmit.campaignId)}
+              >
+                Gửi yêu cầu phê duyệt
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        )}
+      </AlertDialog>
 
     </div>
   );

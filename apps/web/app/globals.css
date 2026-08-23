@@ -1,31 +1,50 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #f5f5f5; /* Light gray background like e-commerce sites */
-  --foreground: #0f172a; /* Slate 900 */
-  --card: #ffffff; /* Pure White card surfaces */
-  --primary: #ee4d2d; /* Shopee Orange/Red */
-  --primary-hover: #f05d40;
-  --secondary: #fff5f3; /* Light orange for hover states */
-  --muted: #64748b; /* Slate 500 */
-  --border: #e2e8f0; /* Slate 200 */
-  --base-font-scale: 1.05;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-surface-inverse: var(--surface-inverse);
   --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
-  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--brand-hover);
   --color-secondary: var(--secondary);
-  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-subtle: var(--brand-subtle);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-muted: var(--muted-foreground);
+  --color-muted-foreground: var(--muted-foreground);
   --color-border: var(--border);
-  
+  --color-success: var(--success);
+  --color-success-subtle: var(--success-subtle);
+  --color-warning: var(--warning);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-danger: var(--danger);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-destructive: var(--destructive);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
   --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
-  
-  --radius-xl: 1rem;
-  --radius-2xl: 1.5rem;
+
+  --radius-ui-sm: var(--ec-radius-sm);
+  --radius-ui-md: var(--ec-radius-md);
+  --radius-ui-lg: var(--ec-radius-lg);
+  --shadow-ui: var(--ec-shadow-subtle);
+  --shadow-ui-raised: var(--ec-shadow-raised);
 }
 
 html {
@@ -95,25 +114,25 @@ input::-webkit-credentials-auto-fill-button {
 }
 #qr-reader__dashboard_section_csr button,
 #qr-reader__dashboard_section_csr a {
-  background-color: var(--primary) !important;
+  background-color: var(--brand) !important;
   color: white !important;
   border: none !important;
-  border-radius: 0.5rem !important;
+  border-radius: var(--ec-radius-sm) !important;
   padding: 0.5rem 1rem !important;
   font-size: 0.75rem !important;
   font-weight: bold !important;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color var(--duration-normal) var(--ease-standard);
   display: inline-block;
   margin: 5px;
 }
 #qr-reader__dashboard_section_csr button:hover {
-  background-color: var(--primary-hover) !important;
+  background-color: var(--brand-hover) !important;
 }
 #qr-reader select {
   border: 1px solid var(--border) !important;
   background-color: white !important;
-  border-radius: 0.5rem !important;
+  border-radius: var(--ec-radius-sm) !important;
   padding: 0.25rem 0.5rem !important;
   font-size: 0.75rem !important;
   color: var(--foreground) !important;
@@ -121,10 +140,10 @@ input::-webkit-credentials-auto-fill-button {
 }
 #qr-reader__status_span {
   font-size: 0.75rem !important;
-  color: var(--muted) !important;
+  color: var(--muted-foreground) !important;
 }
 #html5-qrcode-anchor-scan-type-change {
-  color: var(--primary) !important;
+  color: var(--brand) !important;
   font-size: 0.75rem !important;
   font-weight: bold !important;
   text-decoration: none !important;
@@ -135,5 +154,17 @@ input::-webkit-credentials-auto-fill-button {
 }
 #qr-reader__scan_region {
   background-color: #000000 !important;
-  border-radius: 0.75rem !important;
+  border-radius: var(--ec-radius-md) !important;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
 }

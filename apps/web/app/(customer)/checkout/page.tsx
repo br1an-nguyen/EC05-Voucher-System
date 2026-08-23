@@ -1,17 +1,15 @@
 'use client';
 
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import { apiRequest } from '../../../lib/api';
+import { getErrorMessage } from '../../../lib/errors';
 import { useAuth } from '../../../context/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { 
   CreditCard, 
-  ArrowLeft, 
   ShieldAlert, 
   Info,
-  Calendar,
-  Ticket,
   ChevronRight,
   Clock,
   CheckCircle,
@@ -32,6 +30,33 @@ interface CartItem {
   cartItemId: string;
   quantity: number;
   campaign: VoucherCampaign;
+}
+
+interface CheckoutOrderItem {
+  itemId?: string;
+  orderItemId?: string;
+  campaignId?: string;
+  quantity: number;
+  unitPrice: number;
+  campaign?: {
+    title?: string;
+    salePrice?: number;
+    partner?: Partner;
+  };
+}
+
+interface CheckoutOrder {
+  orderId: string;
+  orderCode: string;
+  totalAmount: number;
+  reservationExpiresAt: string;
+  selectedPaymentProvider: 'STRIPE' | 'PAYPAL' | 'VNPAY';
+  recipientNote?: string;
+  orderItems?: CheckoutOrderItem[];
+}
+
+interface PaymentRedirectResponse {
+  paymentUrl: string;
 }
 
 export default function CheckoutPage() {
@@ -58,32 +83,32 @@ function CheckoutPageContent() {
   const [paymentProvider, setPaymentProvider] = useState<'STRIPE' | 'PAYPAL' | 'VNPAY'>('STRIPE');
   
   // Order created state
-  const [createdOrder, setCreatedOrder] = useState<any | null>(null);
+  const [createdOrder, setCreatedOrder] = useState<CheckoutOrder | null>(null);
   const [timeLeft, setTimeLeft] = useState(900); // 15 phút = 900 giây
   const [redirecting, setRedirecting] = useState(false);
 
   // Lấy giỏ hàng hiện tại để hiển thị tóm tắt
-  const fetchCart = async () => {
+  const fetchCart = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiRequest('/cart');
+      const data = await apiRequest<CartItem[]>('/cart');
       setCartItems(data);
-      if (data.length === 0 && !createdOrder) {
+      if (data.length === 0) {
         router.push('/cart');
       }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Không thể tải thông tin thanh toán.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Không thể tải thông tin thanh toán.'));
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
 
-  const fetchExistingOrder = async (orderId: string) => {
+  const fetchExistingOrder = useCallback(async (orderId: string) => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const orders = await apiRequest('/orders');
-      const order = (orders || []).find((item: any) => item.orderId === orderId);
+      const orders = await apiRequest<CheckoutOrder[]>('/orders');
+      const order = orders.find((item) => item.orderId === orderId);
 
       if (!order) {
         setCartItems([]);
@@ -92,8 +117,8 @@ function CheckoutPageContent() {
         return;
       }
 
-      const mappedItems = (order.orderItems || []).map((item: any) => ({
-        cartItemId: item.itemId || item.orderItemId || item.campaignId,
+      const mappedItems = (order.orderItems || []).map((item, index) => ({
+        cartItemId: item.itemId || item.orderItemId || item.campaignId || `${orderId}-${index}`,
         quantity: item.quantity,
         campaign: {
           title: item.campaign?.title || 'Voucher',
@@ -111,14 +136,14 @@ function CheckoutPageContent() {
       });
       setPaymentProvider(order.selectedPaymentProvider || 'STRIPE');
       setRecipientNote(order.recipientNote || '');
-    } catch (err: any) {
+    } catch (error: unknown) {
       setCartItems([]);
       setCreatedOrder(null);
-      setErrorMsg(err.message || 'Không thể tải đơn hàng cần thanh toán.');
+      setErrorMsg(getErrorMessage(error, 'Không thể tải đơn hàng cần thanh toán.'));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (!authLoading) {
@@ -126,12 +151,16 @@ function CheckoutPageContent() {
         const redirectTarget = orderIdFromQuery ? `/checkout?orderId=${orderIdFromQuery}` : '/checkout';
         router.push(`/login?redirect=${encodeURIComponent(redirectTarget)}`);
       } else if (orderIdFromQuery) {
-        fetchExistingOrder(orderIdFromQuery);
+        queueMicrotask(() => {
+          void fetchExistingOrder(orderIdFromQuery);
+        });
       } else {
-        fetchCart();
+        queueMicrotask(() => {
+          void fetchCart();
+        });
       }
     }
-  }, [user, authLoading, orderIdFromQuery]);
+  }, [user, authLoading, orderIdFromQuery, router, fetchCart, fetchExistingOrder]);
 
   // Bộ đếm ngược giữ chỗ 15 phút
   useEffect(() => {
@@ -154,7 +183,7 @@ function CheckoutPageContent() {
     setSubmitting(true);
     setErrorMsg(null);
     try {
-      const order = await apiRequest('/orders', {
+      const order = await apiRequest<CheckoutOrder>('/orders', {
         method: 'POST',
         body: JSON.stringify({
           recipientNote,
@@ -162,8 +191,8 @@ function CheckoutPageContent() {
         }),
       });
       setCreatedOrder(order);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Đặt hàng thất bại. Vui lòng thử lại.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Đặt hàng thất bại. Vui lòng thử lại.'));
     } finally {
       setSubmitting(false);
     }
@@ -174,7 +203,7 @@ function CheckoutPageContent() {
     setRedirecting(true);
     setErrorMsg(null);
     try {
-      const res = await apiRequest(`/payments/${createdOrder.orderId}`, {
+      const res = await apiRequest<PaymentRedirectResponse>(`/payments/${createdOrder.orderId}`, {
         method: 'POST',
         body: JSON.stringify({ provider: paymentProvider }),
       });
@@ -186,8 +215,8 @@ function CheckoutPageContent() {
         // Nếu là relative path (mock url)
         router.push(res.paymentUrl);
       }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Không thể chuyển hướng đến trang thanh toán.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Không thể chuyển hướng đến trang thanh toán.'));
       setRedirecting(false);
     }
   };

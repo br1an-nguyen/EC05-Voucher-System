@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { apiRequest } from '../../../../lib/api';
+import { getErrorMessage } from '../../../../lib/errors';
 import { Building, FileText, User, ArrowRight, AlertCircle, CheckCircle } from 'lucide-react';
 
 const profileSchema = z.object({
@@ -14,6 +15,12 @@ const profileSchema = z.object({
 });
 
 type ProfileSchemaType = z.infer<typeof profileSchema>;
+
+interface PartnerProfile {
+  companyName: string;
+  taxCode: string;
+  representative: string | null;
+}
 
 export default function PartnerProfilePage() {
   const [loading, setLoading] = useState(true);
@@ -34,12 +41,12 @@ export default function PartnerProfilePage() {
   useEffect(() => {
     async function loadProfile() {
       try {
-        const data = await apiRequest('/partners/profile');
+        const data = await apiRequest<PartnerProfile>('/partners/profile');
         setValue('companyName', data.companyName);
         setValue('taxCode', data.taxCode);
         setValue('representative', data.representative || '');
-      } catch (err: any) {
-        setErrorMsg(err.message || 'Không thể tải thông tin hồ sơ.');
+      } catch (error: unknown) {
+        setErrorMsg(getErrorMessage(error, 'Không thể tải thông tin hồ sơ.'));
       } finally {
         setLoading(false);
       }
@@ -54,13 +61,13 @@ export default function PartnerProfilePage() {
     setErrorMsg(null);
 
     try {
-      await apiRequest('/partners/profile', {
+      await apiRequest<void>('/partners/profile', {
         method: 'PATCH',
         body: JSON.stringify(data),
       });
       setSuccessMsg('Cập nhật hồ sơ doanh nghiệp thành công!');
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Lỗi xảy ra trong quá trình lưu hồ sơ.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Lỗi xảy ra trong quá trình lưu hồ sơ.'));
     } finally {
       setSaving(false);
     }
