@@ -401,11 +401,7 @@ export class VouchersService {
    * Hỗ trợ tìm kiếm từ khóa, danh mục, khoảng giá và chi nhánh áp dụng.
    */
   async findPublicCatalog(query: PublicCatalogQueryDto) {
-<<<<<<< HEAD
-    const { keyword, category, minPrice, maxPrice, branchId, sortPrice } = query;
-=======
-    const { keyword, category, categoryCode, minPrice, maxPrice, branchId } = query;
->>>>>>> origin/main
+    const { keyword, category, categoryCode, minPrice, maxPrice, branchId, sortPrice } = query;
     const now = new Date();
 
     // Ràng buộc: Chiến dịch phải được phê duyệt và đang trong thời gian mở bán

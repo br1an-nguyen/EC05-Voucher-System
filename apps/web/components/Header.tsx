@@ -77,21 +77,13 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
       apiRequest<VoucherSuggestion[]>(`/vouchers?keyword=${encodeURIComponent(keyword)}`)
         .then((data) => {
           if (Array.isArray(data)) {
-<<<<<<< HEAD
             const uniqueMap = new Map();
-            data.forEach(item => {
-              if (!uniqueMap.has(item.title)) {
+            data.forEach((item: any) => {
+              if (item.title && !uniqueMap.has(item.title)) {
                 uniqueMap.set(item.title, item);
               }
             });
             setSuggestions(Array.from(uniqueMap.values()).slice(0, 5));
-=======
-            const titles = data
-              .map((item) => item.title)
-              .filter((title): title is string => typeof title === 'string');
-            const uniqueTitles = Array.from(new Set(titles)).slice(0, 5);
-            setSuggestions(uniqueTitles);
->>>>>>> origin/main
           }
         })
         .catch(() => setSuggestions([]));

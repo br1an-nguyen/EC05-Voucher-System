@@ -5,16 +5,10 @@ import { apiRequest } from '../lib/api';
 import { getErrorMessage } from '../lib/errors';
 import Header from '../components/Header';
 import FilterSidebar from '../components/FilterSidebar';
-<<<<<<< HEAD
-import VoucherCard from '../components/VoucherCard';
-import { ShieldAlert, Ticket, Grid, ArrowUpNarrowWide, ArrowDownWideNarrow } from 'lucide-react';
-=======
 import VoucherCard, { type VoucherCampaignCard } from '../components/VoucherCard';
-import { ArrowRight, ShieldAlert, Ticket, Grid } from 'lucide-react';
+import { ArrowRight, ShieldAlert, Ticket, Grid, ArrowUpNarrowWide, ArrowDownWideNarrow } from 'lucide-react';
 import Link from 'next/link';
->>>>>>> origin/main
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useRef } from 'react';
 
 interface CatalogCategory {
   code: string;
@@ -31,6 +25,7 @@ interface CatalogFilters {
   keyword: string;
   categoryCode: string;
   maxPrice: string;
+  sortPrice?: 'asc' | 'desc' | '';
 }
 
 interface CatalogCategoryResponse {
@@ -42,7 +37,13 @@ function buildCatalogUrl(filters: CatalogFilters) {
   const params = new URLSearchParams();
   if (filters.keyword) params.set('keyword', filters.keyword);
   if (filters.categoryCode) params.set('categoryCode', filters.categoryCode);
-  if (filters.maxPrice) params.set('maxPrice', filters.maxPrice);
+  
+  if (filters.maxPrice) {
+    const rawMaxPrice = filters.maxPrice.replace(/\D/g, '');
+    if (rawMaxPrice) params.set('maxPrice', rawMaxPrice);
+  }
+  
+  if (filters.sortPrice) params.set('sortPrice', filters.sortPrice);
   const queryString = params.toString();
   return `/vouchers${queryString ? `?${queryString}` : ''}`;
 }
@@ -50,11 +51,15 @@ function buildCatalogUrl(filters: CatalogFilters) {
 function HomePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [initialFilters] = useState<CatalogFilters>(() => ({
-    keyword: searchParams.get('keyword') || '',
-    categoryCode: searchParams.get('category') || '',
-    maxPrice: searchParams.get('maxPrice') || '',
-  }));
+  const [initialFilters] = useState<CatalogFilters>(() => {
+    const rawMaxPrice = searchParams.get('maxPrice');
+    return {
+      keyword: searchParams.get('keyword') || '',
+      categoryCode: searchParams.get('category') || '',
+      maxPrice: rawMaxPrice ? Number(rawMaxPrice).toLocaleString('vi-VN') : '',
+      sortPrice: (searchParams.get('sortPrice') as 'asc'|'desc'|'') || '',
+    };
+  });
   
   const [campaigns, setCampaigns] = useState<VoucherCampaignCard[]>([]);
   const [categories, setCategories] = useState<CatalogCategory[]>([]);
@@ -62,55 +67,12 @@ function HomePageContent() {
   const [loading, setLoading] = useState(true);
   
   // States for filtering
-<<<<<<< HEAD
-  const [keyword, setKeyword] = useState(searchParams.get('keyword') || '');
-  const [category, setCategory] = useState(searchParams.get('category') || '');
-  const [maxPrice, setMaxPrice] = useState('');
-  const [sortPrice, setSortPrice] = useState<'asc' | 'desc' | ''>('');
-=======
   const [keyword, setKeyword] = useState(initialFilters.keyword);
   const [category, setCategory] = useState(initialFilters.categoryCode);
   const [maxPrice, setMaxPrice] = useState(initialFilters.maxPrice);
->>>>>>> origin/main
+  const [sortPrice, setSortPrice] = useState<'asc'|'desc'|''>(initialFilters.sortPrice || '');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  
-  const fetchIdRef = useRef(0);
 
-<<<<<<< HEAD
-  const fetchCatalog = useCallback(async (overrides?: { kw?: string, cat?: string, maxP?: string, sortP?: string }) => {
-    const currentFetchId = ++fetchIdRef.current;
-    
-    setLoading(true);
-    setErrorMsg(null);
-    try {
-      const params = new URLSearchParams();
-      
-      const currentKeyword = overrides?.kw !== undefined ? overrides.kw : keyword;
-      const currentCategory = overrides?.cat !== undefined ? overrides.cat : category;
-      const currentMaxPrice = overrides?.maxP !== undefined ? overrides.maxP : maxPrice;
-      const currentSortPrice = overrides?.sortP !== undefined ? overrides.sortP : sortPrice;
-      
-      if (currentKeyword) params.append('keyword', currentKeyword);
-      if (currentCategory) params.append('category', currentCategory);
-      if (currentSortPrice) params.append('sortPrice', currentSortPrice);
-      if (currentMaxPrice) {
-        const cleanPrice = currentMaxPrice.replace(/\D/g, '');
-        if (cleanPrice) params.append('maxPrice', cleanPrice);
-      }
-
-      const queryString = params.toString();
-      const url = `/vouchers${queryString ? `?${queryString}` : ''}`;
-      
-      const data = await apiRequest(url);
-      
-      // Ignore if a newer request has been made
-      if (currentFetchId !== fetchIdRef.current) return;
-      
-      setCampaigns(data);
-    } catch (err: any) {
-      if (currentFetchId !== fetchIdRef.current) return;
-      setErrorMsg(err.message || 'Không thể tải danh sách voucher.');
-=======
   const fetchCatalog = useCallback(async (filters: CatalogFilters) => {
     setLoading(true);
     setErrorMsg(null);
@@ -119,19 +81,9 @@ function HomePageContent() {
       setCampaigns(data);
     } catch (error: unknown) {
       setErrorMsg(getErrorMessage(error, 'Không thể tải danh sách voucher.'));
->>>>>>> origin/main
     } finally {
-      if (currentFetchId === fetchIdRef.current) {
-        setLoading(false);
-      }
+      setLoading(false);
     }
-<<<<<<< HEAD
-  }, [keyword, category, maxPrice, sortPrice]);
-
-  useEffect(() => {
-    fetchCatalog();
-  }, [category, sortPrice, fetchCatalog]);
-=======
   }, []);
 
   useEffect(() => {
@@ -160,11 +112,16 @@ function HomePageContent() {
     const params = new URLSearchParams();
     if (filters.keyword) params.set('keyword', filters.keyword);
     if (filters.categoryCode) params.set('category', filters.categoryCode);
-    if (filters.maxPrice) params.set('maxPrice', filters.maxPrice);
+    
+    if (filters.maxPrice) {
+      const rawMaxPrice = filters.maxPrice.replace(/\D/g, '');
+      if (rawMaxPrice) params.set('maxPrice', rawMaxPrice);
+    }
+    
+    if (filters.sortPrice) params.set('sortPrice', filters.sortPrice);
     const queryString = params.toString();
     router.push(queryString ? `/?${queryString}` : '/', { scroll: false });
   };
->>>>>>> origin/main
 
   const scrollToProducts = () => {
     document.getElementById('product-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -172,31 +129,25 @@ function HomePageContent() {
 
   const handleHeaderSearch = (newKeyword: string) => {
     setKeyword(newKeyword);
-    const filters = { keyword: newKeyword, categoryCode: category, maxPrice };
+    const filters = { keyword: newKeyword, categoryCode: category, maxPrice, sortPrice };
     updateBrowserFilters(filters);
     void fetchCatalog(filters);
     setTimeout(scrollToProducts, 50);
   };
 
   const handleSidebarFilter = () => {
-    const filters = { keyword, categoryCode: category, maxPrice };
+    const filters = { keyword, categoryCode: category, maxPrice, sortPrice };
     updateBrowserFilters(filters);
     void fetchCatalog(filters);
     scrollToProducts();
   };
 
-<<<<<<< HEAD
-  const handleQuickPriceFilter = (price: string) => {
-    fetchCatalog({ maxP: price.replace(/\D/g, '') });
-    scrollToProducts();
-=======
   const handleCategoryChange = (categoryCode: string) => {
     setCategory(categoryCode);
-    const filters = { keyword, categoryCode, maxPrice };
+    const filters = { keyword, categoryCode, maxPrice, sortPrice };
     updateBrowserFilters(filters);
     void fetchCatalog(filters);
     setTimeout(scrollToProducts, 50);
->>>>>>> origin/main
   };
 
   const handleClearFilters = () => {
@@ -206,16 +157,8 @@ function HomePageContent() {
     setSortPrice('');
     router.push('/', { scroll: false });
     
-<<<<<<< HEAD
-    fetchCatalog({ kw: '', cat: '', maxP: '', sortP: '' });
-=======
-    void fetchCatalog({ keyword: '', categoryCode: '', maxPrice: '' });
->>>>>>> origin/main
+    void fetchCatalog({ keyword: '', categoryCode: '', maxPrice: '', sortPrice: '' });
     setTimeout(scrollToProducts, 50);
-  };
-
-  const handleSortChange = (newSort: 'asc' | 'desc' | '') => {
-    setSortPrice(newSort);
   };
 
   return (
@@ -257,59 +200,64 @@ function HomePageContent() {
             setMaxPrice={setMaxPrice}
             onFilter={handleSidebarFilter}
             onClear={handleClearFilters}
-            onQuickPrice={handleQuickPriceFilter}
+            onQuickPrice={(newPrice) => {
+              const filters = { keyword, categoryCode: category, maxPrice: newPrice, sortPrice };
+              updateBrowserFilters(filters);
+              void fetchCatalog(filters);
+              scrollToProducts();
+            }}
           />
         </div>
 
         {/* Content Area */}
         <div className="lg:col-span-3 space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-200 pb-3 gap-3">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-4 gap-4">
+            <div className="flex items-center gap-3">
               <Grid className="h-6 w-6 text-primary" />
               <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">
                 Danh sách voucher
               </h2>
-            </div>
-            
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-1 bg-slate-100/70 p-1 rounded-xl border border-slate-200">
-                <button
-                  onClick={() => handleSortChange('')}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                    sortPrice === '' 
-                      ? 'bg-white shadow-sm text-slate-800' 
-                      : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
-                  }`}
-                >
-                  Phổ biến
-                </button>
-                <button
-                  onClick={() => handleSortChange('asc')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                    sortPrice === 'asc' 
-                      ? 'bg-primary text-white shadow-sm' 
-                      : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
-                  }`}
-                >
-                  <ArrowUpNarrowWide className="w-3.5 h-3.5" />
-                  Giá thấp
-                </button>
-                <button
-                  onClick={() => handleSortChange('desc')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                    sortPrice === 'desc' 
-                      ? 'bg-primary text-white shadow-sm' 
-                      : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
-                  }`}
-                >
-                  <ArrowDownWideNarrow className="w-3.5 h-3.5" />
-                  Giá cao
-                </button>
-              </div>
-
-              <span className="hidden sm:inline-flex items-center justify-center text-xs font-bold text-slate-500 bg-slate-100 px-3 py-2 rounded-xl shrink-0 border border-slate-200">
+              <span className="text-sm font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full ml-2">
                 {campaigns.length} kết quả
               </span>
+            </div>
+
+            {/* Sort Price Buttons */}
+            <div className="flex items-center bg-slate-100 p-1 rounded-xl shrink-0 self-start sm:self-auto">
+              <button
+                onClick={() => {
+                  const val = sortPrice === 'asc' ? '' : 'asc';
+                  setSortPrice(val);
+                  const filters = { keyword, categoryCode: category, maxPrice, sortPrice: val };
+                  updateBrowserFilters(filters);
+                  void fetchCatalog(filters);
+                }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  sortPrice === 'asc'
+                    ? 'bg-white text-primary shadow-sm ring-1 ring-slate-200/50'
+                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
+                }`}
+              >
+                <ArrowUpNarrowWide className="h-4 w-4" />
+                <span className="hidden sm:inline">Giá tăng dần</span>
+              </button>
+              <button
+                onClick={() => {
+                  const val = sortPrice === 'desc' ? '' : 'desc';
+                  setSortPrice(val);
+                  const filters = { keyword, categoryCode: category, maxPrice, sortPrice: val };
+                  updateBrowserFilters(filters);
+                  void fetchCatalog(filters);
+                }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  sortPrice === 'desc'
+                    ? 'bg-white text-primary shadow-sm ring-1 ring-slate-200/50'
+                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
+                }`}
+              >
+                <ArrowDownWideNarrow className="h-4 w-4" />
+                <span className="hidden sm:inline">Giá giảm dần</span>
+              </button>
             </div>
           </div>
 

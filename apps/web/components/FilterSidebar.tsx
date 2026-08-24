@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Tag, X, Filter } from 'lucide-react';
+import { Tag, X, Filter, ChevronDown } from 'lucide-react';
 
 interface CategoryFilterOption {
   code: string;
@@ -33,7 +33,6 @@ export default function FilterSidebar({
   onClear,
   onQuickPrice
 }: FilterSidebarProps) {
-<<<<<<< HEAD
   const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value.replace(/\D/g, '');
     if (!rawValue) {
@@ -48,15 +47,24 @@ export default function FilterSidebar({
     { label: '< 200K', value: '200.000' },
     { label: '< 500K', value: '500.000' },
   ];
-=======
-  const renderCategoryButton = (option: CategoryFilterOption, nested = false) => {
+
+  const [expandedCategories, setExpandedCategories] = React.useState<Record<string, boolean>>({});
+
+  const toggleCategory = (code: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedCategories(prev => ({ ...prev, [code]: !prev[code] }));
+  };
+
+  const renderCategoryButton = (option: CategoryFilterOption, nested = false, hasChildren = false) => {
     const isActive = category === option.code;
+    const isExpanded = expandedCategories[option.code];
+
     return (
       <button
         key={option.code || 'all'}
         onClick={() => onCategoryChange(option.code)}
-        className={`flex w-full items-center justify-between px-3 py-2.5 text-xs font-semibold rounded-xl text-left transition-all ${
-          nested ? 'pl-6' : ''
+        className={`flex w-full items-center justify-between px-3 py-2.5 text-xs font-semibold rounded-xl text-left transition-all group ${
+          nested ? 'pl-8' : ''
         } ${
           isActive
             ? 'bg-primary text-white shadow-md'
@@ -65,7 +73,23 @@ export default function FilterSidebar({
               : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'
         }`}
       >
-        <span>{option.name}</span>
+        <span className="flex items-center gap-2">
+          {!nested && option.code !== '' && (
+            <span
+              onClick={(e) => {
+                if (hasChildren) toggleCategory(option.code, e);
+              }}
+              className={`p-1 rounded-md transition-colors ${
+                hasChildren ? (isActive ? 'hover:bg-white/20 cursor-pointer' : 'hover:bg-slate-200 cursor-pointer') : 'opacity-30'
+              }`}
+            >
+              <ChevronDown
+                className={`h-3 w-3 transition-transform ${isExpanded && hasChildren ? '' : '-rotate-90'}`}
+              />
+            </span>
+          )}
+          <span className={!nested && option.code === '' ? 'pl-5' : ''}>{option.name}</span>
+        </span>
         <span className="flex items-center gap-2">
           <span className={isActive ? 'text-white/80' : 'text-slate-400'}>
             {option.campaignCount}
@@ -75,7 +99,6 @@ export default function FilterSidebar({
       </button>
     );
   };
->>>>>>> origin/main
   
   return (
     <aside className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm space-y-6">
@@ -136,8 +159,9 @@ export default function FilterSidebar({
           {renderCategoryButton({ code: '', name: 'Tất cả', campaignCount: totalCampaigns })}
           {categories.map((parent) => (
             <div key={parent.code} className="space-y-1">
-              {renderCategoryButton(parent)}
-              {parent.children?.map((child) => renderCategoryButton(child, true))}
+              {renderCategoryButton(parent, false, (parent.children?.length ?? 0) > 0)}
+              {expandedCategories[parent.code] &&
+                parent.children?.map((child) => renderCategoryButton(child, true))}
             </div>
           ))}
         </div>
