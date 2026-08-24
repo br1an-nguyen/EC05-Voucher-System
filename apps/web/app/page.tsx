@@ -6,7 +6,7 @@ import { getErrorMessage } from '../lib/errors';
 import Header from '../components/Header';
 import FilterSidebar from '../components/FilterSidebar';
 import VoucherCard, { type VoucherCampaignCard } from '../components/VoucherCard';
-import { ArrowRight, ShieldAlert, Ticket, Grid } from 'lucide-react';
+import { ArrowRight, ShieldAlert, Ticket, Grid, ArrowUpNarrowWide, ArrowDownWideNarrow } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 
@@ -25,6 +25,7 @@ interface CatalogFilters {
   keyword: string;
   categoryCode: string;
   maxPrice: string;
+  sortPrice?: 'asc' | 'desc' | '';
 }
 
 interface CatalogCategoryResponse {
@@ -36,7 +37,13 @@ function buildCatalogUrl(filters: CatalogFilters) {
   const params = new URLSearchParams();
   if (filters.keyword) params.set('keyword', filters.keyword);
   if (filters.categoryCode) params.set('categoryCode', filters.categoryCode);
-  if (filters.maxPrice) params.set('maxPrice', filters.maxPrice);
+  
+  if (filters.maxPrice) {
+    const rawMaxPrice = filters.maxPrice.replace(/\D/g, '');
+    if (rawMaxPrice) params.set('maxPrice', rawMaxPrice);
+  }
+  
+  if (filters.sortPrice) params.set('sortPrice', filters.sortPrice);
   const queryString = params.toString();
   return `/vouchers${queryString ? `?${queryString}` : ''}`;
 }
@@ -44,11 +51,15 @@ function buildCatalogUrl(filters: CatalogFilters) {
 function HomePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [initialFilters] = useState<CatalogFilters>(() => ({
-    keyword: searchParams.get('keyword') || '',
-    categoryCode: searchParams.get('category') || '',
-    maxPrice: searchParams.get('maxPrice') || '',
-  }));
+  const [initialFilters] = useState<CatalogFilters>(() => {
+    const rawMaxPrice = searchParams.get('maxPrice');
+    return {
+      keyword: searchParams.get('keyword') || '',
+      categoryCode: searchParams.get('category') || '',
+      maxPrice: rawMaxPrice ? Number(rawMaxPrice).toLocaleString('vi-VN') : '',
+      sortPrice: (searchParams.get('sortPrice') as 'asc'|'desc'|'') || '',
+    };
+  });
   
   const [campaigns, setCampaigns] = useState<VoucherCampaignCard[]>([]);
   const [categories, setCategories] = useState<CatalogCategory[]>([]);
@@ -59,6 +70,7 @@ function HomePageContent() {
   const [keyword, setKeyword] = useState(initialFilters.keyword);
   const [category, setCategory] = useState(initialFilters.categoryCode);
   const [maxPrice, setMaxPrice] = useState(initialFilters.maxPrice);
+  const [sortPrice, setSortPrice] = useState<'asc'|'desc'|''>(initialFilters.sortPrice || '');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const fetchCatalog = useCallback(async (filters: CatalogFilters) => {
@@ -100,7 +112,13 @@ function HomePageContent() {
     const params = new URLSearchParams();
     if (filters.keyword) params.set('keyword', filters.keyword);
     if (filters.categoryCode) params.set('category', filters.categoryCode);
-    if (filters.maxPrice) params.set('maxPrice', filters.maxPrice);
+    
+    if (filters.maxPrice) {
+      const rawMaxPrice = filters.maxPrice.replace(/\D/g, '');
+      if (rawMaxPrice) params.set('maxPrice', rawMaxPrice);
+    }
+    
+    if (filters.sortPrice) params.set('sortPrice', filters.sortPrice);
     const queryString = params.toString();
     router.push(queryString ? `/?${queryString}` : '/', { scroll: false });
   };
@@ -111,14 +129,14 @@ function HomePageContent() {
 
   const handleHeaderSearch = (newKeyword: string) => {
     setKeyword(newKeyword);
-    const filters = { keyword: newKeyword, categoryCode: category, maxPrice };
+    const filters = { keyword: newKeyword, categoryCode: category, maxPrice, sortPrice };
     updateBrowserFilters(filters);
     void fetchCatalog(filters);
     setTimeout(scrollToProducts, 50);
   };
 
   const handleSidebarFilter = () => {
-    const filters = { keyword, categoryCode: category, maxPrice };
+    const filters = { keyword, categoryCode: category, maxPrice, sortPrice };
     updateBrowserFilters(filters);
     void fetchCatalog(filters);
     scrollToProducts();
@@ -126,7 +144,7 @@ function HomePageContent() {
 
   const handleCategoryChange = (categoryCode: string) => {
     setCategory(categoryCode);
-    const filters = { keyword, categoryCode, maxPrice };
+    const filters = { keyword, categoryCode, maxPrice, sortPrice };
     updateBrowserFilters(filters);
     void fetchCatalog(filters);
     setTimeout(scrollToProducts, 50);
@@ -136,9 +154,10 @@ function HomePageContent() {
     setKeyword('');
     setCategory('');
     setMaxPrice('');
+    setSortPrice('');
     router.push('/', { scroll: false });
     
-    void fetchCatalog({ keyword: '', categoryCode: '', maxPrice: '' });
+    void fetchCatalog({ keyword: '', categoryCode: '', maxPrice: '', sortPrice: '' });
     setTimeout(scrollToProducts, 50);
   };
 
@@ -181,21 +200,65 @@ function HomePageContent() {
             setMaxPrice={setMaxPrice}
             onFilter={handleSidebarFilter}
             onClear={handleClearFilters}
+            onQuickPrice={(newPrice) => {
+              const filters = { keyword, categoryCode: category, maxPrice: newPrice, sortPrice };
+              updateBrowserFilters(filters);
+              void fetchCatalog(filters);
+              scrollToProducts();
+            }}
           />
         </div>
 
         {/* Content Area */}
         <div className="lg:col-span-3 space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-4 gap-4">
+            <div className="flex items-center gap-3">
               <Grid className="h-6 w-6 text-primary" />
               <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">
                 Danh sách voucher
               </h2>
+              <span className="text-sm font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full ml-2">
+                {campaigns.length} kết quả
+              </span>
             </div>
-            <span className="text-sm font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
-              {campaigns.length} kết quả
-            </span>
+
+            {/* Sort Price Buttons */}
+            <div className="flex items-center bg-slate-100 p-1 rounded-xl shrink-0 self-start sm:self-auto">
+              <button
+                onClick={() => {
+                  const val = sortPrice === 'asc' ? '' : 'asc';
+                  setSortPrice(val);
+                  const filters = { keyword, categoryCode: category, maxPrice, sortPrice: val };
+                  updateBrowserFilters(filters);
+                  void fetchCatalog(filters);
+                }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  sortPrice === 'asc'
+                    ? 'bg-white text-primary shadow-sm ring-1 ring-slate-200/50'
+                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
+                }`}
+              >
+                <ArrowUpNarrowWide className="h-4 w-4" />
+                <span className="hidden sm:inline">Giá tăng dần</span>
+              </button>
+              <button
+                onClick={() => {
+                  const val = sortPrice === 'desc' ? '' : 'desc';
+                  setSortPrice(val);
+                  const filters = { keyword, categoryCode: category, maxPrice, sortPrice: val };
+                  updateBrowserFilters(filters);
+                  void fetchCatalog(filters);
+                }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  sortPrice === 'desc'
+                    ? 'bg-white text-primary shadow-sm ring-1 ring-slate-200/50'
+                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
+                }`}
+              >
+                <ArrowDownWideNarrow className="h-4 w-4" />
+                <span className="hidden sm:inline">Giá giảm dần</span>
+              </button>
+            </div>
           </div>
 
           {errorMsg && (

@@ -401,7 +401,7 @@ export class VouchersService {
    * Hỗ trợ tìm kiếm từ khóa, danh mục, khoảng giá và chi nhánh áp dụng.
    */
   async findPublicCatalog(query: PublicCatalogQueryDto) {
-    const { keyword, category, categoryCode, minPrice, maxPrice, branchId } = query;
+    const { keyword, category, categoryCode, minPrice, maxPrice, branchId, sortPrice } = query;
     const now = new Date();
 
     // Ràng buộc: Chiến dịch phải được phê duyệt và đang trong thời gian mở bán
@@ -437,7 +437,24 @@ export class VouchersService {
     }
 
     if (keyword) {
-      whereClause.OR = [
+      const lowerKeyword = keyword.toLowerCase();
+      const mappedCategories: string[] = [];
+
+      // Keyword to Category Mapping (Semantic search approximation)
+      if (['đồ ăn', 'ăn uống', 'ẩm thực', 'nhà hàng', 'quán ăn', 'cafe', 'trà sữa', 'buffet', 'lẩu', 'nướng'].some(w => lowerKeyword.includes(w))) {
+        mappedCategories.push('Food & Beverage', 'FOOD_DRINK');
+      }
+      if (['spa', 'làm đẹp', 'cắt tóc', 'massage', 'skincare', 'nail', 'gội đầu'].some(w => lowerKeyword.includes(w))) {
+        mappedCategories.push('Beauty & Spa');
+      }
+      if (['mua sắm', 'quần áo', 'giày dép', 'thời trang', 'siêu thị', 'thực phẩm'].some(w => lowerKeyword.includes(w))) {
+        mappedCategories.push('Shopping');
+      }
+      if (['giải trí', 'xem phim', 'vui chơi', 'du lịch', 'khách sạn', 'vé'].some(w => lowerKeyword.includes(w))) {
+        mappedCategories.push('Entertainment');
+      }
+
+      const searchConditions: any[] = [
         { title: { contains: keyword, mode: 'insensitive' } },
         { description: { contains: keyword, mode: 'insensitive' } },
         { termsAndConditions: { contains: keyword, mode: 'insensitive' } },
@@ -449,6 +466,12 @@ export class VouchersService {
           },
         },
       ];
+
+      if (mappedCategories.length > 0) {
+        searchConditions.push({ category: { in: mappedCategories } });
+      }
+
+      whereClause.OR = searchConditions;
     }
 
     if (branchId) {
@@ -458,6 +481,12 @@ export class VouchersService {
         },
       };
     }
+
+    const orderByClause: any[] = [];
+    if (sortPrice) {
+      orderByClause.push({ salePrice: sortPrice });
+    }
+    orderByClause.push({ createdAt: 'desc' });
 
     const campaigns = await this.prisma.voucherCampaign.findMany({
       where: whereClause,
@@ -481,7 +510,7 @@ export class VouchersService {
           orderBy: { isPrimary: 'desc' },
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: orderByClause,
     });
 
     // Lọc bỏ những chiến dịch đã hết hàng trong kho (Đã bán >= Sức chứa)
