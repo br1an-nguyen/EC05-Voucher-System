@@ -6,6 +6,7 @@ import {
   IsUUID,
   MaxLength,
   Min,
+  IsIn,
 } from 'class-validator';
 
 export class PublicCatalogQueryDto {
@@ -34,4 +35,8 @@ export class PublicCatalogQueryDto {
   @IsOptional()
   @IsUUID('4')
   branchId?: string;
+
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  sortPrice?: 'asc' | 'desc';
 }

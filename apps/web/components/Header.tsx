@@ -28,7 +28,7 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
   const { user, logout } = useAuth();
   const router = useRouter();
   const [keyword, setKeyword] = useState(initialKeyword);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   
   const [cartItemCount, setCartItemCount] = useState(0);
@@ -56,9 +56,13 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
       apiRequest(`/vouchers?keyword=${encodeURIComponent(keyword)}`)
         .then((data: any[]) => {
           if (Array.isArray(data)) {
-            const titles = data.map(item => item.title);
-            const uniqueTitles = Array.from(new Set(titles)).slice(0, 5);
-            setSuggestions(uniqueTitles as string[]);
+            const uniqueMap = new Map();
+            data.forEach(item => {
+              if (!uniqueMap.has(item.title)) {
+                uniqueMap.set(item.title, item);
+              }
+            });
+            setSuggestions(Array.from(uniqueMap.values()).slice(0, 5));
           }
         })
         .catch(() => setSuggestions([]));
@@ -135,17 +139,32 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
 
           {/* Suggestions Dropdown */}
           {showSuggestions && suggestions.length > 0 && (
-            <div className="absolute top-full mt-2 w-full bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden z-50">
+            <div className="absolute top-full mt-2 w-full bg-white rounded-xl shadow-2xl border border-slate-100 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
               <ul>
                 {suggestions.map((s, i) => (
                   <li key={i}>
                     <button 
                       type="button"
-                      className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-3 border-b border-slate-50 last:border-0"
-                      onClick={() => handleSuggestionClick(s)}
+                      className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors flex items-center gap-3 border-b border-slate-50 last:border-0"
+                      onClick={() => handleSuggestionClick(s.title)}
                     >
-                      <Search className="h-4 w-4 text-slate-400 shrink-0" />
-                      <span className="line-clamp-1">{s}</span>
+                      {s.thumbnail_url ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img src={s.thumbnail_url} alt={s.title} className="w-12 h-12 object-cover rounded-lg border border-slate-100 shrink-0 shadow-sm" />
+                      ) : (
+                        <div className="w-12 h-12 bg-slate-100 rounded-lg shrink-0 flex items-center justify-center border border-slate-200 shadow-sm">
+                          <Search className="h-5 w-5 text-slate-400" />
+                        </div>
+                      )}
+                      <div className="flex flex-col flex-1 overflow-hidden">
+                        <span className="line-clamp-1 text-sm font-semibold text-slate-800">{s.title}</span>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-primary font-bold text-xs">{Number(s.salePrice).toLocaleString('vi-VN')}đ</span>
+                          {s.originalPrice && s.originalPrice > s.salePrice && (
+                            <span className="text-slate-400 text-[10px] line-through">{Number(s.originalPrice).toLocaleString('vi-VN')}đ</span>
+                          )}
+                        </div>
+                      </div>
                     </button>
                   </li>
                 ))}

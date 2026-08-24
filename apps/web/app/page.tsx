@@ -6,8 +6,9 @@ import Header from '../components/Header';
 import HeroBanner from '../components/HeroBanner';
 import FilterSidebar from '../components/FilterSidebar';
 import VoucherCard from '../components/VoucherCard';
-import { ShieldAlert, Ticket, Grid } from 'lucide-react';
+import { ShieldAlert, Ticket, Grid, ArrowUpNarrowWide, ArrowDownWideNarrow } from 'lucide-react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { useRef } from 'react';
 
 export default function HomePage() {
   const router = useRouter();
@@ -20,9 +21,14 @@ export default function HomePage() {
   const [keyword, setKeyword] = useState(searchParams.get('keyword') || '');
   const [category, setCategory] = useState(searchParams.get('category') || '');
   const [maxPrice, setMaxPrice] = useState('');
+  const [sortPrice, setSortPrice] = useState<'asc' | 'desc' | ''>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  
+  const fetchIdRef = useRef(0);
 
-  const fetchCatalog = useCallback(async (overrides?: { kw?: string, cat?: string, maxP?: string }) => {
+  const fetchCatalog = useCallback(async (overrides?: { kw?: string, cat?: string, maxP?: string, sortP?: string }) => {
+    const currentFetchId = ++fetchIdRef.current;
+    
     setLoading(true);
     setErrorMsg(null);
     try {
@@ -31,26 +37,38 @@ export default function HomePage() {
       const currentKeyword = overrides?.kw !== undefined ? overrides.kw : keyword;
       const currentCategory = overrides?.cat !== undefined ? overrides.cat : category;
       const currentMaxPrice = overrides?.maxP !== undefined ? overrides.maxP : maxPrice;
+      const currentSortPrice = overrides?.sortP !== undefined ? overrides.sortP : sortPrice;
       
       if (currentKeyword) params.append('keyword', currentKeyword);
       if (currentCategory) params.append('category', currentCategory);
-      if (currentMaxPrice) params.append('maxPrice', currentMaxPrice);
+      if (currentSortPrice) params.append('sortPrice', currentSortPrice);
+      if (currentMaxPrice) {
+        const cleanPrice = currentMaxPrice.replace(/\D/g, '');
+        if (cleanPrice) params.append('maxPrice', cleanPrice);
+      }
 
       const queryString = params.toString();
       const url = `/vouchers${queryString ? `?${queryString}` : ''}`;
       
       const data = await apiRequest(url);
+      
+      // Ignore if a newer request has been made
+      if (currentFetchId !== fetchIdRef.current) return;
+      
       setCampaigns(data);
     } catch (err: any) {
+      if (currentFetchId !== fetchIdRef.current) return;
       setErrorMsg(err.message || 'Không thể tải danh sách voucher.');
     } finally {
-      setLoading(false);
+      if (currentFetchId === fetchIdRef.current) {
+        setLoading(false);
+      }
     }
-  }, [keyword, category, maxPrice]);
+  }, [keyword, category, maxPrice, sortPrice]);
 
   useEffect(() => {
     fetchCatalog();
-  }, [category, fetchCatalog]);
+  }, [category, sortPrice, fetchCatalog]);
 
   const scrollToProducts = () => {
     document.getElementById('product-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -72,14 +90,24 @@ export default function HomePage() {
     scrollToProducts();
   };
 
+  const handleQuickPriceFilter = (price: string) => {
+    fetchCatalog({ maxP: price.replace(/\D/g, '') });
+    scrollToProducts();
+  };
+
   const handleClearFilters = () => {
     setKeyword('');
     setCategory('');
     setMaxPrice('');
+    setSortPrice('');
     router.push('/', { scroll: false });
     
-    fetchCatalog({ kw: '', cat: '', maxP: '' });
+    fetchCatalog({ kw: '', cat: '', maxP: '', sortP: '' });
     setTimeout(scrollToProducts, 50);
+  };
+
+  const handleSortChange = (newSort: 'asc' | 'desc' | '') => {
+    setSortPrice(newSort);
   };
 
   return (
@@ -102,21 +130,60 @@ export default function HomePage() {
             setMaxPrice={setMaxPrice}
             onFilter={handleSidebarFilter}
             onClear={handleClearFilters}
+            onQuickPrice={handleQuickPriceFilter}
           />
         </div>
 
         {/* Content Area */}
         <div className="lg:col-span-3 space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-200 pb-3 gap-3">
             <div className="flex items-center gap-2">
               <Grid className="h-6 w-6 text-primary" />
               <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">
                 Gợi ý cho bạn
               </h2>
             </div>
-            <span className="text-sm font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
-              {campaigns.length} kết quả
-            </span>
+            
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-1 bg-slate-100/70 p-1 rounded-xl border border-slate-200">
+                <button
+                  onClick={() => handleSortChange('')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                    sortPrice === '' 
+                      ? 'bg-white shadow-sm text-slate-800' 
+                      : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                  }`}
+                >
+                  Phổ biến
+                </button>
+                <button
+                  onClick={() => handleSortChange('asc')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                    sortPrice === 'asc' 
+                      ? 'bg-primary text-white shadow-sm' 
+                      : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                  }`}
+                >
+                  <ArrowUpNarrowWide className="w-3.5 h-3.5" />
+                  Giá thấp
+                </button>
+                <button
+                  onClick={() => handleSortChange('desc')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                    sortPrice === 'desc' 
+                      ? 'bg-primary text-white shadow-sm' 
+                      : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                  }`}
+                >
+                  <ArrowDownWideNarrow className="w-3.5 h-3.5" />
+                  Giá cao
+                </button>
+              </div>
+
+              <span className="hidden sm:inline-flex items-center justify-center text-xs font-bold text-slate-500 bg-slate-100 px-3 py-2 rounded-xl shrink-0 border border-slate-200">
+                {campaigns.length} kết quả
+              </span>
+            </div>
           </div>
 
           {errorMsg && (

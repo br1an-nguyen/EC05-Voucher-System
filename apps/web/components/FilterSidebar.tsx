@@ -12,6 +12,7 @@ export interface FilterSidebarProps {
   setMaxPrice: (val: string) => void;
   onFilter: () => void;
   onClear: () => void;
+  onQuickPrice?: (val: string) => void;
 }
 
 const categories = [
@@ -31,8 +32,23 @@ export default function FilterSidebar({
   maxPrice,
   setMaxPrice,
   onFilter,
-  onClear
+  onClear,
+  onQuickPrice
 }: FilterSidebarProps) {
+  const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawValue = e.target.value.replace(/\D/g, '');
+    if (!rawValue) {
+      setMaxPrice('');
+      return;
+    }
+    setMaxPrice(Number(rawValue).toLocaleString('vi-VN'));
+  };
+
+  const quickPrices = [
+    { label: '< 100K', value: '100.000' },
+    { label: '< 200K', value: '200.000' },
+    { label: '< 500K', value: '500.000' },
+  ];
   
   return (
     <aside className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm space-y-6">
@@ -46,11 +62,34 @@ export default function FilterSidebar({
       {/* Khoảng giá */}
       <div className="space-y-3">
         <label className="block text-xs font-bold text-slate-700">Khoảng giá</label>
+        
+        <div className="flex flex-wrap gap-2">
+          {quickPrices.map((qp) => (
+            <button
+              key={qp.value}
+              onClick={() => {
+                setMaxPrice(qp.value);
+                if (onQuickPrice) onQuickPrice(qp.value);
+              }}
+              className={`px-2.5 py-1.5 text-[11px] font-bold rounded-lg border transition-all ${
+                maxPrice === qp.value
+                  ? 'bg-primary text-white border-primary shadow-sm'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-primary hover:text-primary'
+              }`}
+            >
+              {qp.label}
+            </button>
+          ))}
+        </div>
+
         <div className="flex items-center gap-2">
           <input
-            type="number"
+            type="text"
             value={maxPrice}
-            onChange={(e) => setMaxPrice(e.target.value)}
+            onChange={handlePriceChange}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onFilter();
+            }}
             placeholder="Tối đa (đ)"
             className="w-full bg-slate-50 border border-slate-200 focus:border-primary/50 focus:bg-white rounded-xl px-3 py-2 text-sm outline-none transition-all"
           />
