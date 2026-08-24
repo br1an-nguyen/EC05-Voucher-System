@@ -16,6 +16,25 @@ const splitIds = (value: string): string[] =>
 const addDays = (value: Date, days: number): Date =>
   new Date(value.getTime() + days * 24 * 60 * 60 * 1000);
 
+const DEMO_SALE_START = new Date('2026-09-20T00:00:00+07:00');
+const DEMO_SALE_START_DAY_COUNT = 11;
+const DEMO_USAGE_VALIDITY_DAYS = [7, 30, 45] as const;
+
+export const createDemoCampaignSchedule = (
+  externalId: string,
+): { saleStart: Date; saleEnd: Date; usageValidityDays: number } => {
+  const seed = createHash('sha256').update(`catalog-schedule:${externalId}`).digest();
+  const saleStart = addDays(
+    DEMO_SALE_START,
+    seed.readUInt16BE(0) % DEMO_SALE_START_DAY_COUNT,
+  );
+  const saleEnd = addDays(saleStart, 365);
+  const usageValidityDays =
+    DEMO_USAGE_VALIDITY_DAYS[seed.readUInt16BE(2) % DEMO_USAGE_VALIDITY_DAYS.length];
+
+  return { saleStart, saleEnd, usageValidityDays };
+};
+
 const contentHash = (row: Record<string, string>): string =>
   createHash('sha256')
     .update(
@@ -80,10 +99,9 @@ export async function normalizeCatalogCsv(inputDirectory: string): Promise<void>
   }
 
   const campaignRows = products.map((product) => {
-    const crawledAt = new Date(product.crawled_at);
-    const saleStart = addDays(crawledAt, -1);
-    const saleEnd = addDays(crawledAt, 365);
-    const validityDays = Number(product.usage_validity_days || 90);
+    const { saleStart, saleEnd, usageValidityDays } = createDemoCampaignSchedule(
+      product.external_id,
+    );
     const primaryCategoryId = splitIds(product.category_external_ids)[0];
     const legacyCategoryCode =
       GIFTPOP_CATEGORIES[primaryCategoryId]?.parentCode ?? 'OTHER';
@@ -100,11 +118,11 @@ export async function normalizeCatalogCsv(inputDirectory: string): Promise<void>
       currency: product.currency,
       thumbnail_url: product.thumbnail_url,
       source_url: product.source_url,
-      usage_validity_days: validityDays,
+      usage_validity_days: usageValidityDays,
       sale_start_time: saleStart.toISOString(),
       sale_end_time: saleEnd.toISOString(),
       usage_start_time: saleStart.toISOString(),
-      usage_end_time: addDays(saleEnd, validityDays).toISOString(),
+      usage_end_time: addDays(saleEnd, usageValidityDays).toISOString(),
       capacity: 100,
       status: 'APPROVED',
       source_content_hash: contentHash(product),

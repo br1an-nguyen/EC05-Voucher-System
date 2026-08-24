@@ -1,0 +1,15 @@
+{
+  "mode": "dry-run",
+  "source": "giftpop.vn",
+  "campaigns": {
+    "inserted": 0,
+    "updated": 0,
+    "unchanged": 35,
+    "rejected": 0
+  },
+  "brands": 18,
+  "categories": 20,
+  "branches": 0,
+  "orphanBranchesRemoved": 0,
+  "completedAt": "2026-08-19T14:46:27.326Z"
+}

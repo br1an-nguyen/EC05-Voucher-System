@@ -175,22 +175,24 @@ export async function crawlGiftpop(options: CrawlOptions): Promise<void> {
       branchUrl.searchParams.set('goods_id', parsed.branchRequest.goodsId);
 
       let branchCandidates: RawGiftpopBranch[] = [];
-      try {
-        const branchHtml = await fetcher.text(branchUrl.toString());
-        branchCandidates = parseGiftpopBranchHtml(
-          branchHtml,
-          parsed.branchRequest.storeCode,
-          sourceUrl,
-          crawledAt,
-        );
-      } catch (error) {
-        errors.push({
-          source_url: sourceUrl,
-          stage: 'branches',
-          attempts: MAX_ATTEMPTS,
-          error_message: error instanceof Error ? error.message : String(error),
-          occurred_at: new Date().toISOString(),
-        });
+      if (maxBranches > 0) {
+        try {
+          const branchHtml = await fetcher.text(branchUrl.toString());
+          branchCandidates = parseGiftpopBranchHtml(
+            branchHtml,
+            parsed.branchRequest.storeCode,
+            sourceUrl,
+            crawledAt,
+          );
+        } catch (error) {
+          errors.push({
+            source_url: sourceUrl,
+            stage: 'branches',
+            attempts: MAX_ATTEMPTS,
+            error_message: error instanceof Error ? error.message : String(error),
+            occurred_at: new Date().toISOString(),
+          });
+        }
       }
 
       parsedPages.push({
