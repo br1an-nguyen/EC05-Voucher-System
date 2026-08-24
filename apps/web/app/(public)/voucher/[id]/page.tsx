@@ -3,8 +3,10 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { apiRequest } from '../../../../lib/api';
+import { getErrorMessage } from '../../../../lib/errors';
 import { useAuth } from '../../../../context/AuthContext';
 import Link from 'next/link';
+import Image from 'next/image';
 import { 
   ArrowLeft, 
   MapPin, 
@@ -40,7 +42,11 @@ interface VoucherCampaign {
   campaignId: string;
   title: string;
   description: string | null;
+  termsAndConditions: string | null;
   category: string | null;
+  thumbnailUrl: string | null;
+  sourceUrl: string | null;
+  usageValidityDays: number | null;
   originalPrice: number;
   salePrice: number;
   capacity: number;
@@ -53,6 +59,14 @@ interface VoucherCampaign {
   isMultiUse: boolean;
   maxUsesPerCode: number | null;
   partner: Partner;
+  primaryBrand: {
+    displayName: string;
+    logoUrl: string | null;
+  } | null;
+  primaryCategory: {
+    nameVi: string;
+    parent: { nameVi: string } | null;
+  } | null;
   campaignBranches: CampaignBranch[];
 }
 
@@ -71,6 +85,11 @@ interface Review {
 interface ReviewStats {
   totalCount: number;
   averageRating: number;
+}
+
+interface ReviewsResponse {
+  reviews: Review[];
+  statistics: ReviewStats;
 }
 
 export default function VoucherDetailPage() {
@@ -97,15 +116,15 @@ export default function VoucherDetailPage() {
   useEffect(() => {
     async function loadCampaignAndReviews() {
       try {
-        const campaignData = await apiRequest(`/vouchers/${campaignId}`);
+        const campaignData = await apiRequest<VoucherCampaign>(`/vouchers/${campaignId}`);
         setCampaign(campaignData);
         
         // Tải danh sách đánh giá của campaign
-        const reviewsData = await apiRequest(`/reviews/campaign/${campaignId}`);
+        const reviewsData = await apiRequest<ReviewsResponse>(`/reviews/campaign/${campaignId}`);
         setReviews(reviewsData.reviews);
         setReviewStats(reviewsData.statistics);
-      } catch (err: any) {
-        setErrorMsg(err.message || 'Không thể tải thông tin chi tiết voucher.');
+      } catch (error: unknown) {
+        setErrorMsg(getErrorMessage(error, 'Không thể tải thông tin chi tiết voucher.'));
       } finally {
         setLoading(false);
       }
@@ -122,7 +141,7 @@ export default function VoucherDetailPage() {
     setReviewSuccess(false);
 
     try {
-      await apiRequest('/reviews', {
+      await apiRequest<void>('/reviews', {
         method: 'POST',
         body: JSON.stringify({
           campaignId,
@@ -135,11 +154,11 @@ export default function VoucherDetailPage() {
       setUserRating(5);
       
       // Tải lại danh sách đánh giá mới nhất
-      const reviewsData = await apiRequest(`/reviews/campaign/${campaignId}`);
+      const reviewsData = await apiRequest<ReviewsResponse>(`/reviews/campaign/${campaignId}`);
       setReviews(reviewsData.reviews);
       setReviewStats(reviewsData.statistics);
-    } catch (err: any) {
-      setReviewError(err.message || 'Gửi đánh giá thất bại. Bạn chỉ có thể đánh giá sau khi đã mua và quét đổi mã voucher thành công.');
+    } catch (error: unknown) {
+      setReviewError(getErrorMessage(error, 'Gửi đánh giá thất bại. Bạn chỉ có thể đánh giá sau khi đã mua và quét đổi mã voucher thành công.'));
     } finally {
       setSubmittingReview(false);
     }
@@ -154,7 +173,7 @@ export default function VoucherDetailPage() {
 
     setErrorMsg(null);
     try {
-      await apiRequest('/cart/items', {
+      await apiRequest<void>('/cart/items', {
         method: 'POST',
         body: JSON.stringify({
           campaignId,
@@ -165,8 +184,8 @@ export default function VoucherDetailPage() {
       setTimeout(() => {
         router.push('/cart');
       }, 1200);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Không thể thêm voucher vào giỏ hàng.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Không thể thêm voucher vào giỏ hàng.'));
     }
   };
 
@@ -220,11 +239,31 @@ export default function VoucherDetailPage() {
           {/* CỘT TRÁI: CHI TIẾT VOUCHER */}
           <div className="lg:col-span-2 space-y-6">
             <div className="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-5">
+              {campaign.thumbnailUrl && (
+                <div className="relative h-64 overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
+                  <Image
+                    src={campaign.thumbnailUrl}
+                    alt=""
+                    fill
+                    sizes="(max-width: 1024px) 100vw, 66vw"
+                    unoptimized
+                    className="scale-110 object-cover opacity-20 blur-lg"
+                  />
+                  <Image
+                    src={campaign.thumbnailUrl}
+                    alt={campaign.title}
+                    fill
+                    sizes="(max-width: 1024px) 100vw, 66vw"
+                    unoptimized
+                    className="object-contain p-2"
+                  />
+                </div>
+              )}
               
               {/* Badge & Title */}
               <div>
                 <span className="inline-block text-[10px] font-bold text-primary bg-primary/5 rounded px-2 py-0.5 uppercase tracking-wide">
-                  {campaign.category || 'Ẩm thực'}
+                  {campaign.primaryCategory?.nameVi || campaign.category || 'Khác'}
                 </span>
                 <h1 className="text-xl sm:text-2xl font-extrabold text-foreground mt-2 leading-tight">
                   {campaign.title}
@@ -232,16 +271,35 @@ export default function VoucherDetailPage() {
                 
                 <div className="flex items-center gap-1.5 text-xs text-muted mt-2">
                   <Store className="h-4 w-4 text-primary shrink-0" />
-                  <span className="font-semibold text-foreground">{campaign.partner.companyName}</span>
+                  <span className="font-semibold text-foreground">
+                    {campaign.primaryBrand?.displayName || campaign.partner.companyName}
+                  </span>
                 </div>
               </div>
 
-              {/* Mô tả & Quy chế */}
+              {/* Nội dung gốc từ catalog */}
               <div className="border-t border-border pt-4 space-y-3">
-                <h3 className="text-sm font-bold text-foreground">Mô tả chương trình & Điều kiện áp dụng</h3>
+                <h3 className="text-sm font-bold text-foreground">Thông tin sản phẩm</h3>
                 <div className="text-xs text-muted leading-relaxed whitespace-pre-line bg-slate-50 border border-slate-100 p-4 rounded-xl">
-                  {campaign.description || 'Không có mô tả chi tiết cho chương trình khuyến mãi này.'}
+                  {campaign.description || 'Chưa có thông tin chi tiết cho sản phẩm này.'}
                 </div>
+              </div>
+
+              <div className="border-t border-border pt-4 space-y-3">
+                <h3 className="text-sm font-bold text-foreground">Chú ý & Điều kiện áp dụng</h3>
+                <div className="text-xs text-muted leading-relaxed whitespace-pre-line bg-amber-50/50 border border-amber-100 p-4 rounded-xl">
+                  {campaign.termsAndConditions || 'Chưa có điều kiện áp dụng cho sản phẩm này.'}
+                </div>
+                {campaign.sourceUrl && (
+                  <a
+                    href={campaign.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex text-[11px] font-semibold text-primary hover:underline"
+                  >
+                    Xem thông tin cập nhật tại nguồn Giftpop
+                  </a>
+                )}
               </div>
 
               {/* Quy chế quét */}
@@ -438,7 +496,11 @@ export default function VoucherDetailPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Clock className="h-4 w-4 text-primary shrink-0" />
-                  <span>Sử dụng đến: {new Date(campaign.usageEndTime).toLocaleDateString('vi-VN')}</span>
+                  <span>
+                    {campaign.usageValidityDays
+                      ? `Hạn dùng: ${campaign.usageValidityDays} ngày kể từ ngày mua`
+                      : `Sử dụng đến: ${new Date(campaign.usageEndTime).toLocaleDateString('vi-VN')}`}
+                  </span>
                 </div>
               </div>
 

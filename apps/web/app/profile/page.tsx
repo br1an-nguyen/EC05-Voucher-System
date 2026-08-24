@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../lib/api';
+import { getErrorMessage } from '../../lib/errors';
 import { useAuth } from '../../context/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -14,7 +15,6 @@ import {
   EyeOff, 
   AlertCircle, 
   CheckCircle,
-  ShieldCheck,
   ChevronRight,
   ArrowLeft,
   Trash2
@@ -22,6 +22,17 @@ import {
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '../../components/ui/alert-dialog';
 
 const profileSchema = z.object({
   fullName: z.string().min(2, 'Họ và tên phải dài ít nhất 2 ký tự.').optional().or(z.literal('')),
@@ -48,6 +59,19 @@ const profileSchema = z.object({
 });
 
 type ProfileFormInput = z.infer<typeof profileSchema>;
+type UserRole = 'CUSTOMER' | 'PARTNER' | 'PARTNER_STAFF' | 'ADMIN';
+
+interface ProfileUpdateBody {
+  fullName?: string;
+  phone?: string | null;
+  currentPassword?: string;
+  newPassword?: string;
+}
+
+interface UpdatedUserProfile {
+  fullName: string | null;
+  phone: string | null;
+}
 
 export default function UserProfilePage() {
   const { user, logout, loading: authLoading, setUser } = useAuth();
@@ -65,7 +89,6 @@ export default function UserProfilePage() {
   const {
     register,
     handleSubmit,
-    reset,
     setValue,
     formState: { errors },
   } = useForm<ProfileFormInput>({
@@ -89,7 +112,7 @@ export default function UserProfilePage() {
         setValue('phone', user.phone || '');
       }
     }
-  }, [user, authLoading]);
+  }, [user, authLoading, router, setValue]);
 
   const onSubmit = async (data: ProfileFormInput) => {
     setSubmitting(true);
@@ -97,7 +120,7 @@ export default function UserProfilePage() {
     setSuccessMsg(null);
 
     try {
-      const body: any = {};
+      const body: ProfileUpdateBody = {};
       
       // Only customer can edit name
       if (user?.role === 'CUSTOMER' && data.fullName) {
@@ -113,7 +136,7 @@ export default function UserProfilePage() {
         body.newPassword = data.newPassword;
       }
 
-      const updatedUser = await apiRequest('/users/profile', {
+      const updatedUser = await apiRequest<UpdatedUserProfile>('/users/profile', {
         method: 'PATCH',
         body: JSON.stringify(body),
       });
@@ -121,12 +144,14 @@ export default function UserProfilePage() {
       // Update auth context state
       const localUserData = localStorage.getItem('user');
       if (localUserData) {
-        const parsed = JSON.parse(localUserData);
+        const parsed = JSON.parse(localUserData) as Record<string, unknown>;
         parsed.fullName = updatedUser.fullName;
         parsed.phone = updatedUser.phone;
         localStorage.setItem('user', JSON.stringify(parsed));
       }
-      setUser({ ...user, ...updatedUser });
+      if (user) {
+        setUser({ ...user, ...updatedUser });
+      }
 
       setSuccessMsg('Cập nhật thông tin tài khoản thành công!');
       // Reset password fields
@@ -136,28 +161,23 @@ export default function UserProfilePage() {
       setShowCurrent(false);
       setShowNew(false);
       setShowConfirmNew(false);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Cập nhật thông tin thất bại.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Cập nhật thông tin thất bại.'));
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleDeleteAccount = async () => {
-    const confirm = window.confirm(
-      'CẢNH BÁO NGUY HIỂM: Bạn có chắc chắn muốn xóa vĩnh viễn tài khoản Khách hàng này?\nToàn bộ giỏ hàng, đơn hàng và ví voucher của bạn sẽ bị hủy vĩnh viễn và không thể khôi phục.'
-    );
-    if (!confirm) return;
-
     setSubmitting(true);
     setErrorMsg(null);
     try {
-      await apiRequest('/users/profile', { method: 'DELETE' });
+      await apiRequest<void>('/users/profile', { method: 'DELETE' });
       alert('Tài khoản của bạn đã được xóa thành công. Cảm ơn bạn đã sử dụng dịch vụ của chúng tôi!');
       logout();
       router.push('/');
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Xóa tài khoản thất bại.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Xóa tài khoản thất bại.'));
       setSubmitting(false);
     }
   };
@@ -173,7 +193,7 @@ export default function UserProfilePage() {
   if (!user) return null;
 
   // Role labels
-  const roleLabels: any = {
+  const roleLabels: Record<UserRole, string> = {
     CUSTOMER: 'Khách hàng',
     PARTNER: 'Đối tác doanh nghiệp',
     PARTNER_STAFF: 'Nhân viên quét mã đối tác',
@@ -396,13 +416,37 @@ export default function UserProfilePage() {
                   Nếu bạn quyết định không sử dụng dịch vụ của chúng tôi nữa, bạn có thể tự xóa tài khoản của mình. 
                   Mọi thông tin cá nhân và tài sản mua sắm của bạn sẽ được xóa vĩnh viễn khỏi cơ sở dữ liệu.
                 </p>
-                <button
-                  onClick={handleDeleteAccount}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600 hover:text-red-700 hover:underline"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Yêu cầu xóa tài khoản của tôi
-                </button>
+                <AlertDialog>
+                  <AlertDialogTrigger
+                    render={
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600 hover:text-red-700 hover:underline"
+                      />
+                    }
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Yêu cầu xóa tài khoản của tôi
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Xóa vĩnh viễn tài khoản?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Toàn bộ giỏ hàng, đơn hàng và ví voucher của bạn sẽ bị xóa vĩnh viễn.
+                        Thao tác này không thể hoàn tác.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel disabled={submitting}>Giữ lại tài khoản</AlertDialogCancel>
+                      <AlertDialogAction
+                        disabled={submitting}
+                        onClick={() => void handleDeleteAccount()}
+                      >
+                        {submitting ? 'Đang xóa...' : 'Xóa tài khoản'}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             </div>
           )}

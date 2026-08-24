@@ -2,24 +2,18 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../../../lib/api';
+import { getErrorMessage } from '../../../../lib/errors';
 import { useAuth } from '../../../../context/AuthContext';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { 
   Shield, 
   Calendar, 
   User, 
-  FileText, 
   ChevronRight, 
   AlertCircle,
   Database,
   Tag
 } from 'lucide-react';
-
-interface AdminSnapshot {
-  fullName: string | null;
-  email: string | null;
-}
 
 interface AuditLog {
   logId: string;
@@ -44,10 +38,10 @@ export default function AdminAuditLogsPage() {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const data = await apiRequest('/admin/audit-logs');
+      const data = await apiRequest<AuditLog[]>('/admin/audit-logs');
       setLogs(data);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Không thể tải nhật ký hoạt động hệ thống.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Không thể tải nhật ký hoạt động hệ thống.'));
     } finally {
       setLoading(false);
     }
@@ -58,10 +52,12 @@ export default function AdminAuditLogsPage() {
       if (!user || user.role !== 'ADMIN') {
         router.push('/login?redirect=/admin/audit-logs');
       } else {
-        fetchLogs();
+        queueMicrotask(() => {
+          void fetchLogs();
+        });
       }
     }
-  }, [user, authLoading]);
+  }, [user, authLoading, router]);
 
   if (authLoading || loading) {
     return (

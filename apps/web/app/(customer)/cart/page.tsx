@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../../lib/api';
+import { getErrorMessage } from '../../../lib/errors';
 import { useAuth } from '../../../context/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -10,7 +11,6 @@ import {
   Trash2, 
   ArrowRight, 
   ArrowLeft, 
-  Ticket, 
   ShieldAlert, 
   Store,
   Info,
@@ -53,10 +53,10 @@ export default function CartPage() {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const data = await apiRequest('/cart');
+      const data = await apiRequest<CartItem[]>('/cart');
       setCartItems(data);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Không thể tải giỏ hàng.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Không thể tải giỏ hàng.'));
     } finally {
       setLoading(false);
     }
@@ -68,17 +68,19 @@ export default function CartPage() {
         // Chuyển hướng về đăng nhập nếu chưa đăng nhập
         router.push('/login?redirect=/cart');
       } else {
-        fetchCart();
+        queueMicrotask(() => {
+          void fetchCart();
+        });
       }
     }
-  }, [user, authLoading]);
+  }, [user, authLoading, router]);
 
   // Cập nhật số lượng vật phẩm trong giỏ
   const handleUpdateQty = async (cartItemId: string, newQty: number, maxQty: number) => {
     if (newQty < 1 || newQty > maxQty) return;
     setErrorMsg(null);
     try {
-      await apiRequest(`/cart/items/${cartItemId}`, {
+      await apiRequest<void>(`/cart/items/${cartItemId}`, {
         method: 'PATCH',
         body: JSON.stringify({ quantity: newQty }),
       });
@@ -88,8 +90,8 @@ export default function CartPage() {
           item.cartItemId === cartItemId ? { ...item, quantity: newQty } : item
         )
       );
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Không thể cập nhật số lượng.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Không thể cập nhật số lượng.'));
     }
   };
 
@@ -97,12 +99,12 @@ export default function CartPage() {
   const handleDeleteItem = async (cartItemId: string) => {
     setErrorMsg(null);
     try {
-      await apiRequest(`/cart/items/${cartItemId}`, {
+      await apiRequest<void>(`/cart/items/${cartItemId}`, {
         method: 'DELETE',
       });
       setCartItems(prev => prev.filter(item => item.cartItemId !== cartItemId));
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Không thể xóa sản phẩm khỏi giỏ hàng.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Không thể xóa sản phẩm khỏi giỏ hàng.'));
     }
   };
 

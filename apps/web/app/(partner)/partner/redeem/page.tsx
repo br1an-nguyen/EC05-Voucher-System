@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { apiRequest } from '../../../../lib/api';
+import { getErrorMessage } from '../../../../lib/errors';
 import { useAuth } from '../../../../context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { 
@@ -9,16 +10,19 @@ import {
   Store, 
   CheckCircle, 
   XCircle, 
-  Info,
-  Calendar,
-  Ticket,
   ChevronRight,
-  User,
   ShieldCheck,
   Camera,
   Keyboard,
   AlertTriangle
 } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../../../components/ui/select';
 
 interface Branch {
   branchId: string;
@@ -45,6 +49,18 @@ interface VerifiedVoucher {
   };
 }
 
+interface RedeemResult {
+  usageId: string;
+  usedAt: string;
+  branch: {
+    name: string;
+  };
+}
+
+interface ScannerInstance {
+  clear: () => Promise<void>;
+}
+
 export default function PartnerRedeemPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -59,7 +75,7 @@ export default function PartnerRedeemPage() {
   const [selectedBranchId, setSelectedBranchId] = useState('');
   
   // Redeem result alerts
-  const [redeemResult, setRedeemResult] = useState<any | null>(null);
+  const [redeemResult, setRedeemResult] = useState<RedeemResult | null>(null);
 
   // Scan Mode: 'manual' | 'camera'
   const [scanMode, setScanMode] = useState<'manual' | 'camera'>('manual');
@@ -68,14 +84,11 @@ export default function PartnerRedeemPage() {
   const [verifiedVoucher, setVerifiedVoucher] = useState<VerifiedVoucher | null>(null);
   const [verifying, setVerifying] = useState(false);
 
-  // Camera scanner references
-  const scannerRef = useRef<any>(null);
-
   // Lấy danh sách chi nhánh
-  const loadBranches = async () => {
+  const loadBranches = useCallback(async () => {
     setLoadingBranches(true);
     try {
-      const data = await apiRequest('/partners/branches');
+      const data = await apiRequest<Branch[]>('/partners/branches');
       setBranches(data);
       if (data.length > 0) {
         const staffBranchId = user?.branchId;
@@ -85,26 +98,51 @@ export default function PartnerRedeemPage() {
           setSelectedBranchId(data[0].branchId);
         }
       }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Không thể tải danh sách chi nhánh.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Không thể tải danh sách chi nhánh.'));
     } finally {
       setLoadingBranches(false);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
     if (!authLoading) {
       if (!user || (user.role !== 'PARTNER' && user.role !== 'PARTNER_STAFF' && user.role !== 'ADMIN')) {
         router.push('/login?redirect=/partner/redeem');
       } else {
-        loadBranches();
+        queueMicrotask(() => {
+          void loadBranches();
+        });
       }
     }
-  }, [user, authLoading]);
+  }, [user, authLoading, router, loadBranches]);
+
+  const handleCodeLookup = useCallback(async (code: string) => {
+    if (!code.trim()) {
+      setErrorMsg('Vui lòng cung cấp mã voucher.');
+      return;
+    }
+
+    setVerifying(true);
+    setErrorMsg(null);
+    setRedeemResult(null);
+
+    try {
+      const data = await apiRequest<VerifiedVoucher>(`/vouchers/redeem/verify/${code.trim().toUpperCase()}`);
+      setVerifiedVoucher(data);
+      setUniqueCode(code.trim().toUpperCase());
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Mã voucher không hợp lệ hoặc thuộc đối tác khác.'));
+      setScanMode('manual');
+    } finally {
+      setVerifying(false);
+    }
+  }, []);
 
   // Khởi động/Tắt camera scanner của html5-qrcode
   useEffect(() => {
-    let activeScanner: any = null;
+    let activeScanner: ScannerInstance | null = null;
+    let disposed = false;
 
     if (scanMode === 'camera' && !verifiedVoucher) {
       // Load dynamically to avoid SSR document/window undefined issues
@@ -127,48 +165,28 @@ export default function PartnerRedeemPage() {
               handleCodeLookup(decodedText);
             }
           },
-          (errorMessage) => {
+          () => {
             // Bỏ qua lỗi quét liên tục khi camera đang bắt nét
           }
         );
 
-        scannerRef.current = scanner;
+        if (disposed) {
+          void scanner.clear();
+          return;
+        }
         activeScanner = scanner;
-      }).catch(err => {
-        console.error('Failed to load html5-qrcode scanner', err);
+      }).catch((error: unknown) => {
+        console.error('Failed to load html5-qrcode scanner', error);
       });
     }
 
     return () => {
+      disposed = true;
       if (activeScanner) {
-        activeScanner.clear().catch((e: any) => console.error('Clear scanner error', e));
+        activeScanner.clear().catch((error: unknown) => console.error('Clear scanner error', error));
       }
     };
-  }, [scanMode, verifiedVoucher]);
-
-  // Thực hiện Lookup tra cứu thông tin mã
-  const handleCodeLookup = async (code: string) => {
-    if (!code.trim()) {
-      setErrorMsg('Vui lòng cung cấp mã voucher.');
-      return;
-    }
-
-    setVerifying(true);
-    setErrorMsg(null);
-    setRedeemResult(null);
-
-    try {
-      const data = await apiRequest(`/vouchers/redeem/verify/${code.trim().toUpperCase()}`);
-      setVerifiedVoucher(data);
-      // Reset input code
-      setUniqueCode(code.trim().toUpperCase());
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Mã voucher không hợp lệ hoặc thuộc đối tác khác.');
-      setScanMode('manual'); // Trả về nhập tay nếu có lỗi quét
-    } finally {
-      setVerifying(false);
-    }
-  };
+  }, [scanMode, verifiedVoucher, handleCodeLookup]);
 
   // Xác nhận Đổi Voucher (Redeem)
   const handleConfirmRedeem = async () => {
@@ -182,7 +200,7 @@ export default function PartnerRedeemPage() {
     setErrorMsg(null);
 
     try {
-      const result = await apiRequest('/vouchers/redeem', {
+      const result = await apiRequest<RedeemResult>('/vouchers/redeem', {
         method: 'POST',
         body: JSON.stringify({
           uniqueCode: verifiedVoucher.uniqueCode,
@@ -193,8 +211,8 @@ export default function PartnerRedeemPage() {
       setVerifiedVoucher(null); // Clear preview card
       setUniqueCode('');
       setScanMode('manual'); // Trả về nhập tay
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Xác thực đổi mã voucher thất bại.');
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Xác thực đổi mã voucher thất bại.'));
     } finally {
       setRedeeming(false);
     }
@@ -234,20 +252,24 @@ export default function PartnerRedeemPage() {
           <Store className="h-4 w-4 text-primary" />
           <h3 className="text-xs font-extrabold text-foreground uppercase tracking-wider">Chọn địa điểm quầy quét</h3>
         </div>
-        <div className="relative max-w-md">
-          <select
-            value={selectedBranchId}
-            onChange={(e) => setSelectedBranchId(e.target.value)}
+        <div className="max-w-md">
+          <Select
+            items={branches.map((branch) => ({ label: branch.name, value: branch.branchId }))}
+            value={selectedBranchId || null}
+            onValueChange={(value) => setSelectedBranchId(value ?? '')}
             disabled={isBranchSelectDisabled}
-            className="block w-full rounded-lg border border-border bg-card py-2 px-3 text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary text-xs appearance-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
           >
-            {branches.map((b) => (
-              <option key={b.branchId} value={b.branchId}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-          <Store className="absolute right-3 top-2.5 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+            <SelectTrigger aria-label="Chi nhánh thực hiện đổi mã" className="w-full text-xs">
+              <SelectValue placeholder="Chọn chi nhánh thực hiện đổi mã" />
+            </SelectTrigger>
+            <SelectContent align="start" alignItemWithTrigger={false}>
+              {branches.map((branch) => (
+                <SelectItem key={branch.branchId} value={branch.branchId}>
+                  {branch.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         {isBranchSelectDisabled && (
           <p className="text-[10px] text-muted">Vị trí được gán cố định theo chi nhánh trực thuộc của nhân viên.</p>
@@ -486,7 +508,7 @@ export default function PartnerRedeemPage() {
               </div>
               <div className="flex gap-2">
                 <span className="font-bold text-primary">3.</span>
-                <span>Nhấn nút "Xác nhận đổi" để lưu trữ kết quả sử dụng của voucher. Thao tác này không thể hoàn tác.</span>
+                <span>Nhấn nút &quot;Xác nhận đổi&quot; để lưu trữ kết quả sử dụng của voucher. Thao tác này không thể hoàn tác.</span>
               </div>
             </div>
           </div>

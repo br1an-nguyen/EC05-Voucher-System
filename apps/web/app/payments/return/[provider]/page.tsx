@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { apiRequest } from '../../../../lib/api';
+import { getErrorMessage } from '../../../../lib/errors';
 import Link from 'next/link';
 import { 
   CheckCircle, 
@@ -11,9 +12,23 @@ import {
   Home, 
   Ticket, 
   AlertTriangle,
-  Play,
-  ArrowRight
+  Play
 } from 'lucide-react';
+
+interface PaymentStatusResponse {
+  orderId: string;
+  status: 'PENDING' | 'SUCCEEDED' | 'FAILED';
+}
+
+interface PayPalCaptureResponse {
+  success: boolean;
+  message?: string;
+}
+
+interface VnPayResponse {
+  RspCode: string;
+  Message: string;
+}
 
 export default function PaymentReturnPage() {
   const params = useParams();
@@ -25,19 +40,50 @@ export default function PaymentReturnPage() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<'SUCCESS' | 'FAILED' | 'PENDING'>('PENDING');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [orderInfo, setOrderInfo] = useState<any | null>(null);
+  const [orderInfo, setOrderInfo] = useState<PaymentStatusResponse | null>(null);
   
   // Ref để tránh chạy React StrictMode call API 2 lần
   const initiated = useRef(false);
 
-  useEffect(() => {
-    if (initiated.current) return;
-    initiated.current = true;
-    
-    handlePaymentVerification();
+  const fetchPaymentStatus = useCallback(async (paymentId: string) => {
+    try {
+      const paymentDetails = await apiRequest<PaymentStatusResponse>(`/payments/${paymentId}/status`);
+      setOrderInfo(paymentDetails);
+    } catch (error: unknown) {
+      console.error('Không thể lấy chi tiết trạng thái đơn:', error);
+    }
   }, []);
 
-  const handlePaymentVerification = async () => {
+  const pollStripeStatus = useCallback((paymentId: string) => {
+    let attempts = 0;
+    const interval = window.setInterval(async () => {
+      attempts++;
+      try {
+        const res = await apiRequest<PaymentStatusResponse>(`/payments/${paymentId}/status`);
+        if (res.status === 'SUCCEEDED') {
+          setStatus('SUCCESS');
+          void fetchPaymentStatus(paymentId);
+          window.clearInterval(interval);
+          setLoading(false);
+        } else if (res.status === 'FAILED') {
+          setStatus('FAILED');
+          setErrorMsg('Giao dịch Stripe bị từ chối hoặc thất bại.');
+          window.clearInterval(interval);
+          setLoading(false);
+        } else if (attempts >= 5) {
+          setStatus('PENDING');
+          window.clearInterval(interval);
+          setLoading(false);
+        }
+      } catch {
+        window.clearInterval(interval);
+        setStatus('FAILED');
+        setLoading(false);
+      }
+    }, 2000);
+  }, [fetchPaymentStatus]);
+
+  const handlePaymentVerification = useCallback(async () => {
     setLoading(true);
     setErrorMsg(null);
     try {
@@ -50,14 +96,14 @@ export default function PaymentReturnPage() {
         }
 
         // Gọi API Capture PayPal của backend
-        const res = await apiRequest('/payments/paypal/capture', {
+        const res = await apiRequest<PayPalCaptureResponse>('/payments/paypal/capture', {
           method: 'POST',
           body: JSON.stringify({ paypalOrderId, paymentId }),
         });
 
         if (res.success) {
           setStatus('SUCCESS');
-          fetchPaymentStatus(paymentId);
+          void fetchPaymentStatus(paymentId);
         } else {
           setStatus('FAILED');
           setErrorMsg(res.message || 'Thanh toán PayPal không thành công.');
@@ -69,12 +115,12 @@ export default function PaymentReturnPage() {
         const queryString = window.location.search;
         
         // Gọi API kiểm tra IPN chữ ký của backend trực tiếp ở foreground
-        const res = await apiRequest(`/payments/vnpay/ipn${queryString}`);
+        const res = await apiRequest<VnPayResponse>(`/payments/vnpay/ipn${queryString}`);
         
         if (res.RspCode === '00' || res.RspCode === '02') {
           setStatus('SUCCESS');
           const paymentId = searchParams.get('vnp_TxnRef');
-          if (paymentId) fetchPaymentStatus(paymentId);
+          if (paymentId) void fetchPaymentStatus(paymentId);
         } else {
           setStatus('FAILED');
           setErrorMsg(`VNPay phản hồi lỗi Code: ${res.RspCode}. Chi tiết: ${res.Message}`);
@@ -93,58 +139,26 @@ export default function PaymentReturnPage() {
         if (!paymentId) throw new Error('Không tìm thấy Payment ID.');
         
         // Ở chế độ Mock: Hiển thị giao diện cho developer trigger thành công
-        fetchPaymentStatus(paymentId);
+        void fetchPaymentStatus(paymentId);
         setLoading(false);
       } else {
         throw new Error('Cổng thanh toán không được hỗ trợ.');
       }
-    } catch (err: any) {
+    } catch (error: unknown) {
       setStatus('FAILED');
-      setErrorMsg(err.message || 'Đã xảy ra lỗi khi kiểm tra giao dịch.');
+      setErrorMsg(getErrorMessage(error, 'Đã xảy ra lỗi khi kiểm tra giao dịch.'));
       setLoading(false);
     }
-  };
+  }, [provider, searchParams, pollStripeStatus, fetchPaymentStatus]);
 
-  // Polling lấy trạng thái giao dịch thanh toán Stripe
-  const pollStripeStatus = async (paymentId: string) => {
-    let attempts = 0;
-    const interval = setInterval(async () => {
-      attempts++;
-      try {
-        const res = await apiRequest(`/payments/${paymentId}/status`);
-        if (res.status === 'SUCCEEDED') {
-          setStatus('SUCCESS');
-          fetchPaymentStatus(paymentId);
-          clearInterval(interval);
-          setLoading(false);
-        } else if (res.status === 'FAILED') {
-          setStatus('FAILED');
-          setErrorMsg('Giao dịch Stripe bị từ chối hoặc thất bại.');
-          clearInterval(interval);
-          setLoading(false);
-        } else if (attempts >= 5) {
-          // Hết hạn polling (10 giây)
-          setStatus('PENDING');
-          clearInterval(interval);
-          setLoading(false);
-        }
-      } catch (err) {
-        clearInterval(interval);
-        setStatus('FAILED');
-        setLoading(false);
-      }
-    }, 2000);
-  };
+  useEffect(() => {
+    if (initiated.current) return;
+    initiated.current = true;
 
-  // Lấy chi tiết đơn hàng để hiển thị mã code vừa phát hành
-  const fetchPaymentStatus = async (paymentId: string) => {
-    try {
-      const paymentDetails = await apiRequest(`/payments/${paymentId}/status`);
-      setOrderInfo(paymentDetails);
-    } catch (err) {
-      console.error('Không thể lấy chi tiết trạng thái đơn:', err);
-    }
-  };
+    queueMicrotask(() => {
+      void handlePaymentVerification();
+    });
+  }, [handlePaymentVerification]);
 
   // Mô phỏng thanh toán thành công (Developer mode)
   const triggerMockSuccess = async () => {
@@ -153,13 +167,13 @@ export default function PaymentReturnPage() {
 
     setLoading(true);
     try {
-      await apiRequest(`/payments/${paymentId}/mock-success`, {
+      await apiRequest<void>(`/payments/${paymentId}/mock-success`, {
         method: 'POST',
       });
       setStatus('SUCCESS');
-      fetchPaymentStatus(paymentId);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Không thể mô phỏng thành công.');
+      void fetchPaymentStatus(paymentId);
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Không thể mô phỏng thành công.'));
     } finally {
       setLoading(false);
     }

@@ -14,14 +14,34 @@ import {
   ShoppingCart,
   FileText,
   User as UserIcon,
-  Bell,
   Menu,
-  X
+  X,
+  Home,
+  Sparkles,
+  Building2,
+  LayoutDashboard,
+  WalletCards,
 } from 'lucide-react';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from './ui/sheet';
 
 interface HeaderProps {
   onSearch?: (keyword: string) => void;
   initialKeyword?: string;
+}
+
+interface CartItem {
+  quantity?: number;
+}
+
+interface VoucherSuggestion {
+  title?: string;
 }
 
 export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
@@ -30,13 +50,15 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
   const [keyword, setKeyword] = useState(initialKeyword);
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [showMobileSearch, setShowMobileSearch] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   
   const [cartItemCount, setCartItemCount] = useState(0);
 
   useEffect(() => {
     if (user?.role === 'CUSTOMER') {
-      apiRequest('/cart')
-        .then((data: any) => {
+      apiRequest<CartItem[]>('/cart')
+        .then((data) => {
           const count = Array.isArray(data) ? data.reduce((acc, item) => acc + (item.quantity || 1), 0) : 0;
           setCartItemCount(count);
         })
@@ -49,13 +71,13 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
   // Fetch suggestions with debounce
   useEffect(() => {
     if (!keyword.trim()) {
-      setSuggestions([]);
       return;
     }
     const timer = setTimeout(() => {
-      apiRequest(`/vouchers?keyword=${encodeURIComponent(keyword)}`)
-        .then((data: any[]) => {
+      apiRequest<VoucherSuggestion[]>(`/vouchers?keyword=${encodeURIComponent(keyword)}`)
+        .then((data) => {
           if (Array.isArray(data)) {
+<<<<<<< HEAD
             const uniqueMap = new Map();
             data.forEach(item => {
               if (!uniqueMap.has(item.title)) {
@@ -63,6 +85,13 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
               }
             });
             setSuggestions(Array.from(uniqueMap.values()).slice(0, 5));
+=======
+            const titles = data
+              .map((item) => item.title)
+              .filter((title): title is string => typeof title === 'string');
+            const uniqueTitles = Array.from(new Set(titles)).slice(0, 5);
+            setSuggestions(uniqueTitles);
+>>>>>>> origin/main
           }
         })
         .catch(() => setSuggestions([]));
@@ -70,9 +99,17 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
     return () => clearTimeout(timer);
   }, [keyword]);
 
+  const handleKeywordChange = (value: string) => {
+    setKeyword(value);
+    if (!value.trim()) {
+      setSuggestions([]);
+    }
+  };
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setShowSuggestions(false);
+    setShowMobileSearch(false);
     if (onSearch) {
       onSearch(keyword);
     } else {
@@ -83,6 +120,7 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
   const handleSuggestionClick = (suggestion: string) => {
     setKeyword(suggestion);
     setShowSuggestions(false);
+    setShowMobileSearch(false);
     if (onSearch) {
       onSearch(suggestion);
     } else {
@@ -90,8 +128,20 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
     }
   };
 
+  const closeMobileNavigation = () => {
+    setShowMobileMenu(false);
+    setShowMobileSearch(false);
+  };
+
   return (
-    <header className="sticky top-0 z-50 w-full bg-white/80 backdrop-blur-md border-b border-slate-200 shadow-sm transition-all">
+    <Sheet
+      open={showMobileMenu}
+      onOpenChange={(isOpen) => {
+        setShowMobileMenu(isOpen);
+        if (isOpen) setShowMobileSearch(false);
+      }}
+    >
+      <header className="sticky top-0 z-50 w-full bg-white/80 backdrop-blur-md border-b border-slate-200 shadow-sm transition-all">
       {/* Main Header Area */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex items-center justify-between gap-4 lg:gap-8">
         
@@ -111,7 +161,7 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
             <input
               type="text"
               value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
+              onChange={(e) => handleKeywordChange(e.target.value)}
               onFocus={() => setShowSuggestions(true)}
               placeholder="Tìm voucher ẩm thực, làm đẹp, giải trí..."
               className="w-full pl-4 pr-20 py-2.5 bg-slate-100 border-2 border-transparent focus:bg-white focus:border-primary/30 rounded-xl text-sm transition-all outline-none text-foreground placeholder:text-slate-400"
@@ -175,12 +225,30 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
 
         {/* Mobile Search & Menu (Visible only on small screens) */}
         <div className="flex md:hidden flex-1 justify-end gap-2">
-            <button className="p-2 text-slate-600 hover:text-primary bg-slate-100 rounded-full">
-              <Search className="h-5 w-5" />
+            <button
+              type="button"
+              onClick={() => {
+                setShowMobileSearch((isOpen) => !isOpen);
+                setShowMobileMenu(false);
+              }}
+              aria-label={showMobileSearch ? 'Đóng ô tìm kiếm' : 'Mở ô tìm kiếm'}
+              aria-expanded={showMobileSearch}
+              aria-controls="mobile-search-panel"
+              className="p-2 text-slate-600 hover:text-primary bg-slate-100 rounded-full"
+            >
+              {showMobileSearch ? <X className="h-5 w-5" /> : <Search className="h-5 w-5" />}
             </button>
-            <button className="p-2 text-slate-600 hover:text-primary bg-slate-100 rounded-full">
-              <Menu className="h-5 w-5" />
-            </button>
+            <SheetTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label="Mở menu điều hướng"
+                  className="rounded-full bg-slate-100 p-2 text-slate-600 transition hover:text-primary"
+                />
+              }
+            >
+              <Menu className="h-5 w-5" aria-hidden="true" />
+            </SheetTrigger>
         </div>
 
         {/* Actions & Profile - Right */}
@@ -258,6 +326,165 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
           )}
         </div>
       </div>
-    </header>
+
+      <div className="hidden border-t border-slate-100 md:block">
+        <nav
+          aria-label="Điều hướng giới thiệu"
+          className="mx-auto flex min-h-10 w-full max-w-7xl items-center gap-6 px-4 text-xs font-bold text-slate-600 sm:px-6 lg:px-8"
+        >
+          <Link href="/" className="inline-flex items-center gap-1.5 transition hover:text-primary">
+            <Home className="h-3.5 w-3.5" aria-hidden="true" />
+            Kho voucher
+          </Link>
+          <Link href="/for-customers" className="inline-flex items-center gap-1.5 transition hover:text-primary">
+            <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+            Dành cho khách hàng
+          </Link>
+          <Link href="/for-partners" className="inline-flex items-center gap-1.5 transition hover:text-emerald-700">
+            <Building2 className="h-3.5 w-3.5" aria-hidden="true" />
+            Dành cho đối tác
+          </Link>
+        </nav>
+      </div>
+
+      {showMobileSearch && (
+        <div id="mobile-search-panel" className="border-t border-slate-100 bg-white px-4 py-4 md:hidden">
+          <div
+            className="relative mx-auto w-full max-w-7xl"
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+          >
+            <form onSubmit={handleSearch} className="relative flex items-center">
+              <label htmlFor="mobile-catalog-search" className="sr-only">Tìm voucher</label>
+              <input
+                id="mobile-catalog-search"
+                type="search"
+                value={keyword}
+                onChange={(event) => handleKeywordChange(event.target.value)}
+                onFocus={() => setShowSuggestions(true)}
+                placeholder="Tìm voucher ẩm thực, làm đẹp..."
+                className="w-full rounded-xl border-2 border-transparent bg-slate-100 py-3 pl-4 pr-12 text-sm text-foreground outline-none transition focus:border-primary/30 focus:bg-white"
+              />
+              <button
+                type="submit"
+                aria-label="Tìm kiếm"
+                className="absolute right-1.5 rounded-lg bg-primary p-2 text-white transition-colors hover:bg-primary-hover"
+              >
+                <Search className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </form>
+
+            {showSuggestions && suggestions.length > 0 && (
+              <ul className="absolute top-full z-50 mt-2 w-full overflow-hidden rounded-xl border border-slate-100 bg-white shadow-xl">
+                {suggestions.map((suggestion) => (
+                  <li key={suggestion}>
+                    <button
+                      type="button"
+                      onClick={() => handleSuggestionClick(suggestion)}
+                      className="flex w-full items-center gap-3 border-b border-slate-50 px-4 py-3 text-left text-sm text-slate-700 transition-colors last:border-0 hover:bg-slate-50"
+                    >
+                      <Search className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+                      <span className="line-clamp-1">{suggestion}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+
+      </header>
+
+      <SheetContent side="right" className="w-[min(22rem,88vw)] gap-0 p-0 md:hidden">
+        <SheetHeader className="border-b border-border p-5 pr-12">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-ui-md bg-brand text-white">
+              <Ticket className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <div>
+              <SheetTitle>VoucherNow</SheetTitle>
+              <SheetDescription>Điều hướng và tài khoản</SheetDescription>
+            </div>
+          </div>
+        </SheetHeader>
+
+        <nav aria-label="Điều hướng trên điện thoại" className="flex-1 space-y-1 overflow-y-auto px-4 py-4">
+            {[
+              { href: '/', label: 'Kho voucher', icon: Home },
+              { href: '/for-customers', label: 'Dành cho khách hàng', icon: Sparkles },
+              { href: '/for-partners', label: 'Dành cho đối tác', icon: Building2 },
+            ].map(({ href, label, icon: Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                onClick={closeMobileNavigation}
+                className="flex min-h-11 items-center gap-3 rounded-ui-md px-3 py-2.5 text-sm font-bold text-foreground transition hover:bg-surface-subtle hover:text-brand"
+              >
+                <Icon className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+                {label}
+              </Link>
+            ))}
+
+            {user && (
+              <div className="mt-3 space-y-1 border-t border-border pt-3">
+                {user.role === 'ADMIN' && (
+                  <Link href="/admin" onClick={closeMobileNavigation} className="flex min-h-11 items-center gap-3 rounded-ui-md px-3 py-2.5 text-sm font-bold text-foreground hover:bg-surface-subtle">
+                    <ShieldAlert className="h-5 w-5 text-danger" aria-hidden="true" />
+                    Trang quản trị Admin
+                  </Link>
+                )}
+                {(user.role === 'PARTNER' || user.role === 'PARTNER_STAFF') && (
+                  <Link href={user.role === 'PARTNER_STAFF' ? '/partner/redeem' : '/partner'} onClick={closeMobileNavigation} className="flex min-h-11 items-center gap-3 rounded-ui-md px-3 py-2.5 text-sm font-bold text-foreground hover:bg-surface-subtle">
+                    <LayoutDashboard className="h-5 w-5 text-brand" aria-hidden="true" />
+                    Khu vực đối tác
+                  </Link>
+                )}
+                {user.role === 'CUSTOMER' && (
+                  <>
+                    <Link href="/cart" onClick={closeMobileNavigation} className="flex min-h-11 items-center gap-3 rounded-ui-md px-3 py-2.5 text-sm font-bold text-foreground hover:bg-surface-subtle">
+                      <ShoppingCart className="h-5 w-5 text-brand" aria-hidden="true" />
+                      Giỏ hàng {cartItemCount > 0 ? `(${cartItemCount})` : ''}
+                    </Link>
+                    <Link href="/customer/orders" onClick={closeMobileNavigation} className="flex min-h-11 items-center gap-3 rounded-ui-md px-3 py-2.5 text-sm font-bold text-foreground hover:bg-surface-subtle">
+                      <FileText className="h-5 w-5 text-brand" aria-hidden="true" />
+                      Đơn hàng
+                    </Link>
+                    <Link href="/customer/vouchers" onClick={closeMobileNavigation} className="flex min-h-11 items-center gap-3 rounded-ui-md px-3 py-2.5 text-sm font-bold text-foreground hover:bg-surface-subtle">
+                      <WalletCards className="h-5 w-5 text-brand" aria-hidden="true" />
+                      Ví voucher
+                    </Link>
+                  </>
+                )}
+                <Link href="/profile" onClick={closeMobileNavigation} className="flex min-h-11 items-center gap-3 rounded-ui-md px-3 py-2.5 text-sm font-bold text-foreground hover:bg-surface-subtle">
+                  <UserIcon className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+                  Hồ sơ tài khoản
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeMobileNavigation();
+                    logout();
+                  }}
+                  className="flex min-h-11 w-full items-center gap-3 rounded-ui-md px-3 py-2.5 text-sm font-bold text-danger transition hover:bg-danger-subtle"
+                >
+                  <LogOut className="h-5 w-5" aria-hidden="true" />
+                  Đăng xuất
+                </button>
+              </div>
+            )}
+
+            {!user && (
+              <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border pt-4">
+                <Link href="/login" onClick={closeMobileNavigation} className="inline-flex min-h-11 items-center justify-center rounded-ui-md bg-brand-subtle px-4 py-2.5 text-sm font-bold text-brand">
+                  Đăng nhập
+                </Link>
+                <Link href="/register" onClick={closeMobileNavigation} className="inline-flex min-h-11 items-center justify-center rounded-ui-md bg-brand px-4 py-2.5 text-sm font-bold text-white">
+                  Đăng ký
+                </Link>
+              </div>
+            )}
+        </nav>
+      </SheetContent>
+    </Sheet>
   );
 }
