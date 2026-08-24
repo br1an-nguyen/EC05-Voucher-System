@@ -27,6 +27,16 @@ const positiveInteger = (name: string, fallback: number): number => {
   return parsed;
 };
 
+const nonNegativeInteger = (name: string, fallback: number): number => {
+  const value = argument(name);
+  if (!value) return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`--${name} must be a non-negative integer.`);
+  }
+  return parsed;
+};
+
 const defaultRunDirectory = (): string => {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   return resolve('data', 'catalog', 'giftpop', timestamp);
@@ -48,7 +58,7 @@ async function execute(): Promise<void> {
     await crawlGiftpop({
       outputDirectory,
       limit: positiveInteger('limit', 5),
-      maxBranches: positiveInteger('max-branches', 10),
+      maxBranches: nonNegativeInteger('max-branches', 10),
       urls: argument('urls')?.split(',').map((url) => url.trim()).filter(Boolean),
     });
     console.log(`Crawl CSV written to ${outputDirectory}`);
@@ -86,7 +96,7 @@ async function execute(): Promise<void> {
   await crawlGiftpop({
     outputDirectory,
     limit: positiveInteger('limit', 5),
-    maxBranches: positiveInteger('max-branches', 10),
+    maxBranches: nonNegativeInteger('max-branches', 10),
     urls: argument('urls')?.split(',').map((url) => url.trim()).filter(Boolean),
   });
   await normalizeCatalogCsv(outputDirectory);

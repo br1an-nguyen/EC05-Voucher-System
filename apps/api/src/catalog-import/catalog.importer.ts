@@ -7,6 +7,7 @@ import { validateNormalizedCatalog } from './catalog.validator';
 
 const asBoolean = (value: string): boolean => value.toLowerCase() === 'true';
 const compoundKey = (source: string, externalId: string): string => `${source}::${externalId}`;
+const IMPORT_TRANSACTION_TIMEOUT_MS = 120_000;
 
 async function resolveCatalogPartnerId(
   prisma: PrismaService,
@@ -296,7 +297,7 @@ async function applyDataset(
 
       return cleanup.count;
     },
-    { timeout: 30_000 },
+    { timeout: IMPORT_TRANSACTION_TIMEOUT_MS },
   );
 }
 

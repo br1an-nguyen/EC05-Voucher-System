@@ -28,6 +28,8 @@ This pipeline is for the project's non-commercial educational catalog only. It d
 
 Parent category codes are internal and stable: `FOOD_DRINK`, `SHOPPING_RETAIL`, `BEAUTY_HEALTH`, `DIGITAL_TELECOM`, `ENTERTAINMENT`, `LIFESTYLE_SERVICES`, `TRANSPORT`, and `OTHER`.
 
+For the September 2026 demo catalog, normalization assigns each new voucher a deterministic pseudo-random sale start from September 20 through September 30 in the Vietnam timezone. Relative validity is selected from 7, 30, or 45 days. The external product id is the seed, so normalizing the same CSV again produces the same schedule.
+
 ## Commands
 
 Run from `apps/api`:
@@ -40,6 +42,8 @@ npm run catalog:import -- --input data/catalog/giftpop/sample-5
 npm run catalog:import -- --input data/catalog/giftpop/sample-5 --apply
 ```
 
+Use `--max-branches 0` when importing more campaigns while retaining the existing small branch catalog without adding new store locations.
+
 The import command reads `DATABASE_URL` through the existing backend environment loader. It never logs connection strings or credentials.
 
 ## Safety rules
@@ -50,4 +54,5 @@ The import command reads `DATABASE_URL` through the existing backend environment
 - Missing campaign, brand, or category rows never trigger automatic deletion.
 - After relationship sync, only orphaned Giftpop branches with no campaign, staff, or usage history are removed.
 - Existing inventory counters and campaign windows are preserved on update.
+- The all-or-nothing import transaction allows up to 120 seconds for medium demo batches.
 - Browser-facing Supabase roles remain deny-by-default; the frontend reads through NestJS.
