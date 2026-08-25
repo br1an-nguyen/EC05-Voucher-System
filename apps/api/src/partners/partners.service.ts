@@ -136,6 +136,17 @@ export class PartnersService {
       0,
     );
 
+    const usedVouchers = await this.prisma.voucherCode.count({
+      where: {
+        status: 'USED',
+        orderItem: {
+          campaign: {
+            partnerId,
+          },
+        },
+      },
+    });
+
     return {
       partnerName: partner.companyName,
       totalCampaigns,
@@ -143,6 +154,7 @@ export class PartnersService {
       soldVouchers,
       customerCount,
       revenue,
+      usedVouchers,
     };
   }
 

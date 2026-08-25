@@ -16,7 +16,8 @@ import {
   FileCheck,
   Activity,
   Search,
-  ArrowUpDown
+  ArrowUpDown,
+  ChevronRight
 } from 'lucide-react';
 
 interface PartnerPerformance {
@@ -154,15 +155,23 @@ export default function AdminDashboard() {
     (summary?.userStats.totalStaffs ?? 0);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
+
+      {/* BREADCRUMB */}
+      <div className="flex items-center gap-2 text-xs text-muted">
+        <span>Admin Portal</span>
+        <ChevronRight className="h-3.5 w-3.5" />
+        <span className="font-semibold text-foreground">Dashboard</span>
+      </div>
+      
       {/* TIÊU ĐỀ */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Shield className="h-7 w-7 text-primary" />
+          <h1 className="text-xl sm:text-2xl font-extrabold text-foreground flex items-center gap-2">
+            <Ticket className="h-6 w-6 text-primary" />
             Hệ thống Quản trị, {user?.fullName || 'Quản trị viên'}
           </h1>
-          <p className="mt-1.5 text-sm text-muted">
+          <p className="text-xs text-muted mt-1">
             Theo dõi doanh thu, số liệu tài khoản và phê duyệt nội dung trên toàn hệ thống thời gian thực.
           </p>
         </div>

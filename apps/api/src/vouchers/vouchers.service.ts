@@ -272,14 +272,57 @@ export class VouchersService {
    * Lấy danh sách toàn bộ chiến dịch voucher của một đối tác cụ thể.
    */
   async getPartnerCampaigns(partnerId: string) {
-    return this.prisma.voucherCampaign.findMany({
+    const campaigns = await this.prisma.voucherCampaign.findMany({
       where: { partnerId },
       include: {
         campaignBranches: {
           include: { branch: true },
         },
+        campaignCategories: {
+          include: {
+            category: {
+              select: {
+                nameVi: true,
+                code: true,
+              },
+            },
+          },
+        },
+        orderItems: {
+          select: {
+            quantity: true,
+            unitPrice: true,
+            voucherCodes: {
+              where: {
+                status: 'USED',
+              },
+              select: {
+                codeId: true,
+              },
+            },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
+    });
+
+    return campaigns.map((campaign) => {
+      const usedCount = campaign.orderItems.reduce(
+        (sum, item) => sum + item.voucherCodes.length,
+        0,
+      );
+
+      const revenue = campaign.orderItems.reduce(
+        (sum, item) => sum + Number(item.unitPrice) * item.quantity,
+        0,
+      );
+
+      const { orderItems, ...base } = campaign;
+      return {
+        ...base,
+        usedCount,
+        revenue,
+      };
     });
   }
 
