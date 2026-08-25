@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CheckoutDto } from './dto/checkout.dto';
@@ -25,10 +29,11 @@ export class OrdersService {
     return this.prisma.$transaction(async (tx) => {
       // Serialize checkout attempts for the same customer. This prevents two
       // concurrent requests from creating orders from the same cart.
-      await tx.$executeRawUnsafe(
-        `SELECT user_id FROM "Users" WHERE user_id = $1::uuid FOR UPDATE`,
-        customerId,
-      );
+      await tx.$queryRaw`
+        SELECT user_id FROM "Users"
+        WHERE user_id = ${customerId}::uuid
+        FOR UPDATE
+      `;
 
       const cartItems = await tx.cartItem.findMany({
         where: { customerId },
@@ -45,10 +50,11 @@ export class OrdersService {
 
       // Lock campaigns in a stable order to avoid deadlocks between checkouts.
       for (const item of cartItems) {
-        await tx.$executeRawUnsafe(
-          `SELECT campaign_id FROM "Voucher_Campaigns" WHERE campaign_id = $1::uuid FOR UPDATE`,
-          item.campaignId,
-        );
+        await tx.$queryRaw`
+          SELECT campaign_id FROM "Voucher_Campaigns"
+          WHERE campaign_id = ${item.campaignId}::uuid
+          FOR UPDATE
+        `;
 
         const campaign = await tx.voucherCampaign.findUnique({
           where: { campaignId: item.campaignId },
@@ -68,7 +74,8 @@ export class OrdersService {
           );
         }
 
-        const available = campaign.capacity - (campaign.soldQuantity + campaign.reservedStock);
+        const available =
+          campaign.capacity - (campaign.soldQuantity + campaign.reservedStock);
         if (available < item.quantity) {
           throw new BadRequestException(
             `Voucher "${campaign.title}" không đủ số lượng trong kho (Còn lại: ${available}).`,
@@ -107,7 +114,9 @@ export class OrdersService {
       for (const item of cartItems) {
         const unitPrice = currentUnitPrices.get(item.campaignId);
         if (!unitPrice) {
-          throw new BadRequestException('Không thể xác định giá voucher hiện tại.');
+          throw new BadRequestException(
+            'Không thể xác định giá voucher hiện tại.',
+          );
         }
 
         await tx.orderItem.create({
@@ -198,10 +207,11 @@ export class OrdersService {
   async requestRefund(customerId: string, orderId: string) {
     return this.prisma.$transaction(async (tx) => {
       // 1. Tìm đơn hàng và khóa dòng để đảm bảo nhất quán
-      await tx.$executeRawUnsafe(
-        `SELECT order_id FROM "Orders" WHERE order_id = $1::uuid FOR UPDATE`,
-        orderId,
-      );
+      await tx.$queryRaw`
+        SELECT order_id FROM "Orders"
+        WHERE order_id = ${orderId}::uuid
+        FOR UPDATE
+      `;
 
       const order = await tx.order.findFirst({
         where: { orderId, customerId },
@@ -214,17 +224,26 @@ export class OrdersService {
       });
 
       if (!order) {
-        throw new NotFoundException('Không tìm thấy đơn hàng yêu cầu hoàn tiền.');
+        throw new NotFoundException(
+          'Không tìm thấy đơn hàng yêu cầu hoàn tiền.',
+        );
       }
 
       // Ràng buộc: Đơn hàng phải đã thanh toán thành công
-      if (order.paymentStatus !== PaymentStatus.PAID || order.orderStatus !== OrderStatus.CONFIRMED) {
-        throw new BadRequestException('Chỉ có thể hoàn tiền cho các đơn hàng đã thanh toán thành công.');
+      if (
+        order.paymentStatus !== PaymentStatus.PAID ||
+        order.orderStatus !== OrderStatus.CONFIRMED
+      ) {
+        throw new BadRequestException(
+          'Chỉ có thể hoàn tiền cho các đơn hàng đã thanh toán thành công.',
+        );
       }
 
       const payment = order.paymentTransactions[0];
       if (!payment) {
-        throw new BadRequestException('Không tìm thấy giao dịch thanh toán thành công liên kết.');
+        throw new BadRequestException(
+          'Không tìm thấy giao dịch thanh toán thành công liên kết.',
+        );
       }
 
       // 2. Tìm toàn bộ các mã voucher đã phát hành từ đơn hàng này
@@ -237,7 +256,9 @@ export class OrdersService {
       // Ràng buộc (RB-14): Nếu có bất kỳ mã voucher nào đã dùng (status === USED), từ chối hoàn tiền
       const hasUsedCode = voucherCodes.some((vc) => vc.status === 'USED');
       if (hasUsedCode) {
-        throw new BadRequestException('Không thể hoàn tiền vì đã có ít nhất một mã voucher trong đơn hàng đã được sử dụng.');
+        throw new BadRequestException(
+          'Không thể hoàn tiền vì đã có ít nhất một mã voucher trong đơn hàng đã được sử dụng.',
+        );
       }
 
       // 3. Hủy bỏ tất cả các mã voucher chưa dùng (chuyển sang CANCELLED)
@@ -318,10 +339,11 @@ export class OrdersService {
   async adminRefundOrder(orderId: string) {
     return this.prisma.$transaction(async (tx) => {
       // Khóa dòng
-      await tx.$executeRawUnsafe(
-        `SELECT order_id FROM "Orders" WHERE order_id = $1::uuid FOR UPDATE`,
-        orderId,
-      );
+      await tx.$queryRaw`
+        SELECT order_id FROM "Orders"
+        WHERE order_id = ${orderId}::uuid
+        FOR UPDATE
+      `;
 
       const order = await tx.order.findUnique({
         where: { orderId },
@@ -337,13 +359,20 @@ export class OrdersService {
         throw new NotFoundException('Không tìm thấy đơn hàng cần hủy.');
       }
 
-      if (order.paymentStatus !== PaymentStatus.PAID || order.orderStatus !== OrderStatus.CONFIRMED) {
-        throw new BadRequestException('Chỉ có thể hoàn tiền cho các đơn hàng đã thanh toán thành công.');
+      if (
+        order.paymentStatus !== PaymentStatus.PAID ||
+        order.orderStatus !== OrderStatus.CONFIRMED
+      ) {
+        throw new BadRequestException(
+          'Chỉ có thể hoàn tiền cho các đơn hàng đã thanh toán thành công.',
+        );
       }
 
       const payment = order.paymentTransactions[0];
       if (!payment) {
-        throw new BadRequestException('Không tìm thấy giao dịch thanh toán thành công liên kết.');
+        throw new BadRequestException(
+          'Không tìm thấy giao dịch thanh toán thành công liên kết.',
+        );
       }
 
       const voucherCodes = await tx.voucherCode.findMany({
@@ -354,7 +383,9 @@ export class OrdersService {
 
       const hasUsedCode = voucherCodes.some((vc) => vc.status === 'USED');
       if (hasUsedCode) {
-        throw new BadRequestException('Không thể hoàn tiền vì đã có ít nhất một mã voucher đã được sử dụng.');
+        throw new BadRequestException(
+          'Không thể hoàn tiền vì đã có ít nhất một mã voucher đã được sử dụng.',
+        );
       }
 
       // Hủy mã

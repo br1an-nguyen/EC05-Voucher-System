@@ -1,9 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import {
-  PaymentProviderType,
-  Prisma,
-  VoucherStatus,
-} from '@prisma/client';
+import { PaymentProviderType, Prisma, VoucherStatus } from '@prisma/client';
 import { OrdersService } from './orders.service';
 
 describe('OrdersService checkout', () => {
@@ -22,7 +18,7 @@ describe('OrdersService checkout', () => {
     };
     const item = { campaignId: campaign.campaignId, quantity: 2 };
     const tx = {
-      $executeRawUnsafe: jest.fn(),
+      $queryRaw: jest.fn(),
       cartItem: {
         findMany: jest.fn().mockResolvedValue([item]),
         deleteMany: jest.fn(),

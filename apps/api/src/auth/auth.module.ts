@@ -6,6 +6,7 @@ import { AuthController } from './auth.controller';
 import { UsersModule } from '../users/users.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { getJwtSecret } from './jwt-secret';
+import { PasswordResetDeliveryService } from './password-reset-delivery.service';
 
 /**
  * Module quản lý toàn bộ các cấu hình xác thực JWT, Passport và kết nối UsersModule.
@@ -20,7 +21,7 @@ import { getJwtSecret } from './jwt-secret';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, PasswordResetDeliveryService],
   exports: [AuthService],
 })
 export class AuthModule {}

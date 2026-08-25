@@ -22,7 +22,7 @@ describe('AuthService password reset', () => {
     passwordChangedAt: null,
   };
 
-  it('should generate a reset token for an existing account even with uppercase email input', async () => {
+  it('should deliver a reset link without returning the token for an existing account', async () => {
     const usersService = {
       findByEmail: jest.fn().mockResolvedValue(mockUser),
       findById: jest.fn().mockResolvedValue(mockUser),
@@ -30,17 +30,58 @@ describe('AuthService password reset', () => {
 
     const jwtService = {
       sign: jest.fn().mockReturnValue('generated-token'),
-      verify: jest.fn().mockReturnValue({ sub: 'user-1', purpose: 'password-reset' }),
+      verify: jest
+        .fn()
+        .mockReturnValue({ sub: 'user-1', purpose: 'password-reset' }),
     };
 
-    const service = new AuthService(usersService as any, jwtService as any, { user: { update: jest.fn() } } as any);
+    const prisma = { user: { update: jest.fn() } };
+    const delivery = { deliver: jest.fn() };
+    const service = new AuthService(
+      usersService as any,
+      jwtService as any,
+      prisma as any,
+      delivery as any,
+    );
 
-    const result = await service.requestPasswordReset({ email: 'Customer@Example.com ' });
+    const result = await service.requestPasswordReset({
+      email: 'Customer@Example.com ',
+    });
 
-    expect(usersService.findByEmail).toHaveBeenCalledWith('customer@example.com');
+    expect(usersService.findByEmail).toHaveBeenCalledWith(
+      'customer@example.com',
+    );
     expect(jwtService.sign).toHaveBeenCalled();
-    expect(result.resetToken).toBe('generated-token');
+    expect(result).not.toHaveProperty('resetToken');
+    expect(result).not.toHaveProperty('resetUrl');
+    expect(delivery.deliver).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: 'customer@example.com',
+        resetUrl: expect.stringContaining('generated-token'),
+      }),
+    );
     expect(result.message).toContain('Nếu tài khoản tồn tại');
+  });
+
+  it('returns the same generic response and sends nothing for an unknown account', async () => {
+    const usersService = { findByEmail: jest.fn().mockResolvedValue(null) };
+    const delivery = { deliver: jest.fn() };
+    const service = new AuthService(
+      usersService as any,
+      { sign: jest.fn() } as any,
+      { user: { update: jest.fn() } } as any,
+      delivery as any,
+    );
+
+    const result = await service.requestPasswordReset({
+      email: 'missing@example.com',
+    });
+
+    expect(result).toEqual({
+      message:
+        'Nếu tài khoản tồn tại, hệ thống đã gửi hướng dẫn đặt lại mật khẩu qua email.',
+    });
+    expect(delivery.deliver).not.toHaveBeenCalled();
   });
 
   it('should reject an invalid or expired reset token', async () => {
@@ -54,9 +95,18 @@ describe('AuthService password reset', () => {
       },
     };
 
-    const service = new AuthService(usersService as any, { sign: jest.fn() } as any, prisma as any);
+    const service = new AuthService(
+      usersService as any,
+      { sign: jest.fn() } as any,
+      prisma as any,
+    );
 
-    await expect(service.resetPassword({ token: 'invalid-token', newPassword: 'newPassword123' })).rejects.toThrow(BadRequestException);
+    await expect(
+      service.resetPassword({
+        token: 'invalid-token',
+        newPassword: 'newPassword123',
+      }),
+    ).rejects.toThrow(BadRequestException);
   });
 
   it('should reject an elevated role even if validation is bypassed', async () => {
@@ -90,11 +140,19 @@ describe('AuthService password reset', () => {
   it('should reject an access token at the refresh endpoint', async () => {
     const usersService = { findById: jest.fn() };
     const jwtService = {
-      verify: jest.fn().mockReturnValue({ sub: mockUser.userId, purpose: 'access' }),
+      verify: jest
+        .fn()
+        .mockReturnValue({ sub: mockUser.userId, purpose: 'access' }),
     };
-    const service = new AuthService(usersService as any, jwtService as any, {} as any);
+    const service = new AuthService(
+      usersService as any,
+      jwtService as any,
+      {} as any,
+    );
 
-    await expect(service.refresh('access-token')).rejects.toThrow(UnauthorizedException);
+    await expect(service.refresh('access-token')).rejects.toThrow(
+      UnauthorizedException,
+    );
     expect(usersService.findById).not.toHaveBeenCalled();
   });
 
@@ -109,14 +167,22 @@ describe('AuthService password reset', () => {
       }),
     };
     const jwtService = {
-      verify: jest.fn().mockReturnValue({ sub: mockUser.userId, purpose: 'refresh' }),
+      verify: jest
+        .fn()
+        .mockReturnValue({ sub: mockUser.userId, purpose: 'refresh' }),
       sign: jest
         .fn()
         .mockReturnValueOnce('new-access-token')
         .mockReturnValueOnce('new-refresh-token'),
     };
-    const prisma = { user: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) } };
-    const service = new AuthService(usersService as any, jwtService as any, prisma as any);
+    const prisma = {
+      user: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    };
+    const service = new AuthService(
+      usersService as any,
+      jwtService as any,
+      prisma as any,
+    );
 
     await expect(service.refresh(oldToken)).resolves.toEqual({
       accessToken: 'new-access-token',
@@ -136,11 +202,20 @@ describe('AuthService password reset', () => {
         purpose: 'password-reset',
       }),
     };
-    const prisma = { user: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) } };
-    const service = new AuthService({} as any, jwtService as any, prisma as any);
+    const prisma = {
+      user: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    };
+    const service = new AuthService(
+      {} as any,
+      jwtService as any,
+      prisma as any,
+    );
 
     await expect(
-      service.resetPassword({ token: 'used-token', newPassword: 'NewPassword123!' }),
+      service.resetPassword({
+        token: 'used-token',
+        newPassword: 'NewPassword123!',
+      }),
     ).rejects.toThrow(BadRequestException);
   });
 });
