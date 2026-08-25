@@ -387,6 +387,8 @@ model PaymentTransaction {
   baseAmount            Decimal                  @map("base_amount") @db.Decimal(12, 2)
   requestAmountMinor    BigInt                   @map("request_amount_minor")
   requestCurrency       String                   @map("request_currency") @db.Char(3)
+  settledAmountMinor    BigInt?                  @map("settled_amount_minor")
+  settledCurrency       String?                  @map("settled_currency") @db.Char(3)
   exchangeRate          Decimal?                 @map("exchange_rate") @db.Decimal(18, 8)
   failureCode           String?                  @map("failure_code") @db.VarChar(100)
   failureMessage        String?                  @map("failure_message") @db.Text

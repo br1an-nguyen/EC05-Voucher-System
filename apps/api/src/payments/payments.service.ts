@@ -49,6 +49,19 @@ export class PaymentsService {
       const attemptNo = order.paymentTransactions.length + 1;
       const idempotencyKey = `IDEM-${order.orderId}-${attemptNo}-${Date.now()}`;
 
+      // Bước 4.5: Cập nhật các giao dịch cũ ở trạng thái CREATED thành FAILED để giải phóng chỉ mục duy nhất
+      await tx.paymentTransaction.updateMany({
+        where: {
+          orderId: order.orderId,
+          status: PaymentTransactionStatus.CREATED,
+        },
+        data: {
+          status: PaymentTransactionStatus.FAILED,
+          failureCode: 'SUPERSEDED',
+          failureMessage: 'Giao dịch cũ bị hủy do khởi tạo lượt thanh toán mới.',
+        },
+      });
+
     // Bước 5: Khởi tạo giao dịch thanh toán mới trong DB
       const requestAmountMinor = BigInt(Math.round(Number(order.totalAmount)));
 
@@ -119,5 +132,18 @@ export class PaymentsService {
     if (!payment) {
       throw new NotFoundException('Không tìm thấy giao dịch thanh toán.');
     }
+  }
+
+  /**
+   * Cập nhật mã định danh đơn hàng từ cổng thanh toán đối tác (Stripe Session ID, PayPal Order ID, v.v.).
+   * @param paymentId ID giao dịch thanh toán cục bộ
+   * @param providerOrderId ID đơn hàng nhận được từ phía đối tác thanh toán
+   * @returns Bản ghi giao dịch thanh toán sau khi cập nhật
+   */
+  async updateProviderOrderId(paymentId: string, providerOrderId: string) {
+    return this.prisma.paymentTransaction.update({
+      where: { paymentId },
+      data: { providerOrderId },
+    });
   }
 }

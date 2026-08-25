@@ -69,6 +69,8 @@ export class PaymentFinalizationService {
           status: PaymentTransactionStatus.SUCCEEDED,
           providerTransactionId,
           paidAt: new Date(),
+          settledAmountMinor: payment.requestAmountMinor,
+          settledCurrency: payment.requestCurrency,
         },
       });
 
