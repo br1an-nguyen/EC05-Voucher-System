@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Tag, X, Filter } from 'lucide-react';
+import { Tag, X, Filter, ChevronDown } from 'lucide-react';
 
 interface CategoryFilterOption {
   code: string;
@@ -19,6 +19,7 @@ export interface FilterSidebarProps {
   setMaxPrice: (val: string) => void;
   onFilter: () => void;
   onClear: () => void;
+  onQuickPrice?: (val: string) => void;
 }
 
 export default function FilterSidebar({
@@ -29,16 +30,41 @@ export default function FilterSidebar({
   maxPrice,
   setMaxPrice,
   onFilter,
-  onClear
+  onClear,
+  onQuickPrice
 }: FilterSidebarProps) {
-  const renderCategoryButton = (option: CategoryFilterOption, nested = false) => {
+  const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawValue = e.target.value.replace(/\D/g, '');
+    if (!rawValue) {
+      setMaxPrice('');
+      return;
+    }
+    setMaxPrice(Number(rawValue).toLocaleString('vi-VN'));
+  };
+
+  const quickPrices = [
+    { label: '< 100K', value: '100.000' },
+    { label: '< 200K', value: '200.000' },
+    { label: '< 500K', value: '500.000' },
+  ];
+
+  const [expandedCategories, setExpandedCategories] = React.useState<Record<string, boolean>>({});
+
+  const toggleCategory = (code: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedCategories(prev => ({ ...prev, [code]: !prev[code] }));
+  };
+
+  const renderCategoryButton = (option: CategoryFilterOption, nested = false, hasChildren = false) => {
     const isActive = category === option.code;
+    const isExpanded = expandedCategories[option.code];
+
     return (
       <button
         key={option.code || 'all'}
         onClick={() => onCategoryChange(option.code)}
-        className={`flex w-full items-center justify-between px-3 py-2.5 text-xs font-semibold rounded-xl text-left transition-all ${
-          nested ? 'pl-6' : ''
+        className={`flex w-full items-center justify-between px-3 py-2.5 text-xs font-semibold rounded-xl text-left transition-all group ${
+          nested ? 'pl-8' : ''
         } ${
           isActive
             ? 'bg-primary text-white shadow-md'
@@ -47,7 +73,23 @@ export default function FilterSidebar({
               : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'
         }`}
       >
-        <span>{option.name}</span>
+        <span className="flex items-center gap-2">
+          {!nested && option.code !== '' && (
+            <span
+              onClick={(e) => {
+                if (hasChildren) toggleCategory(option.code, e);
+              }}
+              className={`p-1 rounded-md transition-colors ${
+                hasChildren ? (isActive ? 'hover:bg-white/20 cursor-pointer' : 'hover:bg-slate-200 cursor-pointer') : 'opacity-30'
+              }`}
+            >
+              <ChevronDown
+                className={`h-3 w-3 transition-transform ${isExpanded && hasChildren ? '' : '-rotate-90'}`}
+              />
+            </span>
+          )}
+          <span className={!nested && option.code === '' ? 'pl-5' : ''}>{option.name}</span>
+        </span>
         <span className="flex items-center gap-2">
           <span className={isActive ? 'text-white/80' : 'text-slate-400'}>
             {option.campaignCount}
@@ -70,11 +112,34 @@ export default function FilterSidebar({
       {/* Khoảng giá */}
       <div className="space-y-3">
         <label className="block text-xs font-bold text-slate-700">Khoảng giá</label>
+        
+        <div className="flex flex-wrap gap-2">
+          {quickPrices.map((qp) => (
+            <button
+              key={qp.value}
+              onClick={() => {
+                setMaxPrice(qp.value);
+                if (onQuickPrice) onQuickPrice(qp.value);
+              }}
+              className={`px-2.5 py-1.5 text-[11px] font-bold rounded-lg border transition-all ${
+                maxPrice === qp.value
+                  ? 'bg-primary text-white border-primary shadow-sm'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-primary hover:text-primary'
+              }`}
+            >
+              {qp.label}
+            </button>
+          ))}
+        </div>
+
         <div className="flex items-center gap-2">
           <input
-            type="number"
+            type="text"
             value={maxPrice}
-            onChange={(e) => setMaxPrice(e.target.value)}
+            onChange={handlePriceChange}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onFilter();
+            }}
             placeholder="Tối đa (đ)"
             className="w-full bg-slate-50 border border-slate-200 focus:border-primary/50 focus:bg-white rounded-xl px-3 py-2 text-sm outline-none transition-all"
           />
@@ -94,8 +159,9 @@ export default function FilterSidebar({
           {renderCategoryButton({ code: '', name: 'Tất cả', campaignCount: totalCampaigns })}
           {categories.map((parent) => (
             <div key={parent.code} className="space-y-1">
-              {renderCategoryButton(parent)}
-              {parent.children?.map((child) => renderCategoryButton(child, true))}
+              {renderCategoryButton(parent, false, (parent.children?.length ?? 0) > 0)}
+              {expandedCategories[parent.code] &&
+                parent.children?.map((child) => renderCategoryButton(child, true))}
             </div>
           ))}
         </div>
