@@ -13,6 +13,7 @@ describe('OrdersService checkout', () => {
       capacity: 100,
       soldQuantity: 5,
       reservedStock: 2,
+      originalPrice: new Prisma.Decimal('24.99'),
       salePrice: new Prisma.Decimal('19.99'),
       ...campaignOverrides,
     };
@@ -60,9 +61,26 @@ describe('OrdersService checkout', () => {
     const orderData = tx.order.create.mock.calls[0][0].data;
     const itemData = tx.orderItem.create.mock.calls[0][0].data;
     expect(orderData.totalAmount.toString()).toBe('39.98');
-    expect(itemData.unitPrice).toBe(campaign.salePrice);
+    expect(itemData.unitPrice.toString()).toBe(campaign.salePrice.toString());
     expect(tx.cartItem.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ orderBy: { campaignId: 'asc' } }),
     );
+  });
+
+  it('uses original price when a campaign has no discount', async () => {
+    const { prisma, tx } = createTransaction({
+      originalPrice: new Prisma.Decimal('50.00'),
+      salePrice: null,
+    });
+    const service = new OrdersService(prisma as any);
+
+    await service.checkout('00000000-0000-4000-8000-000000000001', {
+      paymentProvider: PaymentProviderType.STRIPE,
+    });
+
+    const orderData = tx.order.create.mock.calls[0][0].data;
+    const itemData = tx.orderItem.create.mock.calls[0][0].data;
+    expect(orderData.totalAmount.toString()).toBe('100');
+    expect(itemData.unitPrice.toString()).toBe('50');
   });
 });

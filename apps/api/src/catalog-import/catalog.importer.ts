@@ -39,6 +39,7 @@ async function resolveCatalogPartnerId(
 async function createPlan(
   prisma: PrismaService,
   dataset: NormalizedDataset,
+  refreshSaleStart: boolean,
 ): Promise<{ inserted: number; updated: number; unchanged: number }> {
   const existing = await prisma.voucherCampaign.findMany({
     where: {
@@ -47,12 +48,17 @@ async function createPlan(
         externalId: campaign.external_id,
       })),
     },
-    select: { externalSource: true, externalId: true, sourceContentHash: true },
+    select: {
+      externalSource: true,
+      externalId: true,
+      sourceContentHash: true,
+      saleStartTime: true,
+    },
   });
   const existingByKey = new Map(
     existing.map((campaign) => [
       compoundKey(campaign.externalSource ?? '', campaign.externalId ?? ''),
-      campaign.sourceContentHash,
+      campaign,
     ]),
   );
 
@@ -60,12 +66,25 @@ async function createPlan(
   let updated = 0;
   let unchanged = 0;
   for (const campaign of dataset.campaigns) {
-    const existingHash = existingByKey.get(
+    const existingCampaign = existingByKey.get(
       compoundKey(campaign.external_source, campaign.external_id),
     );
-    if (existingHash === undefined) inserted += 1;
-    else if (existingHash === campaign.source_content_hash) unchanged += 1;
-    else updated += 1;
+    if (existingCampaign === undefined) {
+      inserted += 1;
+      continue;
+    }
+    const scheduleChanged =
+      refreshSaleStart &&
+      existingCampaign.saleStartTime.getTime() !==
+        new Date(campaign.sale_start_time).getTime();
+    if (
+      existingCampaign.sourceContentHash === campaign.source_content_hash &&
+      !scheduleChanged
+    ) {
+      unchanged += 1;
+    } else {
+      updated += 1;
+    }
   }
   return { inserted, updated, unchanged };
 }
@@ -179,6 +198,7 @@ async function applyDataset(
   prisma: PrismaService,
   dataset: NormalizedDataset,
   partnerId: string,
+  refreshSaleStart: boolean,
 ): Promise<number> {
   return prisma.$transaction(
     async (tx) => {
@@ -204,7 +224,9 @@ async function applyDataset(
           termsAndConditions: row.terms_and_conditions,
           category: row.legacy_category_code,
           originalPrice: new Prisma.Decimal(row.original_price),
-          salePrice: new Prisma.Decimal(row.sale_price),
+          salePrice: row.sale_price.trim()
+            ? new Prisma.Decimal(row.sale_price)
+            : null,
           currency: row.currency,
           usageValidityDays: Number(row.usage_validity_days),
           thumbnailUrl: row.thumbnail_url,
@@ -218,7 +240,12 @@ async function applyDataset(
         const campaign = existing
           ? await tx.voucherCampaign.update({
               where: { campaignId: existing.campaignId },
-              data: sharedData,
+              data: {
+                ...sharedData,
+                ...(refreshSaleStart
+                  ? { saleStartTime: new Date(row.sale_start_time) }
+                  : {}),
+              },
               select: { campaignId: true },
             })
           : await tx.voucherCampaign.create({
@@ -305,6 +332,7 @@ export async function importCatalogCsv(options: {
   inputDirectory: string;
   apply: boolean;
   partnerId?: string;
+  refreshSaleStart?: boolean;
 }): Promise<ImportReport> {
   const validation = await validateNormalizedCatalog(options.inputDirectory);
   if (validation.issues.length > 0) {
@@ -317,10 +345,20 @@ export async function importCatalogCsv(options: {
   await prisma.$connect();
   try {
     const partnerId = await resolveCatalogPartnerId(prisma, options.partnerId);
-    const plan = await createPlan(prisma, validation.dataset);
+    const refreshSaleStart = options.refreshSaleStart ?? false;
+    const plan = await createPlan(
+      prisma,
+      validation.dataset,
+      refreshSaleStart,
+    );
     let orphanBranchesRemoved = 0;
     if (options.apply) {
-      orphanBranchesRemoved = await applyDataset(prisma, validation.dataset, partnerId);
+      orphanBranchesRemoved = await applyDataset(
+        prisma,
+        validation.dataset,
+        partnerId,
+        refreshSaleStart,
+      );
     }
 
     const report: ImportReport = {

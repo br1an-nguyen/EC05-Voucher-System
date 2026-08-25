@@ -1,4 +1,5 @@
 export const GIFTPOP_SOURCE = 'giftpop.vn';
+export const MAX_CATALOG_BRANCHES = 30;
 
 export const DEFAULT_GIFTPOP_PRODUCT_URLS = [
   'https://www.giftpop.vn/category/view/CB2604160001',
@@ -43,6 +44,7 @@ export const GIFTPOP_CATEGORIES: Record<
   A118: { nameVi: 'Mẹ và Bé', parentCode: 'SHOPPING_RETAIL', displayOrder: 118 },
   A119: { nameVi: 'Voucher Book', parentCode: 'LIFESTYLE_SERVICES', displayOrder: 119 },
   A120: { nameVi: 'Phong cách sống', parentCode: 'LIFESTYLE_SERVICES', displayOrder: 120 },
+  A121: { nameVi: 'Góc giao quà', parentCode: 'OTHER', displayOrder: 121 },
   A122: { nameVi: 'Vận chuyển', parentCode: 'TRANSPORT', displayOrder: 122 },
 };
 
@@ -55,7 +57,7 @@ export interface RawGiftpopProduct {
   description: string;
   termsAndConditions: string;
   originalPrice: number;
-  salePrice: number;
+  salePrice: number | null;
   currency: 'VND';
   thumbnailUrl: string;
   usageValidityDays: number | null;

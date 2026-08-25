@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../../lib/api';
 import { getErrorMessage } from '../../../lib/errors';
+import { hasDiscount, resolveSellingPrice } from '../../../lib/pricing';
 import { useAuth } from '../../../context/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -26,7 +27,8 @@ interface VoucherCampaign {
   title: string;
   category: string | null;
   originalPrice: number;
-  salePrice: number;
+  salePrice: number | null;
+  sellingPrice?: number;
   capacity: number;
   soldQuantity: number;
   partner: Partner;
@@ -118,7 +120,7 @@ export default function CartPage() {
 
   // Tính tổng tiền giỏ hàng
   const totalAmount = cartItems.reduce(
-    (sum, item) => sum + Number(item.campaign.salePrice) * item.quantity,
+    (sum, item) => sum + resolveSellingPrice(item.campaign) * item.quantity,
     0
   );
 
@@ -187,10 +189,12 @@ export default function CartPage() {
                         <span>{campaign.partner.companyName}</span>
                       </div>
                       <div className="mt-2 text-xs font-extrabold text-primary">
-                        {Number(campaign.salePrice).toLocaleString('vi-VN')} đ
-                        <span className="text-[10px] text-muted line-through font-medium ml-1.5">
-                          {Number(campaign.originalPrice).toLocaleString('vi-VN')} đ
-                        </span>
+                        {resolveSellingPrice(campaign).toLocaleString('vi-VN')} đ
+                        {hasDiscount(campaign) ? (
+                          <span className="text-[10px] text-muted line-through font-medium ml-1.5">
+                            {Number(campaign.originalPrice).toLocaleString('vi-VN')} đ
+                          </span>
+                        ) : null}
                       </div>
                     </div>
 

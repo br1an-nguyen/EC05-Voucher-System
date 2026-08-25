@@ -87,6 +87,7 @@ async function execute(): Promise<void> {
       inputDirectory: inputDirectory(),
       apply: hasFlag('apply'),
       partnerId: argument('partner-id'),
+      refreshSaleStart: hasFlag('refresh-sale-start'),
     });
     console.log(JSON.stringify(report, null, 2));
     return;
@@ -108,6 +109,7 @@ async function execute(): Promise<void> {
     inputDirectory: outputDirectory,
     apply: hasFlag('apply'),
     partnerId: argument('partner-id'),
+    refreshSaleStart: hasFlag('refresh-sale-start'),
   });
   console.log(`Pipeline output: ${outputDirectory}`);
   console.log(JSON.stringify(report, null, 2));

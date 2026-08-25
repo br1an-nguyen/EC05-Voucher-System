@@ -3,6 +3,7 @@
 import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import { apiRequest } from '../../../lib/api';
 import { getErrorMessage } from '../../../lib/errors';
+import { resolveSellingPrice } from '../../../lib/pricing';
 import { useAuth } from '../../../context/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -22,7 +23,9 @@ interface Partner {
 
 interface VoucherCampaign {
   title: string;
-  salePrice: number;
+  originalPrice: number;
+  salePrice: number | null;
+  sellingPrice?: number;
   partner: Partner;
 }
 
@@ -122,7 +125,9 @@ function CheckoutPageContent() {
         quantity: item.quantity,
         campaign: {
           title: item.campaign?.title || 'Voucher',
-          salePrice: Number(item.unitPrice ?? item.campaign?.salePrice ?? 0),
+          originalPrice: Number(item.unitPrice ?? item.campaign?.salePrice ?? 0),
+          salePrice: null,
+          sellingPrice: Number(item.unitPrice ?? item.campaign?.salePrice ?? 0),
           partner: {
             companyName: item.campaign?.partner?.companyName || 'Partner',
           },
@@ -230,7 +235,7 @@ function CheckoutPageContent() {
   }
 
   const totalAmount = cartItems.reduce(
-    (sum, item) => sum + Number(item.campaign.salePrice) * item.quantity,
+    (sum, item) => sum + resolveSellingPrice(item.campaign) * item.quantity,
     0
   );
 
@@ -454,7 +459,7 @@ function CheckoutPageContent() {
                       <span className="text-[10px] text-muted">Số lượng: {item.quantity}</span>
                     </div>
                     <span className="font-bold text-foreground shrink-0">
-                      {(Number(item.campaign.salePrice) * item.quantity).toLocaleString('vi-VN')} đ
+                      {(resolveSellingPrice(item.campaign) * item.quantity).toLocaleString('vi-VN')} đ
                     </span>
                   </div>
                 ))}

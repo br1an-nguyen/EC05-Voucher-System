@@ -38,7 +38,8 @@ const campaignSchema = z.object({
   description: z.string().optional(),
   category: z.string().min(1, 'Vui lòng chọn danh mục.'),
   originalPrice: z.string().min(1, 'Giá gốc không được để trống.'),
-  salePrice: z.string().min(1, 'Giá bán không được để trống.'),
+  hasDiscount: z.boolean(),
+  salePrice: z.string().optional(),
   saleStartTime: z.string().min(1, 'Thời gian bắt đầu bán không được để trống.'),
   saleEndTime: z.string().min(1, 'Thời gian kết thúc bán không được để trống.'),
   usageStartTime: z.string().min(1, 'Thời gian bắt đầu sử dụng không được để trống.'),
@@ -49,7 +50,12 @@ const campaignSchema = z.object({
   branchIds: z.array(z.string()).min(1, 'Vui lòng chọn ít nhất một chi nhánh áp dụng.'),
 }).refine((data) => {
   // Ràng buộc RB-02: Giá khuyến mãi phải nhỏ hơn giá gốc
-  return Number(data.salePrice) < Number(data.originalPrice);
+  if (!data.hasDiscount) return true;
+  return (
+    Boolean(data.salePrice) &&
+    Number(data.salePrice) > 0 &&
+    Number(data.salePrice) < Number(data.originalPrice)
+  );
 }, {
   message: 'Giá khuyến mãi bán ra phải nhỏ hơn giá gốc của voucher (RB-02).',
   path: ['salePrice'],
@@ -93,6 +99,7 @@ export default function CreateVoucherPage() {
     resolver: zodResolver(campaignSchema),
     defaultValues: {
       isMultiUse: false,
+      hasDiscount: true,
       branchIds: [],
       category: '',
       originalPrice: '',
@@ -103,6 +110,7 @@ export default function CreateVoucherPage() {
   });
 
   const isMultiUseSelected = useWatch({ control, name: 'isMultiUse' });
+  const hasDiscountSelected = useWatch({ control, name: 'hasDiscount' });
   const multiUseRegistration = register('isMultiUse');
 
   // Load danh sách chi nhánh hoạt động của đối tác
@@ -130,7 +138,7 @@ export default function CreateVoucherPage() {
       description: data.description,
       category: data.category,
       originalPrice: Number(data.originalPrice),
-      salePrice: Number(data.salePrice),
+      salePrice: data.hasDiscount ? Number(data.salePrice) : null,
       saleStartTime: new Date(data.saleStartTime).toISOString(),
       saleEndTime: new Date(data.saleEndTime).toISOString(),
       usageStartTime: new Date(data.usageStartTime).toISOString(),
@@ -292,6 +300,23 @@ export default function CreateVoucherPage() {
           </h3>
 
           {/* THIẾT LẬP GIÁ */}
+          <label className="flex min-h-11 items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5 text-sm font-semibold text-foreground">
+            <input
+              type="checkbox"
+              {...register('hasDiscount')}
+              onChange={(event) => {
+                setValue('hasDiscount', event.target.checked, {
+                  shouldValidate: true,
+                });
+                if (!event.target.checked) {
+                  setValue('salePrice', '', { shouldValidate: true });
+                }
+              }}
+              className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+            />
+            Áp dụng giá khuyến mãi
+          </label>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-foreground mb-1.5">
@@ -315,8 +340,9 @@ export default function CreateVoucherPage() {
               <input
                 type="number"
                 {...register('salePrice')}
+                disabled={!hasDiscountSelected}
                 placeholder="Ví dụ: 70000"
-                className="block w-full rounded-lg border border-border bg-background py-2.5 px-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all"
+                className="block w-full rounded-lg border border-border bg-background py-2.5 px-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all disabled:cursor-not-allowed disabled:bg-muted/40 disabled:text-muted"
               />
               {errors.salePrice && (
                 <p className="mt-1 text-xs text-primary">{errors.salePrice.message}</p>

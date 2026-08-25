@@ -13,6 +13,7 @@ import {
   ReservationStatus,
   VoucherStatus,
 } from '@prisma/client';
+import { resolveSellingPrice } from '../common/pricing';
 
 @Injectable()
 export class OrdersService {
@@ -82,8 +83,12 @@ export class OrdersService {
           );
         }
 
-        currentUnitPrices.set(item.campaignId, campaign.salePrice);
-        totalAmount = totalAmount.add(campaign.salePrice.mul(item.quantity));
+        const unitPrice = resolveSellingPrice(
+          campaign.originalPrice,
+          campaign.salePrice,
+        );
+        currentUnitPrices.set(item.campaignId, unitPrice);
+        totalAmount = totalAmount.add(unitPrice.mul(item.quantity));
       }
 
       for (const item of cartItems) {

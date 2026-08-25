@@ -3,13 +3,19 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { MapPin, Store, ArrowRight, Flame } from 'lucide-react';
 import { motion } from 'framer-motion';
+import {
+  discountPercentage,
+  hasDiscount,
+  resolveSellingPrice,
+} from '../lib/pricing';
 
 export interface VoucherCampaignCard {
   campaignId: string;
   title: string;
   category: string | null;
   originalPrice: number;
-  salePrice: number;
+  salePrice: number | null;
+  sellingPrice?: number;
   capacity: number;
   soldQuantity: number;
   thumbnailUrl?: string | null;
@@ -29,8 +35,11 @@ export default function VoucherCard({ campaign: c, index = 0 }: VoucherCardProps
   const thumbnailUrl = c.thumbnailUrl ?? c.thumbnail_url;
   const brandName = c.primaryBrand?.displayName ?? c.partner.companyName;
   const categoryName = c.primaryCategory?.nameVi ?? c.category ?? 'Khác';
-  const discountPct = Math.round(((Number(c.originalPrice) - Number(c.salePrice)) / Number(c.originalPrice)) * 100);
-  const remaining = c.capacity - c.soldQuantity;
+  const discounted = hasDiscount(c);
+  const discountPct = discountPercentage(c);
+  const sellingPrice = resolveSellingPrice(c);
+  const remaining = Math.max(c.capacity - c.soldQuantity, 0);
+  const isSoldOut = remaining === 0;
   const soldPercent = Math.min(Math.round((c.soldQuantity / c.capacity) * 100), 100);
   
   // Choose a gradient based on category or index for visual variety
@@ -70,11 +79,15 @@ export default function VoucherCard({ campaign: c, index = 0 }: VoucherCardProps
             {categoryName}
           </span>
           
-          {discountPct > 0 && (
+          {isSoldOut ? (
+            <div className="absolute right-0 top-0 rounded-bl-xl rounded-tr-lg bg-slate-900 px-2.5 py-1 text-xs font-black text-white shadow-md">
+              Đã bán hết
+            </div>
+          ) : discountPct > 0 ? (
             <div className="bg-red-500 text-white font-black text-xs px-2 py-1 rounded-bl-xl rounded-tr-lg shadow-md absolute top-0 right-0">
               -{discountPct}%
             </div>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -101,11 +114,13 @@ export default function VoucherCard({ campaign: c, index = 0 }: VoucherCardProps
 
         <div className="mt-4 flex items-end justify-between">
           <div>
-            <div className="text-xs text-slate-400 line-through font-medium mb-0.5">
-              {Number(c.originalPrice).toLocaleString('vi-VN')} đ
-            </div>
+            {discounted ? (
+              <div className="text-xs text-slate-400 line-through font-medium mb-0.5">
+                {Number(c.originalPrice).toLocaleString('vi-VN')} đ
+              </div>
+            ) : null}
             <div className="text-lg font-black text-primary leading-none">
-              {Number(c.salePrice).toLocaleString('vi-VN')}
+              {sellingPrice.toLocaleString('vi-VN')}
               <span className="text-sm font-bold align-top ml-0.5">đ</span>
             </div>
           </div>
@@ -123,18 +138,30 @@ export default function VoucherCard({ campaign: c, index = 0 }: VoucherCardProps
             <span className="text-primary flex items-center gap-1">
               <Flame className="h-3 w-3" /> Đã bán {c.soldQuantity}
             </span>
-            <span className="text-slate-500">Còn lại {remaining}</span>
+            <span className={isSoldOut ? 'font-bold text-slate-700' : 'text-slate-500'}>
+              {isSoldOut ? 'Đã bán hết' : `Còn lại ${remaining}`}
+            </span>
           </div>
         </div>
 
         {/* Action Button */}
-        <Link
-          href={`/voucher/${c.campaignId}`}
-          className="mt-4 w-full flex items-center justify-center gap-2 py-2.5 bg-primary/5 hover:bg-primary text-primary hover:text-white font-bold rounded-xl transition-all duration-300 border border-primary/10 hover:border-primary"
-        >
-          Mua Ngay
-          <ArrowRight className="h-4 w-4" />
-        </Link>
+        {isSoldOut ? (
+          <div
+            role="status"
+            aria-label={`${c.title} đã bán hết`}
+            className="mt-4 flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-100 py-2.5 font-bold text-slate-500"
+          >
+            Đã bán hết
+          </div>
+        ) : (
+          <Link
+            href={`/voucher/${c.campaignId}`}
+            className="mt-4 w-full flex items-center justify-center gap-2 py-2.5 bg-primary/5 hover:bg-primary text-primary hover:text-white font-bold rounded-xl transition-all duration-300 border border-primary/10 hover:border-primary"
+          >
+            Mua Ngay
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        )}
       </div>
     </motion.div>
   );

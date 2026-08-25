@@ -128,9 +128,12 @@ export function parseGiftpopProductHtml(
   const thumbnailUrl = $('.leftInfor h2 img').first().attr('src')?.trim() ?? '';
 
   const priceNode = $('.name_info .price').first().clone();
-  const originalPrice = parseMoney(priceNode.find('del').text());
+  const struckThroughPrice = parseMoney(priceNode.find('del').text());
   priceNode.find('del, .pd-discount-badge, sup').remove();
-  const salePrice = parseMoney(priceNode.text());
+  const displayedPrice = parseMoney(priceNode.text());
+  const hasDiscount = Number.isFinite(struckThroughPrice);
+  const originalPrice = hasDiscount ? struckThroughPrice : displayedPrice;
+  const salePrice = hasDiscount ? displayedPrice : null;
 
   const primaryBrandAnchor = $('.Brand-Logo > a').first();
   const primaryBrandUrl = new URL(

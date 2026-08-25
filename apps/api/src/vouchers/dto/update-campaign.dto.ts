@@ -17,14 +17,14 @@ export class UpdateCampaignDto {
   category?: string;
 
   @IsNumber({}, { message: 'Giá gốc phải là số thực.' })
-  @Min(0, { message: 'Giá gốc phải lớn hơn hoặc bằng 0.' })
+  @Min(1, { message: 'Giá gốc phải lớn hơn hoặc bằng 1.' })
   @IsOptional()
   originalPrice?: number;
 
   @IsNumber({}, { message: 'Giá bán phải là số thực.' })
-  @Min(0, { message: 'Giá bán phải lớn hơn hoặc bằng 0.' })
+  @Min(1, { message: 'Giá khuyến mãi phải lớn hơn hoặc bằng 1.' })
   @IsOptional()
-  salePrice?: number;
+  salePrice?: number | null;
 
   @IsDateString({}, { message: 'Thời gian bắt đầu bán không đúng định dạng ISO.' })
   @IsOptional()

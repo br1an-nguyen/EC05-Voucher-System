@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
 import { apiRequest } from '../lib/api';
+import { hasDiscount, resolveSellingPrice } from '../lib/pricing';
 import { 
   Ticket, 
   Search, 
@@ -41,14 +42,18 @@ interface CartItem {
 }
 
 interface VoucherSuggestion {
-  title?: string;
+  title: string;
+  originalPrice: number;
+  salePrice: number | null;
+  sellingPrice?: number;
+  thumbnail_url?: string | null;
 }
 
 export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
   const { user, logout } = useAuth();
   const router = useRouter();
   const [keyword, setKeyword] = useState(initialKeyword);
-  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [suggestions, setSuggestions] = useState<VoucherSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showMobileSearch, setShowMobileSearch] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -77,8 +82,8 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
       apiRequest<VoucherSuggestion[]>(`/vouchers?keyword=${encodeURIComponent(keyword)}`)
         .then((data) => {
           if (Array.isArray(data)) {
-            const uniqueMap = new Map();
-            data.forEach((item: any) => {
+            const uniqueMap = new Map<string, VoucherSuggestion>();
+            data.forEach((item) => {
               if (item.title && !uniqueMap.has(item.title)) {
                 uniqueMap.set(item.title, item);
               }
@@ -201,8 +206,8 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
                       <div className="flex flex-col flex-1 overflow-hidden">
                         <span className="line-clamp-1 text-sm font-semibold text-slate-800">{s.title}</span>
                         <div className="flex items-center gap-2 mt-1">
-                          <span className="text-primary font-bold text-xs">{Number(s.salePrice).toLocaleString('vi-VN')}đ</span>
-                          {s.originalPrice && s.originalPrice > s.salePrice && (
+                          <span className="text-primary font-bold text-xs">{resolveSellingPrice(s).toLocaleString('vi-VN')}đ</span>
+                          {hasDiscount(s) && (
                             <span className="text-slate-400 text-[10px] line-through">{Number(s.originalPrice).toLocaleString('vi-VN')}đ</span>
                           )}
                         </div>
@@ -368,14 +373,14 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
             {showSuggestions && suggestions.length > 0 && (
               <ul className="absolute top-full z-50 mt-2 w-full overflow-hidden rounded-xl border border-slate-100 bg-white shadow-xl">
                 {suggestions.map((suggestion) => (
-                  <li key={suggestion}>
+                  <li key={suggestion.title}>
                     <button
                       type="button"
-                      onClick={() => handleSuggestionClick(suggestion)}
+                      onClick={() => handleSuggestionClick(suggestion.title)}
                       className="flex w-full items-center gap-3 border-b border-slate-50 px-4 py-3 text-left text-sm text-slate-700 transition-colors last:border-0 hover:bg-slate-50"
                     >
                       <Search className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
-                      <span className="line-clamp-1">{suggestion}</span>
+                      <span className="line-clamp-1">{suggestion.title}</span>
                     </button>
                   </li>
                 ))}

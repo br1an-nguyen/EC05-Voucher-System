@@ -4,6 +4,11 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { apiRequest } from '../../../../lib/api';
 import { getErrorMessage } from '../../../../lib/errors';
+import {
+  discountPercentage,
+  hasDiscount,
+  resolveSellingPrice,
+} from '../../../../lib/pricing';
 import { useAuth } from '../../../../context/AuthContext';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -48,7 +53,8 @@ interface VoucherCampaign {
   sourceUrl: string | null;
   usageValidityDays: number | null;
   originalPrice: number;
-  salePrice: number;
+  salePrice: number | null;
+  sellingPrice?: number;
   capacity: number;
   soldQuantity: number;
   reservedStock: number;
@@ -212,7 +218,9 @@ export default function VoucherDetailPage() {
 
   const remaining = campaign.capacity - campaign.soldQuantity;
   const isSoldOut = remaining <= 0;
-  const discountPct = Math.round(((Number(campaign.originalPrice) - Number(campaign.salePrice)) / Number(campaign.originalPrice)) * 100);
+  const discounted = hasDiscount(campaign);
+  const discountPct = discountPercentage(campaign);
+  const sellingPrice = resolveSellingPrice(campaign);
 
   return (
     <div className="min-h-screen bg-background font-sans py-8 px-4 sm:px-6 lg:px-8">
@@ -458,18 +466,22 @@ export default function VoucherDetailPage() {
               
               {/* Giá cả */}
               <div className="space-y-1">
-                <span className="text-[10px] text-muted uppercase font-bold tracking-wider">Giá khuyến mãi</span>
+                <span className="text-[10px] text-muted uppercase font-bold tracking-wider">
+                  {discounted ? 'Giá khuyến mãi' : 'Giá bán'}
+                </span>
                 <div className="flex items-baseline gap-2">
                   <span className="text-2xl font-black text-primary">
-                    {Number(campaign.salePrice).toLocaleString('vi-VN')} đ
+                    {sellingPrice.toLocaleString('vi-VN')} đ
                   </span>
-                  <span className="text-xs text-muted line-through">
-                    {Number(campaign.originalPrice).toLocaleString('vi-VN')} đ
-                  </span>
+                  {discounted ? (
+                    <span className="text-xs text-muted line-through">
+                      {Number(campaign.originalPrice).toLocaleString('vi-VN')} đ
+                    </span>
+                  ) : null}
                 </div>
                 {discountPct > 0 && (
                   <span className="inline-block text-[10px] font-bold text-red-700 bg-red-50 rounded px-1.5 py-0.5 ring-1 ring-red-600/10 mt-1">
-                    Tiết kiệm {discountPct}% ({Math.round(Number(campaign.originalPrice) - Number(campaign.salePrice)).toLocaleString('vi-VN')} đ)
+                    Tiết kiệm {discountPct}% ({Math.round(Number(campaign.originalPrice) - sellingPrice).toLocaleString('vi-VN')} đ)
                   </span>
                 )}
               </div>

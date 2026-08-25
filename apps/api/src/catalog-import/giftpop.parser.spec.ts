@@ -73,4 +73,36 @@ describe('Giftpop catalog parser', () => {
       secondRun.map((branch) => branch.externalId),
     );
   });
+
+  it('uses the displayed price as original price when there is no discount', () => {
+    const html = `
+      <a class="list-link" href="/brandshop/list?category_code=A113&brand_code=VIETTEL">Viettel</a>
+      <section class="productInformation">
+        <div class="leftInfor"><h2><img src="https://img.giftpop.vn/voucher/viettel.png"></h2></div>
+        <div class="rightInfor">
+          <h4>Thẻ điện thoại Viettel 100K</h4>
+          <div class="name_info"><div class="price">100.000<sup>đ</sup></div></div>
+        </div>
+      </section>
+      <div class="Brand-Logo">
+        <a href="/brandshop/list?brand_code=VIETTEL">
+          <div class="brand-detail"><p>Viettel</p></div>
+        </a>
+      </div>
+      <div id="descrpition"><div class="contents"><p>Thẻ nạp điện thoại trả trước.</p></div></div>
+      <div id="condition"><div class="contents"><p>Không quy đổi thành tiền mặt.</p></div></div>
+    `;
+
+    const parsed = parseGiftpopProductHtml(
+      html,
+      'https://www.giftpop.vn/category/view/MP-VIETTEL-100',
+      crawledAt,
+    );
+
+    expect(parsed.product).toMatchObject({
+      originalPrice: 100000,
+      salePrice: null,
+      categoryExternalIds: ['A113'],
+    });
+  });
 });

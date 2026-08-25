@@ -59,6 +59,7 @@ enum PaymentProviderType {
   STRIPE
   PAYPAL
   VNPAY
+  MOMO
 }
 
 enum PaymentTransactionStatus {
@@ -196,7 +197,7 @@ model VoucherCampaign {
   termsAndConditions    String?                @map("terms_and_conditions") @db.Text
   category              String?                @map("category") @db.VarChar(100)
   originalPrice         Decimal                @map("original_price") @db.Decimal(12, 2)
-  salePrice             Decimal                @map("sale_price") @db.Decimal(12, 2)
+  salePrice             Decimal?               @map("sale_price") @db.Decimal(12, 2)
   currency              String                 @default("VND") @map("currency") @db.Char(3)
   saleStartTime         DateTime               @map("sale_start_time") @db.Timestamptz
   saleEndTime           DateTime               @map("sale_end_time") @db.Timestamptz
@@ -388,6 +389,8 @@ model PaymentTransaction {
   requestAmountMinor    BigInt                   @map("request_amount_minor")
   requestCurrency       String                   @map("request_currency") @db.Char(3)
   exchangeRate          Decimal?                 @map("exchange_rate") @db.Decimal(18, 8)
+  settledAmountMinor    BigInt?                  @map("settled_amount_minor")
+  settledCurrency       String?                  @map("settled_currency") @db.Char(3)
   failureCode           String?                  @map("failure_code") @db.VarChar(100)
   failureMessage        String?                  @map("failure_message") @db.Text
   expiresAt             DateTime?                @map("expires_at") @db.Timestamptz
@@ -413,6 +416,7 @@ model PaymentWebhookEvent {
   payloadHash      String                         @map("payload_hash") @db.Char(64)
   processingStatus PaymentWebhookProcessingStatus @default(RECEIVED) @map("processing_status")
   paymentId        String?                        @map("payment_id") @db.Uuid
+  processingError  String?                        @map("processing_error") @db.Text
   receivedAt       DateTime                       @default(now()) @map("received_at") @db.Timestamptz
   processedAt      DateTime?                      @map("processed_at") @db.Timestamptz
 

@@ -5,6 +5,7 @@ import { UpdateCampaignDto } from './dto/update-campaign.dto';
 import { Prisma, VoucherStatus, PartnerApprovalStatus, UserRole } from '@prisma/client';
 import { PublicCatalogQueryDto } from './dto/public-catalog-query.dto';
 import { AuditService } from '../audit/audit.service';
+import { resolveSellingPrice } from '../common/pricing';
 
 /**
  * Service quản lý toàn bộ nghiệp vụ tạo, cập nhật, chuyển đổi trạng thái (vòng đời) chiến dịch Voucher.
@@ -17,6 +18,8 @@ export class VouchersService {
   ) {}
 
   private mapCatalogPresentation<T extends {
+    originalPrice: Prisma.Decimal | number | string;
+    salePrice: Prisma.Decimal | number | string | null;
     campaignBrands?: Array<{ isPrimary: boolean; brand: unknown }>;
     campaignCategories?: Array<{ isPrimary: boolean; category: unknown }>;
   }>(campaign: T) {
@@ -33,6 +36,7 @@ export class VouchersService {
         campaignCategories[0]?.category ??
         null,
       categories: campaignCategories.map((relation) => relation.category),
+      sellingPrice: resolveSellingPrice(base.originalPrice, base.salePrice),
     };
   }
 
@@ -86,7 +90,7 @@ export class VouchersService {
 
     // Bước 2: Thực thi các quy tắc ràng buộc nghiệp vụ (Business Rules)
     // RB-02: Giá bán khuyến mãi phải nhỏ hơn giá gốc
-    if (salePrice >= originalPrice) {
+    if (salePrice != null && salePrice >= originalPrice) {
       throw new BadRequestException('Giá khuyến mãi phải nhỏ hơn giá gốc của voucher (RB-02).');
     }
 
@@ -180,8 +184,9 @@ export class VouchersService {
 
     // Kiểm tra tính hợp lệ của giá nếu có cập nhật
     const originalPrice = updateData.originalPrice ?? Number(campaign.originalPrice);
-    const salePrice = updateData.salePrice ?? Number(campaign.salePrice);
-    if (salePrice >= originalPrice) {
+    const salePrice =
+      updateData.salePrice === undefined ? campaign.salePrice : updateData.salePrice;
+    if (salePrice != null && Number(salePrice) >= originalPrice) {
       throw new BadRequestException('Giá khuyến mãi phải nhỏ hơn giá gốc của voucher (RB-02).');
     }
 
@@ -319,8 +324,8 @@ export class VouchersService {
   }
 
   /**
-   * Danh mục cấp cao nhất dùng cho bộ lọc catalog. Count chỉ gồm voucher còn hàng,
-   * đã được duyệt và đang trong thời gian mở bán.
+   * Danh mục cấp cao nhất dùng cho bộ lọc catalog. Count gồm cả voucher đã bán hết
+   * để khớp với danh sách công khai, miễn là đã duyệt và đang trong thời gian mở bán.
    */
   async findPublicCategories() {
     const now = new Date();
@@ -331,57 +336,60 @@ export class VouchersService {
         saleEndTime: { gte: now },
       },
     };
-    const categories = await this.prisma.voucherCategory.findMany({
-      where: { parentId: null, isActive: true },
-      orderBy: [{ displayOrder: 'asc' }, { nameVi: 'asc' }],
-      include: {
-        campaignCategories: {
-          where: activeCampaignWhere,
-          select: {
-            campaignId: true,
-            campaign: { select: { capacity: true, soldQuantity: true } },
+    const [categories, publicCampaignCandidates] = await Promise.all([
+      this.prisma.voucherCategory.findMany({
+        where: { parentId: null, isActive: true },
+        orderBy: [{ displayOrder: 'asc' }, { nameVi: 'asc' }],
+        include: {
+          campaignCategories: {
+            where: activeCampaignWhere,
+            select: {
+              campaignId: true,
+              campaign: { select: { capacity: true, soldQuantity: true } },
+            },
           },
-        },
-        children: {
-          where: { isActive: true },
-          orderBy: [{ displayOrder: 'asc' }, { nameVi: 'asc' }],
-          include: {
-            campaignCategories: {
-              where: activeCampaignWhere,
-              select: {
-                campaignId: true,
-                campaign: { select: { capacity: true, soldQuantity: true } },
+          children: {
+            where: { isActive: true },
+            orderBy: [{ displayOrder: 'asc' }, { nameVi: 'asc' }],
+            include: {
+              campaignCategories: {
+                where: activeCampaignWhere,
+                select: {
+                  campaignId: true,
+                  campaign: { select: { capacity: true, soldQuantity: true } },
+                },
               },
             },
           },
         },
-      },
-    });
+      }),
+      this.prisma.voucherCampaign.findMany({
+        where: {
+          status: VoucherStatus.APPROVED,
+          saleStartTime: { lte: now },
+          saleEndTime: { gte: now },
+        },
+        select: {
+          campaignId: true,
+          capacity: true,
+          soldQuantity: true,
+        },
+      }),
+    ]);
 
-    const allCampaignIds = new Set<string>();
     const categoryItems = categories.map((category) => {
-      const direct = category.campaignCategories.filter(
-        (relation) => relation.campaign.soldQuantity < relation.campaign.capacity,
-      );
+      const direct = category.campaignCategories;
       const children = category.children.map((child) => ({
         code: child.code,
         name: child.nameVi,
-        campaignCount: child.campaignCategories.filter(
-          (relation) => relation.campaign.soldQuantity < relation.campaign.capacity,
-        ).length,
+        campaignCount: child.campaignCategories.length,
       }));
       const campaignIds = new Set([
         ...direct.map((relation) => relation.campaignId),
         ...category.children.flatMap((child) =>
-          child.campaignCategories
-            .filter(
-              (relation) => relation.campaign.soldQuantity < relation.campaign.capacity,
-            )
-            .map((relation) => relation.campaignId),
+          child.campaignCategories.map((relation) => relation.campaignId),
         ),
       ]);
-      campaignIds.forEach((campaignId) => allCampaignIds.add(campaignId));
-
       return {
         code: category.code,
         name: category.nameVi,
@@ -391,7 +399,7 @@ export class VouchersService {
     });
 
     return {
-      totalCampaignCount: allCampaignIds.size,
+      totalCampaignCount: publicCampaignCandidates.length,
       categories: categoryItems,
     };
   }
@@ -427,13 +435,28 @@ export class VouchersService {
     }
 
     if (minPrice !== undefined || maxPrice !== undefined) {
-      whereClause.salePrice = {};
+      const discountedPriceRange: {
+        not: null;
+        gte?: number;
+        lte?: number;
+      } = { not: null };
+      const regularPriceRange: { gte?: number; lte?: number } = {};
       if (minPrice !== undefined) {
-        whereClause.salePrice.gte = minPrice;
+        discountedPriceRange.gte = minPrice;
+        regularPriceRange.gte = minPrice;
       }
       if (maxPrice !== undefined) {
-        whereClause.salePrice.lte = maxPrice;
+        discountedPriceRange.lte = maxPrice;
+        regularPriceRange.lte = maxPrice;
       }
+      whereClause.AND = [
+        {
+          OR: [
+            { salePrice: discountedPriceRange },
+            { salePrice: null, originalPrice: regularPriceRange },
+          ],
+        },
+      ];
     }
 
     if (keyword) {
@@ -482,11 +505,9 @@ export class VouchersService {
       };
     }
 
-    const orderByClause: any[] = [];
-    if (sortPrice) {
-      orderByClause.push({ salePrice: sortPrice });
-    }
-    orderByClause.push({ createdAt: 'desc' });
+    const orderByClause: Prisma.VoucherCampaignOrderByWithRelationInput[] = [
+      { createdAt: 'desc' },
+    ];
 
     const campaigns = await this.prisma.voucherCampaign.findMany({
       where: whereClause,
@@ -513,10 +534,19 @@ export class VouchersService {
       orderBy: orderByClause,
     });
 
-    // Lọc bỏ những chiến dịch đã hết hàng trong kho (Đã bán >= Sức chứa)
-    return campaigns
-      .filter((campaign) => campaign.soldQuantity < campaign.capacity)
-      .map((campaign) => this.mapCatalogPresentation(campaign));
+    if (sortPrice) {
+      const direction = sortPrice === 'asc' ? 1 : -1;
+      campaigns.sort(
+        (left, right) =>
+          direction *
+          resolveSellingPrice(left.originalPrice, left.salePrice)
+            .minus(resolveSellingPrice(right.originalPrice, right.salePrice))
+            .toNumber(),
+      );
+    }
+    return campaigns.map((campaign) =>
+      this.mapCatalogPresentation(campaign),
+    );
   }
 
   // ================= ADMIN OPERATIONS =================

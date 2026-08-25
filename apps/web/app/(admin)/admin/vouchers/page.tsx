@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../../../lib/api';
 import { getErrorMessage } from '../../../../lib/errors';
+import { resolveSellingPrice } from '../../../../lib/pricing';
 import { Ticket, Check, X, AlertCircle, CheckCircle, Calendar, MapPin, Building, Clock, TrendingUp, Package } from 'lucide-react';
 import {
   AlertDialog,
@@ -35,7 +36,7 @@ interface VoucherCampaign {
   description: string | null;
   category: string | null;
   originalPrice: number;
-  salePrice: number;
+  salePrice: number | null;
   capacity: number;
   saleStartTime: string;
   saleEndTime: string;
@@ -58,7 +59,10 @@ export default function AdminVouchersApprovalPage() {
   const summary = React.useMemo(() => {
     const totalCapacity = pendingCampaigns.reduce((sum, campaign) => sum + campaign.capacity, 0);
     const totalDiscountValue = pendingCampaigns.reduce((sum, campaign) => {
-      const discount = Math.max(campaign.originalPrice - campaign.salePrice, 0);
+      const discount = Math.max(
+        campaign.originalPrice - resolveSellingPrice(campaign),
+        0,
+      );
       return sum + discount * Math.max(campaign.capacity, 0);
     }, 0);
 
@@ -241,7 +245,7 @@ export default function AdminVouchersApprovalPage() {
                   <div className="space-y-1.5 pt-2 border-t border-border/60">
                     <span className="text-muted block uppercase tracking-wider text-[10px] font-semibold">Định giá & Số lượng</span>
                     <div>
-                      Giá bán: <span className="font-bold text-foreground text-sm">{Number(campaign.salePrice).toLocaleString('vi-VN')} đ</span>
+                      Giá bán: <span className="font-bold text-foreground text-sm">{resolveSellingPrice(campaign).toLocaleString('vi-VN')} đ</span>
                       <span className="text-muted text-[10px] line-through ml-1.5">({Number(campaign.originalPrice).toLocaleString('vi-VN')} đ)</span>
                     </div>
                     <div>Số lượng phát hành: <span className="font-bold text-foreground">{campaign.capacity} chiếc</span></div>

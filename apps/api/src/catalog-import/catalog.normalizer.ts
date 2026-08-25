@@ -16,8 +16,8 @@ const splitIds = (value: string): string[] =>
 const addDays = (value: Date, days: number): Date =>
   new Date(value.getTime() + days * 24 * 60 * 60 * 1000);
 
-const DEMO_SALE_START = new Date('2026-09-20T00:00:00+07:00');
-const DEMO_SALE_START_DAY_COUNT = 11;
+const DEMO_SALE_START = new Date('2026-08-20T00:00:00+07:00');
+const DEMO_SALE_START_DAY_COUNT = 3;
 const DEMO_USAGE_VALIDITY_DAYS = [7, 30, 45] as const;
 
 export const createDemoCampaignSchedule = (
@@ -62,7 +62,7 @@ export async function normalizeCatalogCsv(inputDirectory: string): Promise<void>
     readCsv(join(rawDirectory, 'branches.csv')),
   ]);
 
-  const categoryIds = new Set<string>();
+  const categoryIds = new Set<string>(Object.keys(GIFTPOP_CATEGORIES));
   for (const product of products) {
     for (const categoryId of splitIds(product.category_external_ids)) {
       categoryIds.add(categoryId);

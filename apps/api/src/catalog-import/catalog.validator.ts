@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { readCsv, writeCsv, writeJson } from './csv-files';
 import {
   CsvRow,
+  MAX_CATALOG_BRANCHES,
   NormalizedDataset,
   ValidationIssue,
   ValidationResult,
@@ -89,12 +90,18 @@ function validateCampaign(row: CsvRow): ValidationIssue[] {
   }
 
   const originalPrice = Number(row.original_price);
-  const salePrice = Number(row.sale_price);
+  const salePrice = row.sale_price.trim() ? Number(row.sale_price) : null;
   if (!Number.isInteger(originalPrice) || originalPrice <= 0) {
     reject('INVALID_ORIGINAL_PRICE', 'original_price phải là số nguyên VND lớn hơn 0.');
   }
-  if (!Number.isInteger(salePrice) || salePrice <= 0 || salePrice >= originalPrice) {
-    reject('INVALID_SALE_PRICE', 'sale_price phải lớn hơn 0 và luôn nhỏ hơn original_price.');
+  if (
+    salePrice !== null &&
+    (!Number.isInteger(salePrice) || salePrice <= 0 || salePrice >= originalPrice)
+  ) {
+    reject(
+      'INVALID_SALE_PRICE',
+      'sale_price phải để trống khi không giảm giá, hoặc là số nguyên dương nhỏ hơn original_price.',
+    );
   }
   if (row.currency !== 'VND') {
     reject('INVALID_CURRENCY', 'Catalog Giftpop demo chỉ chấp nhận VND.');
@@ -155,11 +162,11 @@ export async function validateNormalizedCatalog(
   }
   for (const campaign of dataset.campaigns) issues.push(...validateCampaign(campaign));
 
-  if (dataset.branches.length > 10) {
+  if (dataset.branches.length > MAX_CATALOG_BRANCHES) {
     issues.push({
       externalId: '(dataset)',
       errorCode: 'BRANCH_LIMIT',
-      errorMessage: `Dataset có ${dataset.branches.length} branches, vượt giới hạn 10.`,
+      errorMessage: `Dataset có ${dataset.branches.length} branches, vượt giới hạn ${MAX_CATALOG_BRANCHES}.`,
     });
   }
 

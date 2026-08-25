@@ -257,7 +257,7 @@ export async function crawlGiftpop(options: CrawlOptions): Promise<void> {
       description: product.description,
       terms_and_conditions: product.termsAndConditions,
       original_price: product.originalPrice,
-      sale_price: product.salePrice,
+      sale_price: product.salePrice ?? '',
       currency: product.currency,
       thumbnail_url: product.thumbnailUrl,
       usage_validity_days: product.usageValidityDays ?? '',

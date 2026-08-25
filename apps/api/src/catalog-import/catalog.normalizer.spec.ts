@@ -1,11 +1,11 @@
 import { createDemoCampaignSchedule } from './catalog.normalizer';
 
 describe('Giftpop catalog demo schedule', () => {
-  it('keeps seeded dates deterministic and inside the requested September range', () => {
+  it('keeps seeded dates deterministic and before August 23, 2026', () => {
     const first = createDemoCampaignSchedule('MP2106220019');
     const second = createDemoCampaignSchedule('MP2106220019');
-    const earliest = new Date('2026-09-20T00:00:00+07:00');
-    const latest = new Date('2026-09-30T00:00:00+07:00');
+    const earliest = new Date('2026-08-20T00:00:00+07:00');
+    const latest = new Date('2026-08-22T00:00:00+07:00');
 
     expect(second).toEqual(first);
     expect(first.saleStart.getTime()).toBeGreaterThanOrEqual(

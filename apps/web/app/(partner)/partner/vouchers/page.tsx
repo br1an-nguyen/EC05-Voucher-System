@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../../../lib/api';
 import { getErrorMessage } from '../../../../lib/errors';
+import { hasDiscount, resolveSellingPrice } from '../../../../lib/pricing';
 import Link from 'next/link';
 import { Ticket, Plus, Send, AlertCircle, CheckCircle, Clock3, Calendar, MapPin } from 'lucide-react';
 import {
@@ -30,7 +31,7 @@ interface VoucherCampaign {
   title: string;
   category: string | null;
   originalPrice: number;
-  salePrice: number;
+  salePrice: number | null;
   capacity: number;
   soldQuantity: number;
   reservedStock: number;
@@ -201,11 +202,13 @@ export default function PartnerVouchersPage() {
                   <div>
                     <span className="text-muted block">Giá bán / Giá gốc</span>
                     <span className="font-bold text-foreground text-sm">
-                      {Number(campaign.salePrice).toLocaleString('vi-VN')} đ
+                      {resolveSellingPrice(campaign).toLocaleString('vi-VN')} đ
                     </span>
-                    <span className="text-muted text-[10px] line-through ml-1.5">
-                      {Number(campaign.originalPrice).toLocaleString('vi-VN')} đ
-                    </span>
+                    {hasDiscount(campaign) ? (
+                      <span className="text-muted text-[10px] line-through ml-1.5">
+                        {Number(campaign.originalPrice).toLocaleString('vi-VN')} đ
+                      </span>
+                    ) : null}
                   </div>
                   <div>
                     <span className="text-muted block">Kho (Bán/Sức chứa)</span>
