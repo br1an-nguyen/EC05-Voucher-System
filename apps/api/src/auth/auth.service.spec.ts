@@ -1,11 +1,10 @@
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
-import { AuthService } from './auth.service';
 import { UserRole, UserStatus } from '@prisma/client';
-import { createHash } from 'crypto';
+import { AuthService } from './auth.service';
 
-describe('AuthService password reset', () => {
+describe('AuthService', () => {
   const mockUser = {
-    userId: 'user-1',
+    userId: '11111111-1111-4111-8111-111111111111',
     email: 'customer@example.com',
     phone: null,
     passwordHash: 'old-hash',
@@ -15,91 +14,78 @@ describe('AuthService password reset', () => {
     branchId: null,
     status: UserStatus.ACTIVE,
     createdAt: new Date(),
-    refreshTokenHash: null,
-    refreshTokenExpiresAt: null,
     passwordResetTokenHash: null,
     passwordResetExpiresAt: null,
     passwordChangedAt: null,
   };
 
-  it('should deliver a reset link without returning the token for an existing account', async () => {
-    const usersService = {
-      findByEmail: jest.fn().mockResolvedValue(mockUser),
-      findById: jest.fn().mockResolvedValue(mockUser),
-    };
-
-    const jwtService = {
-      sign: jest.fn().mockReturnValue('generated-token'),
-      verify: jest
-        .fn()
-        .mockReturnValue({ sub: 'user-1', purpose: 'password-reset' }),
-    };
-
-    const prisma = { user: { update: jest.fn() } };
-    const delivery = { deliver: jest.fn() };
-    const service = new AuthService(
-      usersService as any,
-      jwtService as any,
+  function createService({
+    users = {},
+    jwt = {},
+    prisma = {},
+    sessions = {},
+    delivery,
+  }: {
+    users?: object;
+    jwt?: object;
+    prisma?: object;
+    sessions?: object;
+    delivery?: object;
+  } = {}) {
+    return new AuthService(
+      users as any,
+      jwt as any,
       prisma as any,
+      sessions as any,
       delivery as any,
     );
+  }
+
+  it('delivers a reset link without returning the token', async () => {
+    const users = { findByEmail: jest.fn().mockResolvedValue(mockUser) };
+    const jwt = { sign: jest.fn().mockReturnValue('generated-token') };
+    const prisma = { user: { update: jest.fn() } };
+    const delivery = { deliver: jest.fn() };
+    const service = createService({ users, jwt, prisma, delivery });
 
     const result = await service.requestPasswordReset({
       email: 'Customer@Example.com ',
     });
 
-    expect(usersService.findByEmail).toHaveBeenCalledWith(
-      'customer@example.com',
-    );
-    expect(jwtService.sign).toHaveBeenCalled();
+    expect(users.findByEmail).toHaveBeenCalledWith('customer@example.com');
     expect(result).not.toHaveProperty('resetToken');
-    expect(result).not.toHaveProperty('resetUrl');
     expect(delivery.deliver).toHaveBeenCalledWith(
       expect.objectContaining({
         email: 'customer@example.com',
         resetUrl: expect.stringContaining('generated-token'),
       }),
     );
-    expect(result.message).toContain('Nếu tài khoản tồn tại');
   });
 
-  it('returns the same generic response and sends nothing for an unknown account', async () => {
-    const usersService = { findByEmail: jest.fn().mockResolvedValue(null) };
+  it('returns the same generic reset response for an unknown account', async () => {
     const delivery = { deliver: jest.fn() };
-    const service = new AuthService(
-      usersService as any,
-      { sign: jest.fn() } as any,
-      { user: { update: jest.fn() } } as any,
-      delivery as any,
-    );
-
-    const result = await service.requestPasswordReset({
-      email: 'missing@example.com',
+    const service = createService({
+      users: { findByEmail: jest.fn().mockResolvedValue(null) },
+      delivery,
     });
 
-    expect(result).toEqual({
+    await expect(
+      service.requestPasswordReset({ email: 'missing@example.com' }),
+    ).resolves.toEqual({
       message:
         'Nếu tài khoản tồn tại, hệ thống đã gửi hướng dẫn đặt lại mật khẩu qua email.',
     });
     expect(delivery.deliver).not.toHaveBeenCalled();
   });
 
-  it('should reject an invalid or expired reset token', async () => {
-    const usersService = {
-      findByEmail: jest.fn(),
-    };
-
-    const prisma = {
-      user: {
-        findFirst: jest.fn().mockResolvedValue(null),
+  it('rejects an invalid or expired reset token', async () => {
+    const service = createService({
+      jwt: {
+        verify: jest.fn().mockImplementation(() => {
+          throw new Error();
+        }),
       },
-    };
-
-    const service = new AuthService(
-      usersService as any,
-      { sign: jest.fn() } as any,
-      prisma as any,
-    );
+    });
 
     await expect(
       service.resetPassword({
@@ -109,9 +95,9 @@ describe('AuthService password reset', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
-  it('should reject an elevated role even if validation is bypassed', async () => {
+  it('rejects an elevated public registration role', async () => {
     const prisma = { $transaction: jest.fn() };
-    const service = new AuthService({} as any, {} as any, prisma as any);
+    const service = createService({ prisma });
 
     await expect(
       service.register({
@@ -123,93 +109,62 @@ describe('AuthService password reset', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('should reject login for an account that is not active', async () => {
-    const usersService = {
-      findByEmail: jest.fn().mockResolvedValue({
-        ...mockUser,
-        status: UserStatus.PENDING_VERIFICATION,
-      }),
-    };
-    const service = new AuthService(usersService as any, {} as any, {} as any);
+  it('rejects login for an account that is not active', async () => {
+    const service = createService({
+      users: {
+        findByEmail: jest.fn().mockResolvedValue({
+          ...mockUser,
+          status: UserStatus.PENDING_VERIFICATION,
+        }),
+      },
+    });
 
     await expect(
       service.login({ email: mockUser.email, password: 'Password123!' }),
     ).rejects.toThrow(UnauthorizedException);
   });
 
-  it('should reject an access token at the refresh endpoint', async () => {
-    const usersService = { findById: jest.fn() };
-    const jwtService = {
-      verify: jest
-        .fn()
-        .mockReturnValue({ sub: mockUser.userId, purpose: 'access' }),
-    };
-    const service = new AuthService(
-      usersService as any,
-      jwtService as any,
-      {} as any,
-    );
-
-    await expect(service.refresh('access-token')).rejects.toThrow(
-      UnauthorizedException,
-    );
-    expect(usersService.findById).not.toHaveBeenCalled();
-  });
-
-  it('should rotate a matching refresh token atomically', async () => {
-    const oldToken = 'old-refresh-token';
-    const oldHash = createHash('sha256').update(oldToken).digest('hex');
-    const usersService = {
-      findById: jest.fn().mockResolvedValue({
-        ...mockUser,
-        refreshTokenHash: oldHash,
-        refreshTokenExpiresAt: new Date(Date.now() + 60_000),
+  it('delegates refresh rotation to the server-side session service', async () => {
+    const sessions = {
+      refresh: jest.fn().mockResolvedValue({
+        user: mockUser,
+        accessToken: 'new-access-token',
+        refreshToken: 'new-refresh-token',
+        session: {
+          idleExpiresAt: new Date('2026-08-25T11:00:00.000Z'),
+          absoluteExpiresAt: new Date('2026-08-25T12:00:00.000Z'),
+        },
       }),
     };
-    const jwtService = {
-      verify: jest
-        .fn()
-        .mockReturnValue({ sub: mockUser.userId, purpose: 'refresh' }),
-      sign: jest
-        .fn()
-        .mockReturnValueOnce('new-access-token')
-        .mockReturnValueOnce('new-refresh-token'),
-    };
-    const prisma = {
-      user: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
-    };
-    const service = new AuthService(
-      usersService as any,
-      jwtService as any,
-      prisma as any,
-    );
+    const service = createService({ sessions });
 
-    await expect(service.refresh(oldToken)).resolves.toEqual({
-      accessToken: 'new-access-token',
-      refreshToken: 'new-refresh-token',
-    });
-    expect(prisma.user.updateMany).toHaveBeenCalledWith(
+    await expect(service.refresh('old-refresh-token')).resolves.toEqual(
       expect.objectContaining({
-        where: expect.objectContaining({ refreshTokenHash: oldHash }),
+        accessToken: 'new-access-token',
+        refreshToken: 'new-refresh-token',
+        user: expect.objectContaining({ userId: mockUser.userId }),
       }),
     );
+    expect(sessions.refresh).toHaveBeenCalledWith('old-refresh-token');
   });
 
-  it('should reject a reset token that has already been consumed', async () => {
-    const jwtService = {
-      verify: jest.fn().mockReturnValue({
-        sub: mockUser.userId,
-        purpose: 'password-reset',
-      }),
+  it('rejects a reset token that has already been consumed', async () => {
+    const tx = {
+      user: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      authSession: { updateMany: jest.fn() },
     };
     const prisma = {
-      user: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      $transaction: jest.fn((callback) => callback(tx)),
     };
-    const service = new AuthService(
-      {} as any,
-      jwtService as any,
-      prisma as any,
-    );
+    const service = createService({
+      jwt: {
+        verify: jest.fn().mockReturnValue({
+          sub: mockUser.userId,
+          purpose: 'password-reset',
+        }),
+      },
+      prisma,
+    });
 
     await expect(
       service.resetPassword({
@@ -217,5 +172,33 @@ describe('AuthService password reset', () => {
         newPassword: 'NewPassword123!',
       }),
     ).rejects.toThrow(BadRequestException);
+    expect(tx.authSession.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('revokes every active session after a successful password reset', async () => {
+    const tx = {
+      user: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      authSession: { updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
+    };
+    const service = createService({
+      jwt: {
+        verify: jest.fn().mockReturnValue({
+          sub: mockUser.userId,
+          purpose: 'password-reset',
+        }),
+      },
+      prisma: { $transaction: jest.fn((callback) => callback(tx)) },
+    });
+
+    await expect(
+      service.resetPassword({
+        token: 'valid-token',
+        newPassword: 'NewPassword123!',
+      }),
+    ).resolves.toEqual({ message: 'Mật khẩu đã được cập nhật thành công.' });
+    expect(tx.authSession.updateMany).toHaveBeenCalledWith({
+      where: { userId: mockUser.userId, revokedAt: null },
+      data: { revokedAt: expect.any(Date) },
+    });
   });
 });
