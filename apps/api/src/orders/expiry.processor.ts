@@ -18,34 +18,40 @@ export class ExpiryProcessor {
     const now = new Date();
 
     // Bước 1: Tìm tất cả phiếu giữ chỗ ACTIVE đã quá hạn
-    const expiredReservations = await this.prisma.inventoryReservation.findMany({
-      where: {
-        status: ReservationStatus.ACTIVE,
-        expiresAt: { lt: now },
+    const expiredReservations = await this.prisma.inventoryReservation.findMany(
+      {
+        where: {
+          status: ReservationStatus.ACTIVE,
+          expiresAt: { lt: now },
+        },
+        orderBy: { expiresAt: 'asc' },
+        take: 100,
       },
-      orderBy: { expiresAt: 'asc' },
-      take: 100,
-    });
+    );
 
     if (expiredReservations.length === 0) {
       return;
     }
 
-    this.logger.log(`Tìm thấy ${expiredReservations.length} phiếu giữ chỗ tồn kho hết hạn. Tiến hành giải phóng...`);
+    this.logger.log(
+      `Tìm thấy ${expiredReservations.length} phiếu giữ chỗ tồn kho hết hạn. Tiến hành giải phóng...`,
+    );
 
     // Bước 2: Duyệt qua từng phiếu giữ chỗ và giải phóng trong transaction
     for (const res of expiredReservations) {
       try {
         await this.prisma.$transaction(async (tx) => {
           // Use the same lock order for every worker: order -> reservation -> campaign.
-          await tx.$executeRawUnsafe(
-            `SELECT order_id FROM "Orders" WHERE order_id = $1::uuid FOR UPDATE`,
-            res.orderId,
-          );
-          await tx.$executeRawUnsafe(
-            `SELECT reservation_id FROM "Inventory_Reservations" WHERE reservation_id = $1::uuid FOR UPDATE`,
-            res.reservationId,
-          );
+          await tx.$queryRaw`
+            SELECT order_id FROM "Orders"
+            WHERE order_id = ${res.orderId}::uuid
+            FOR UPDATE
+          `;
+          await tx.$queryRaw`
+            SELECT reservation_id FROM "Inventory_Reservations"
+            WHERE reservation_id = ${res.reservationId}::uuid
+            FOR UPDATE
+          `;
 
           const currentReservation = await tx.inventoryReservation.findUnique({
             where: { reservationId: res.reservationId },
@@ -59,10 +65,11 @@ export class ExpiryProcessor {
             return;
           }
 
-          await tx.$executeRawUnsafe(
-            `SELECT campaign_id FROM "Voucher_Campaigns" WHERE campaign_id = $1::uuid FOR UPDATE`,
-            currentReservation.campaignId,
-          );
+          await tx.$queryRaw`
+            SELECT campaign_id FROM "Voucher_Campaigns"
+            WHERE campaign_id = ${currentReservation.campaignId}::uuid
+            FOR UPDATE
+          `;
 
           const transition = await tx.inventoryReservation.updateMany({
             where: {
@@ -97,14 +104,20 @@ export class ExpiryProcessor {
             where: { orderId: currentReservation.orderId },
           });
 
-          if (order && order.paymentStatus === PaymentStatus.UNPAID && order.orderStatus === OrderStatus.PENDING) {
+          if (
+            order &&
+            order.paymentStatus === PaymentStatus.UNPAID &&
+            order.orderStatus === OrderStatus.PENDING
+          ) {
             await tx.order.update({
               where: { orderId: currentReservation.orderId },
               data: {
                 orderStatus: OrderStatus.CANCELLED,
               },
             });
-            this.logger.log(`Đã hủy đơn hàng quá hạn thanh toán: ${order.orderCode}`);
+            this.logger.log(
+              `Đã hủy đơn hàng quá hạn thanh toán: ${order.orderCode}`,
+            );
           }
         });
       } catch (err: unknown) {

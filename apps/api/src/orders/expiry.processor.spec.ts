@@ -1,8 +1,4 @@
-import {
-  OrderStatus,
-  PaymentStatus,
-  ReservationStatus,
-} from '@prisma/client';
+import { OrderStatus, PaymentStatus, ReservationStatus } from '@prisma/client';
 import { ExpiryProcessor } from './expiry.processor';
 
 describe('ExpiryProcessor', () => {
@@ -17,7 +13,7 @@ describe('ExpiryProcessor', () => {
 
   function createPrisma(currentReservation = expired) {
     const tx = {
-      $executeRawUnsafe: jest.fn(),
+      $queryRaw: jest.fn(),
       inventoryReservation: {
         findUnique: jest.fn().mockResolvedValue(currentReservation),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -36,7 +32,9 @@ describe('ExpiryProcessor', () => {
       },
     };
     const prisma = {
-      inventoryReservation: { findMany: jest.fn().mockResolvedValue([expired]) },
+      inventoryReservation: {
+        findMany: jest.fn().mockResolvedValue([expired]),
+      },
       $transaction: jest.fn((callback) => callback(tx)),
     };
     return { prisma, tx };

@@ -20,6 +20,7 @@ import {
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { createHash } from 'crypto';
+import { PasswordResetDeliveryService } from './password-reset-delivery.service';
 
 const PUBLIC_REGISTRATION_ROLES = new Set<UserRole>([
   UserRole.CUSTOMER,
@@ -27,6 +28,10 @@ const PUBLIC_REGISTRATION_ROLES = new Set<UserRole>([
 ]);
 const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const PASSWORD_RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
+const PASSWORD_RESET_RESPONSE = {
+  message:
+    'Nếu tài khoản tồn tại, hệ thống đã gửi hướng dẫn đặt lại mật khẩu qua email.',
+} as const;
 
 /**
  * Service xử lý logic liên quan đến xác thực và phân quyền:
@@ -38,6 +43,7 @@ export class AuthService {
     private usersService: UsersService,
     private jwtService: JwtService,
     private prisma: PrismaService,
+    private passwordResetDelivery?: PasswordResetDeliveryService,
   ) {}
 
   /**
@@ -48,7 +54,16 @@ export class AuthService {
    * @throws ConflictException nếu email, phone hoặc taxCode đã tồn tại
    */
   async register(registerDto: RegisterDto) {
-    const { email, phone, password, fullName, role, companyName, taxCode, representative } = registerDto;
+    const {
+      email,
+      phone,
+      password,
+      fullName,
+      role,
+      companyName,
+      taxCode,
+      representative,
+    } = registerDto;
     const normalizedEmail = email?.trim().toLowerCase() || null;
 
     if (!PUBLIC_REGISTRATION_ROLES.has(role)) {
@@ -59,7 +74,9 @@ export class AuthService {
 
     // Bước 1: Kiểm tra ràng buộc phải có email hoặc phone (được quy định ở quy tắc BR-CUS-01)
     if (!normalizedEmail && !phone) {
-      throw new BadRequestException('Phải cung cấp email hoặc số điện thoại để đăng ký.');
+      throw new BadRequestException(
+        'Phải cung cấp email hoặc số điện thoại để đăng ký.',
+      );
     }
 
     // Bước 2: Kiểm tra trùng lặp email/phone
@@ -91,14 +108,19 @@ export class AuthService {
           fullName,
           role,
           // Mặc định tài khoản mới của khách hàng là ACTIVE, đối tác và các vai trò khác cần xác thực/phê duyệt
-          status: role === UserRole.CUSTOMER ? UserStatus.ACTIVE : UserStatus.PENDING_VERIFICATION,
+          status:
+            role === UserRole.CUSTOMER
+              ? UserStatus.ACTIVE
+              : UserStatus.PENDING_VERIFICATION,
         },
       });
 
       // Nếu người đăng ký là Đối tác (Partner)
       if (role === UserRole.PARTNER) {
         if (!companyName || !taxCode) {
-          throw new BadRequestException('Thông tin đối tác phải bao gồm tên công ty và mã số thuế.');
+          throw new BadRequestException(
+            'Thông tin đối tác phải bao gồm tên công ty và mã số thuế.',
+          );
         }
 
         // Kiểm tra trùng lặp mã số thuế
@@ -106,7 +128,9 @@ export class AuthService {
           where: { taxCode },
         });
         if (existingPartner) {
-          throw new ConflictException('Mã số thuế này đã được đăng ký hệ thống.');
+          throw new ConflictException(
+            'Mã số thuế này đã được đăng ký hệ thống.',
+          );
         }
 
         // Tạo hồ sơ đối tác ở trạng thái PENDING chờ admin duyệt
@@ -142,7 +166,9 @@ export class AuthService {
     } else if (phone) {
       user = await this.usersService.findByPhone(phone);
     } else {
-      throw new BadRequestException('Vui lòng cung cấp email hoặc số điện thoại để đăng nhập.');
+      throw new BadRequestException(
+        'Vui lòng cung cấp email hoặc số điện thoại để đăng nhập.',
+      );
     }
 
     if (!user) {
@@ -150,7 +176,9 @@ export class AuthService {
     }
 
     if (user.status !== UserStatus.ACTIVE) {
-      throw new UnauthorizedException('Tài khoản chưa được kích hoạt hoặc đã bị khóa.');
+      throw new UnauthorizedException(
+        'Tài khoản chưa được kích hoạt hoặc đã bị khóa.',
+      );
     }
 
     // So khớp mật khẩu đã mã hóa
@@ -180,13 +208,19 @@ export class AuthService {
    * Sinh bộ đôi Access Token (15 phút) và Refresh Token (7 ngày).
    */
   private generateTokens(userId: string, role: UserRole) {
-    const accessToken = this.jwtService.sign({ sub: userId, role, purpose: 'access' }, {
-      expiresIn: '15m',
-    });
+    const accessToken = this.jwtService.sign(
+      { sub: userId, role, purpose: 'access' },
+      {
+        expiresIn: '15m',
+      },
+    );
 
-    const refreshToken = this.jwtService.sign({ sub: userId, purpose: 'refresh' }, {
-      expiresIn: '7d',
-    });
+    const refreshToken = this.jwtService.sign(
+      { sub: userId, purpose: 'refresh' },
+      {
+        expiresIn: '7d',
+      },
+    );
 
     return {
       accessToken,
@@ -203,11 +237,15 @@ export class AuthService {
     try {
       payload = this.jwtService.verify(token);
     } catch {
-      throw new UnauthorizedException('Refresh token không hợp lệ hoặc đã hết hạn.');
+      throw new UnauthorizedException(
+        'Refresh token không hợp lệ hoặc đã hết hạn.',
+      );
     }
 
     if (!payload.sub || payload.purpose !== 'refresh') {
-      throw new UnauthorizedException('Token không đúng mục đích làm mới phiên.');
+      throw new UnauthorizedException(
+        'Token không đúng mục đích làm mới phiên.',
+      );
     }
 
     const user = await this.usersService.findById(payload.sub);
@@ -236,7 +274,9 @@ export class AuthService {
     });
 
     if (rotated.count !== 1) {
-      throw new UnauthorizedException('Refresh token đã được sử dụng hoặc thu hồi.');
+      throw new UnauthorizedException(
+        'Refresh token đã được sử dụng hoặc thu hồi.',
+      );
     }
 
     return {
@@ -283,9 +323,7 @@ export class AuthService {
 
     const user = await this.usersService.findByEmail(normalizedEmail);
     if (!user) {
-      return {
-        message: 'Nếu tài khoản tồn tại, hệ thống đã gửi hướng dẫn đặt lại mật khẩu qua email. ',
-      };
+      return PASSWORD_RESET_RESPONSE;
     }
 
     const resetToken = this.jwtService.sign(
@@ -297,26 +335,24 @@ export class AuthService {
       { expiresIn: '15m' },
     );
 
+    const resetExpiresAt = new Date(Date.now() + PASSWORD_RESET_TOKEN_TTL_MS);
     await this.prisma.user.update({
       where: { userId: user.userId },
       data: {
         passwordResetTokenHash: this.hashToken(resetToken),
-        passwordResetExpiresAt: new Date(Date.now() + PASSWORD_RESET_TOKEN_TTL_MS),
+        passwordResetExpiresAt: resetExpiresAt,
       },
     });
 
-    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
-
-    const response: Record<string, string> = {
-      message: 'Nếu tài khoản tồn tại, hệ thống đã gửi hướng dẫn đặt lại mật khẩu qua email.',
-    };
-
-    if (process.env.NODE_ENV !== 'production') {
-      response.resetToken = resetToken;
-      response.resetUrl = resetUrl;
-    }
-
-    return response;
+    const frontendUrl =
+      process.env.FRONTEND_URL?.trim() || 'http://localhost:3000';
+    const resetUrl = `${frontendUrl.replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(resetToken)}`;
+    this.passwordResetDelivery?.deliver({
+      email: normalizedEmail,
+      resetUrl,
+      expiresAt: resetExpiresAt,
+    });
+    return PASSWORD_RESET_RESPONSE;
   }
 
   /**
@@ -330,18 +366,24 @@ export class AuthService {
     }
 
     if (!newPassword || newPassword.length < 8 || newPassword.length > 128) {
-      throw new BadRequestException('Mật khẩu mới phải có độ dài từ 8 đến 128 ký tự.');
+      throw new BadRequestException(
+        'Mật khẩu mới phải có độ dài từ 8 đến 128 ký tự.',
+      );
     }
 
     let payload: { sub?: string; purpose?: string };
     try {
       payload = this.jwtService.verify(token);
     } catch {
-      throw new BadRequestException('Token đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.');
+      throw new BadRequestException(
+        'Token đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.',
+      );
     }
 
     if (!payload.sub || payload.purpose !== 'password-reset') {
-      throw new BadRequestException('Token không đúng mục đích đặt lại mật khẩu.');
+      throw new BadRequestException(
+        'Token không đúng mục đích đặt lại mật khẩu.',
+      );
     }
 
     const tokenHash = this.hashToken(token);
@@ -363,7 +405,9 @@ export class AuthService {
     });
 
     if (updated.count !== 1) {
-      throw new BadRequestException('Token đặt lại mật khẩu đã hết hạn hoặc đã được sử dụng.');
+      throw new BadRequestException(
+        'Token đặt lại mật khẩu đã hết hạn hoặc đã được sử dụng.',
+      );
     }
 
     return {
