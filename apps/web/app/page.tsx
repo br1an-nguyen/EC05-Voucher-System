@@ -226,9 +226,9 @@ function HomePageContent() {
             <div className="flex items-center bg-slate-100 p-1 rounded-xl shrink-0 self-start sm:self-auto">
               <button
                 onClick={() => {
-                  const val = sortPrice === 'asc' ? '' : 'asc';
+                  const val: 'asc' | 'desc' | '' = sortPrice === 'asc' ? '' : 'asc';
                   setSortPrice(val);
-                  const filters = { keyword, categoryCode: category, maxPrice, sortPrice: val };
+                  const filters: CatalogFilters = { keyword, categoryCode: category, maxPrice, sortPrice: val };
                   updateBrowserFilters(filters);
                   void fetchCatalog(filters);
                 }}
@@ -243,9 +243,9 @@ function HomePageContent() {
               </button>
               <button
                 onClick={() => {
-                  const val = sortPrice === 'desc' ? '' : 'desc';
+                  const val: 'asc' | 'desc' | '' = sortPrice === 'desc' ? '' : 'desc';
                   setSortPrice(val);
-                  const filters = { keyword, categoryCode: category, maxPrice, sortPrice: val };
+                  const filters: CatalogFilters = { keyword, categoryCode: category, maxPrice, sortPrice: val };
                   updateBrowserFilters(filters);
                   void fetchCatalog(filters);
                 }}
