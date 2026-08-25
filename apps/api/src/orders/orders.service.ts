@@ -82,6 +82,12 @@ export class OrdersService {
           );
         }
 
+        if (!campaign.salePrice) {
+          throw new BadRequestException(
+            `Voucher "${campaign.title}" chưa được thiết lập giá bán. Vui lòng liên hệ quản trị viên.`,
+          );
+        }
+
         currentUnitPrices.set(item.campaignId, campaign.salePrice);
         totalAmount = totalAmount.add(campaign.salePrice.mul(item.quantity));
       }

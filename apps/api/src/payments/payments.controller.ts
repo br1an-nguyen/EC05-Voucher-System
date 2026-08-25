@@ -68,6 +68,9 @@ export class PaymentsController {
     } else if (payment.provider === PaymentProviderType.PAYPAL) {
       const res = await this.paypalAdapter.createPayment(payment, (payment as any).order.orderCode);
       paymentUrl = res.paymentUrl;
+      if (res.providerOrderId) {
+        await this.paymentsService.updateProviderOrderId(payment.paymentId, res.providerOrderId);
+      }
     }
 
     return {
