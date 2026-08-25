@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, User, UserStatus, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
@@ -65,9 +69,19 @@ export class UsersService {
    * @returns Bản ghi User sau khi cập nhật
    */
   async updateStatus(userId: string, status: UserStatus): Promise<User> {
-    return this.prisma.user.update({
-      where: { userId },
-      data: { status },
+    const changedAt = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.update({
+        where: { userId },
+        data: { status },
+      });
+      if (status !== UserStatus.ACTIVE) {
+        await tx.authSession.updateMany({
+          where: { userId, revokedAt: null },
+          data: { revokedAt: changedAt },
+        });
+      }
+      return user;
     });
   }
 
@@ -85,7 +99,9 @@ export class UsersService {
     // 1. Chỉ đổi tên nếu là CUSTOMER
     if (dto.fullName) {
       if (user.role !== 'CUSTOMER') {
-        throw new BadRequestException('Chỉ tài khoản khách hàng mới được đổi họ tên.');
+        throw new BadRequestException(
+          'Chỉ tài khoản khách hàng mới được đổi họ tên.',
+        );
       }
       updateData.fullName = dto.fullName;
     }
@@ -97,7 +113,9 @@ export class UsersService {
           where: { phone: dto.phone, NOT: { userId } },
         });
         if (existingPhone) {
-          throw new BadRequestException('Số điện thoại này đã được đăng ký cho tài khoản khác.');
+          throw new BadRequestException(
+            'Số điện thoại này đã được đăng ký cho tài khoản khác.',
+          );
         }
       }
       updateData.phone = dto.phone || null;
@@ -106,30 +124,43 @@ export class UsersService {
     // 3. Đổi mật khẩu
     if (dto.newPassword) {
       if (!dto.currentPassword) {
-        throw new BadRequestException('Vui lòng nhập mật khẩu hiện tại để đổi mật khẩu.');
+        throw new BadRequestException(
+          'Vui lòng nhập mật khẩu hiện tại để đổi mật khẩu.',
+        );
       }
-      const isMatch = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+      const isMatch = await bcrypt.compare(
+        dto.currentPassword,
+        user.passwordHash,
+      );
       if (!isMatch) {
         throw new BadRequestException('Mật khẩu hiện tại không chính xác.');
       }
       updateData.passwordHash = await bcrypt.hash(dto.newPassword, 10);
       updateData.passwordChangedAt = new Date();
-      updateData.refreshTokenHash = null;
-      updateData.refreshTokenExpiresAt = null;
     }
 
-    return this.prisma.user.update({
-      where: { userId },
-      data: updateData,
-      select: {
-        userId: true,
-        email: true,
-        phone: true,
-        fullName: true,
-        role: true,
-        status: true,
-        createdAt: true,
-      },
+    const changedAt = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({
+        where: { userId },
+        data: updateData,
+        select: {
+          userId: true,
+          email: true,
+          phone: true,
+          fullName: true,
+          role: true,
+          status: true,
+          createdAt: true,
+        },
+      });
+      if (dto.newPassword) {
+        await tx.authSession.updateMany({
+          where: { userId, revokedAt: null },
+          data: { revokedAt: changedAt },
+        });
+      }
+      return updated;
     });
   }
 
@@ -139,7 +170,9 @@ export class UsersService {
   async deleteAccount(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { userId } });
     if (!user || user.role !== 'CUSTOMER') {
-      throw new BadRequestException('Chỉ tài khoản Khách hàng mới được tự xóa tài khoản.');
+      throw new BadRequestException(
+        'Chỉ tài khoản Khách hàng mới được tự xóa tài khoản.',
+      );
     }
 
     return this.prisma.user.delete({

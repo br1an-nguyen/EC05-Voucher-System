@@ -39,8 +39,11 @@ Cả **Railway** và **Render** đều hỗ trợ build từ Dockerfile hoặc c
    | :--- | :--- | :--- |
    | `PORT` | `3001` | Cổng HTTP mà NestJS lắng nghe |
    | `DATABASE_URL` | `postgresql://...` | Chuỗi kết nối cơ sở dữ liệu Prisma |
-   | `JWT_ACCESS_SECRET` | `super-secret-access-key` | Khóa bảo mật mã hóa JWT Access Token |
-   | `JWT_REFRESH_SECRET` | `super-secret-refresh-key` | Khóa bảo mật mã hóa JWT Refresh Token |
+    | `JWT_SECRET` | Chuỗi ngẫu nhiên tối thiểu 32 ký tự | Khóa ký JWT bắt buộc của API |
+    | `APP_ENV` | `production` | Bật chính sách cookie production |
+    | `AUTH_COOKIE_SECURE` | `true` | Chỉ gửi refresh cookie qua HTTPS |
+    | `AUTH_COOKIE_SAME_SITE` | `none` | Cho phép Vercel gửi cookie tới API Railway/Render khác site |
+    | `TRUST_PROXY` | `1` | Lấy đúng IP client qua một reverse proxy để rate limit |
    | `STRIPE_SECRET_KEY` | `sk_test_...` | Khóa Stripe Secret từ Stripe Dashboard |
    | `STRIPE_WEBHOOK_SECRET` | `whsec_...` | Khóa webhook Stripe để verify chữ ký |
    | `PAYPAL_CLIENT_ID` | `Client_ID_Sandbox` | Client ID từ PayPal Developer Portal |
@@ -69,3 +72,14 @@ Next.js hoạt động tối ưu nhất khi được host trên **Vercel**.
    | `NEXT_PUBLIC_API_URL` | `https://vouchernow-api.up.railway.app` | URL trỏ đến NestJS Backend API vừa deploy |
 
 Sau khi cấu hình xong, Vercel sẽ tự động build ứng dụng và cấp cho bạn một URL public hoạt động trực tuyến.
+
+## 4. Chính sách phiên đăng nhập
+
+- Access token tồn tại 15 phút và chỉ được giữ trong memory của web app.
+- Refresh token nằm trong cookie `HttpOnly`; không lưu trong `localStorage`.
+- Session hết hạn sau 60 phút không hoạt động và luôn kết thúc tối đa sau 2 giờ kể từ lúc đăng nhập.
+- Mỗi tài khoản chỉ có một session đang hoạt động; đăng nhập mới sẽ thu hồi session cũ.
+- Migration `add_auth_sessions` chủ động vô hiệu các refresh token thuộc cơ chế cũ, vì vậy người dùng phải đăng nhập lại một lần sau khi deploy.
+- Rate limit mặc định dùng bộ nhớ của một API instance. Khi scale nhiều replica, cần cấu hình một throttler storage dùng chung như Redis.
+
+Rate limit theo IP: mặc định 120 request/phút; đăng nhập 5/phút; đăng ký 3/10 phút; quên mật khẩu 3/15 phút; đặt lại mật khẩu 5/15 phút; refresh 20/phút; logout và heartbeat hoạt động 10/phút.

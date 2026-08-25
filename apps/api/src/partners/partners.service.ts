@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
@@ -59,7 +64,9 @@ export class PartnersService {
         },
       });
       if (existing) {
-        throw new ConflictException('Mã số thuế này đã được đăng ký bởi doanh nghiệp khác.');
+        throw new ConflictException(
+          'Mã số thuế này đã được đăng ký bởi doanh nghiệp khác.',
+        );
       }
     }
 
@@ -113,11 +120,21 @@ export class PartnersService {
     });
 
     const totalCampaigns = campaigns.length;
-    const activeCampaigns = campaigns.filter((campaign) => campaign.status === 'APPROVED').length;
-    const soldVouchers = campaigns.reduce((sum, campaign) => sum + campaign.soldQuantity, 0);
-    const customerIds = new Set(orderItems.map((item) => item.order.customerId));
+    const activeCampaigns = campaigns.filter(
+      (campaign) => campaign.status === 'APPROVED',
+    ).length;
+    const soldVouchers = campaigns.reduce(
+      (sum, campaign) => sum + campaign.soldQuantity,
+      0,
+    );
+    const customerIds = new Set(
+      orderItems.map((item) => item.order.customerId),
+    );
     const customerCount = customerIds.size;
-    const revenue = orderItems.reduce((sum, item) => sum + Number(item.unitPrice) * item.quantity, 0);
+    const revenue = orderItems.reduce(
+      (sum, item) => sum + Number(item.unitPrice) * item.quantity,
+      0,
+    );
 
     return {
       partnerName: partner.companyName,
@@ -155,14 +172,20 @@ export class PartnersService {
   /**
    * Cập nhật thông tin chi nhánh của đối tác.
    */
-  async updateBranch(partnerId: string, branchId: string, updateBranchDto: UpdateBranchDto) {
+  async updateBranch(
+    partnerId: string,
+    branchId: string,
+    updateBranchDto: UpdateBranchDto,
+  ) {
     // Xác minh chi nhánh tồn tại và thuộc sở hữu của đối tác này
     const branch = await this.prisma.branch.findUnique({
       where: { branchId },
     });
 
     if (!branch || branch.partnerId !== partnerId) {
-      throw new NotFoundException('Chi nhánh không tồn tại hoặc bạn không có quyền sở hữu.');
+      throw new NotFoundException(
+        'Chi nhánh không tồn tại hoặc bạn không có quyền sở hữu.',
+      );
     }
 
     return this.prisma.branch.update({
@@ -188,16 +211,22 @@ export class PartnersService {
     });
 
     if (!branch || branch.partnerId !== partnerId) {
-      throw new NotFoundException('Chi nhánh không tồn tại hoặc bạn không có quyền sở hữu.');
+      throw new NotFoundException(
+        'Chi nhánh không tồn tại hoặc bạn không có quyền sở hữu.',
+      );
     }
 
     // RB-09: Chặn xóa nếu chi nhánh đang được liên kết với chiến dịch voucher hoặc có nhân viên
     if (branch.campaignBranches.length > 0) {
-      throw new BadRequestException('Không thể xóa chi nhánh đang liên kết với các chương trình voucher.');
+      throw new BadRequestException(
+        'Không thể xóa chi nhánh đang liên kết với các chương trình voucher.',
+      );
     }
 
     if (branch.staff.length > 0) {
-      throw new BadRequestException('Không thể xóa chi nhánh đang có nhân viên quét mã trực thuộc.');
+      throw new BadRequestException(
+        'Không thể xóa chi nhánh đang có nhân viên quét mã trực thuộc.',
+      );
     }
 
     return this.prisma.branch.delete({
@@ -214,13 +243,21 @@ export class PartnersService {
       where: { branchId: dto.branchId },
     });
     if (!branch || branch.partnerId !== partnerId) {
-      throw new NotFoundException('Chi nhánh không tồn tại hoặc không thuộc sở hữu của đối tác.');
+      throw new NotFoundException(
+        'Chi nhánh không tồn tại hoặc không thuộc sở hữu của đối tác.',
+      );
     }
 
     // 2. Kiểm tra trùng lặp theo từng trường để frontend có thể gắn lỗi đúng ô nhập liệu
     const [existingEmail, existingPhone] = await Promise.all([
-      this.prisma.user.findFirst({ where: { email: dto.email }, select: { userId: true } }),
-      this.prisma.user.findFirst({ where: { phone: dto.phone }, select: { userId: true } }),
+      this.prisma.user.findFirst({
+        where: { email: dto.email },
+        select: { userId: true },
+      }),
+      this.prisma.user.findFirst({
+        where: { phone: dto.phone },
+        select: { userId: true },
+      }),
     ]);
 
     if (existingEmail) {
@@ -228,7 +265,9 @@ export class PartnersService {
     }
 
     if (existingPhone) {
-      throw new ConflictException('Số điện thoại đã được đăng ký tài khoản khác.');
+      throw new ConflictException(
+        'Số điện thoại đã được đăng ký tài khoản khác.',
+      );
     }
 
     // 3. Mã hóa mật khẩu
@@ -294,7 +333,9 @@ export class PartnersService {
       where: { userId: staffUserId, partnerId, role: 'PARTNER_STAFF' },
     });
     if (!staff) {
-      throw new NotFoundException('Không tìm thấy tài khoản nhân viên cần chỉnh sửa.');
+      throw new NotFoundException(
+        'Không tìm thấy tài khoản nhân viên cần chỉnh sửa.',
+      );
     }
 
     const updateData: Prisma.UserUncheckedUpdateInput = {};
@@ -309,7 +350,9 @@ export class PartnersService {
         where: { branchId: dto.branchId },
       });
       if (!branch || branch.partnerId !== partnerId) {
-        throw new NotFoundException('Chi nhánh không tồn tại hoặc không thuộc sở hữu của đối tác.');
+        throw new NotFoundException(
+          'Chi nhánh không tồn tại hoặc không thuộc sở hữu của đối tác.',
+        );
       }
       updateData.branchId = dto.branchId;
     }
@@ -317,20 +360,28 @@ export class PartnersService {
     if (dto.password) {
       updateData.passwordHash = await bcrypt.hash(dto.password, 10);
       updateData.passwordChangedAt = new Date();
-      updateData.refreshTokenHash = null;
-      updateData.refreshTokenExpiresAt = null;
     }
 
-    return this.prisma.user.update({
-      where: { userId: staffUserId },
-      data: updateData,
-      select: {
-        userId: true,
-        email: true,
-        fullName: true,
-        role: true,
-        branchId: true,
-      },
+    const changedAt = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({
+        where: { userId: staffUserId },
+        data: updateData,
+        select: {
+          userId: true,
+          email: true,
+          fullName: true,
+          role: true,
+          branchId: true,
+        },
+      });
+      if (dto.password) {
+        await tx.authSession.updateMany({
+          where: { userId: staffUserId, revokedAt: null },
+          data: { revokedAt: changedAt },
+        });
+      }
+      return updated;
     });
   }
 
@@ -342,7 +393,9 @@ export class PartnersService {
       where: { userId: staffUserId, partnerId, role: 'PARTNER_STAFF' },
     });
     if (!staff) {
-      throw new NotFoundException('Không tìm thấy tài khoản nhân viên cần xóa.');
+      throw new NotFoundException(
+        'Không tìm thấy tài khoản nhân viên cần xóa.',
+      );
     }
 
     return this.prisma.user.delete({
@@ -514,7 +567,12 @@ export class PartnersService {
       return updatedPartner;
     });
 
-    await this.auditService.logAction(adminId, 'APPROVE_PARTNER', 'Partner', partnerId);
+    await this.auditService.logAction(
+      adminId,
+      'APPROVE_PARTNER',
+      'Partner',
+      partnerId,
+    );
     return res;
   }
 
@@ -542,11 +600,20 @@ export class PartnersService {
         where: { userId: partnerId },
         data: { status: UserStatus.LOCKED },
       });
+      await tx.authSession.updateMany({
+        where: { userId: partnerId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
 
       return updatedPartner;
     });
 
-    await this.auditService.logAction(adminId, 'REJECT_PARTNER', 'Partner', partnerId);
+    await this.auditService.logAction(
+      adminId,
+      'REJECT_PARTNER',
+      'Partner',
+      partnerId,
+    );
     return res;
   }
 
