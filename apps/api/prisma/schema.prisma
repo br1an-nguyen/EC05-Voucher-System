@@ -109,8 +109,6 @@ model User {
   partnerId              String?    @map("partner_id") @db.Uuid
   branchId               String?    @map("branch_id") @db.Uuid
   status                 UserStatus @default(PENDING_VERIFICATION) @map("status")
-  refreshTokenHash       String?    @map("refresh_token_hash") @db.Char(64)
-  refreshTokenExpiresAt  DateTime?  @map("refresh_token_expires_at") @db.Timestamptz
   passwordResetTokenHash String?    @map("password_reset_token_hash") @db.Char(64)
   passwordResetExpiresAt DateTime?  @map("password_reset_expires_at") @db.Timestamptz
   passwordChangedAt      DateTime?  @map("password_changed_at") @db.Timestamptz
@@ -125,9 +123,30 @@ model User {
   auditLogs      AuditLog[]
   cartItems      CartItem[]
   reviews        VoucherReview[]
+  authSessions   AuthSession[]
 
   @@index([partnerId, branchId], map: "Users_partner_branch_idx")
   @@map("Users")
+}
+
+model AuthSession {
+  sessionId         String    @id @default(dbgenerated("gen_random_uuid()")) @map("session_id") @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  refreshTokenHash  String    @unique @map("refresh_token_hash") @db.Char(64)
+  userAgent         String?   @map("user_agent") @db.VarChar(512)
+  ipAddress         String?   @map("ip_address") @db.VarChar(64)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  lastActivityAt    DateTime  @map("last_activity_at") @db.Timestamptz
+  idleExpiresAt     DateTime  @map("idle_expires_at") @db.Timestamptz
+  absoluteExpiresAt DateTime  @map("absolute_expires_at") @db.Timestamptz
+  revokedAt         DateTime? @map("revoked_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@index([userId, revokedAt], map: "Auth_Sessions_user_revoked_idx")
+  @@index([idleExpiresAt], map: "Auth_Sessions_idle_expires_idx")
+  @@index([absoluteExpiresAt], map: "Auth_Sessions_absolute_expires_idx")
+  @@map("Auth_Sessions")
 }
 
 model Partner {

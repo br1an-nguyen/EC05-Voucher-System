@@ -21,12 +21,13 @@ import {
 import * as bcrypt from 'bcrypt';
 import { createHash } from 'crypto';
 import { PasswordResetDeliveryService } from './password-reset-delivery.service';
+import { AuthSessionService } from './auth-session.service';
+import { AuthRequestContext } from './auth-session.constants';
 
 const PUBLIC_REGISTRATION_ROLES = new Set<UserRole>([
   UserRole.CUSTOMER,
   UserRole.PARTNER,
 ]);
-const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const PASSWORD_RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
 const PASSWORD_RESET_RESPONSE = {
   message:
@@ -43,6 +44,7 @@ export class AuthService {
     private usersService: UsersService,
     private jwtService: JwtService,
     private prisma: PrismaService,
+    private authSessions: AuthSessionService,
     private passwordResetDelivery?: PasswordResetDeliveryService,
   ) {}
 
@@ -157,7 +159,7 @@ export class AuthService {
    * @throws BadRequestException nếu thiếu phương thức đăng nhập
    * @throws ConflictException hoặc BadRequestException nếu thông tin đăng nhập sai hoặc tài khoản bị khóa
    */
-  async login(loginDto: LoginDto) {
+  async login(loginDto: LoginDto, context: AuthRequestContext = {}) {
     const { email, phone, password } = loginDto;
     let user = null;
 
@@ -187,45 +189,13 @@ export class AuthService {
       throw new BadRequestException('Tài khoản hoặc mật khẩu không chính xác.');
     }
 
-    // Ký và sinh Access Token & Refresh Token
-    const tokens = this.generateTokens(user.userId, user.role);
-    await this.prisma.user.update({
-      where: { userId: user.userId },
-      data: {
-        refreshTokenHash: this.hashToken(tokens.refreshToken),
-        refreshTokenExpiresAt: tokens.refreshTokenExpiresAt,
-      },
-    });
+    const issued = await this.authSessions.createForUser(user, context);
 
     return {
       user: this.toPublicUser(user),
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-    };
-  }
-
-  /**
-   * Sinh bộ đôi Access Token (15 phút) và Refresh Token (7 ngày).
-   */
-  private generateTokens(userId: string, role: UserRole) {
-    const accessToken = this.jwtService.sign(
-      { sub: userId, role, purpose: 'access' },
-      {
-        expiresIn: '15m',
-      },
-    );
-
-    const refreshToken = this.jwtService.sign(
-      { sub: userId, purpose: 'refresh' },
-      {
-        expiresIn: '7d',
-      },
-    );
-
-    return {
-      accessToken,
-      refreshToken,
-      refreshTokenExpiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+      accessToken: issued.accessToken,
+      refreshToken: issued.refreshToken,
+      session: issued.session,
     };
   }
 
@@ -233,80 +203,18 @@ export class AuthService {
    * Quay vòng Access Token bằng Refresh Token hợp lệ.
    */
   async refresh(token: string) {
-    let payload: { sub?: string; purpose?: string };
-    try {
-      payload = this.jwtService.verify(token);
-    } catch {
-      throw new UnauthorizedException(
-        'Refresh token không hợp lệ hoặc đã hết hạn.',
-      );
-    }
-
-    if (!payload.sub || payload.purpose !== 'refresh') {
-      throw new UnauthorizedException(
-        'Token không đúng mục đích làm mới phiên.',
-      );
-    }
-
-    const user = await this.usersService.findById(payload.sub);
-    const tokenHash = this.hashToken(token);
-    if (
-      !user ||
-      user.status !== UserStatus.ACTIVE ||
-      user.refreshTokenHash !== tokenHash ||
-      !user.refreshTokenExpiresAt ||
-      user.refreshTokenExpiresAt <= new Date()
-    ) {
-      throw new UnauthorizedException('Phiên đăng nhập không còn hợp lệ.');
-    }
-
-    const tokens = this.generateTokens(user.userId, user.role);
-    const rotated = await this.prisma.user.updateMany({
-      where: {
-        userId: user.userId,
-        refreshTokenHash: tokenHash,
-        status: UserStatus.ACTIVE,
-      },
-      data: {
-        refreshTokenHash: this.hashToken(tokens.refreshToken),
-        refreshTokenExpiresAt: tokens.refreshTokenExpiresAt,
-      },
-    });
-
-    if (rotated.count !== 1) {
-      throw new UnauthorizedException(
-        'Refresh token đã được sử dụng hoặc thu hồi.',
-      );
-    }
+    const issued = await this.authSessions.refresh(token);
 
     return {
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
+      user: this.toPublicUser(issued.user),
+      accessToken: issued.accessToken,
+      refreshToken: issued.refreshToken,
+      session: issued.session,
     };
   }
 
-  async logout(token: string): Promise<void> {
-    let payload: { sub?: string; purpose?: string };
-    try {
-      payload = this.jwtService.verify(token);
-    } catch {
-      return;
-    }
-
-    if (!payload.sub || payload.purpose !== 'refresh') {
-      return;
-    }
-
-    await this.prisma.user.updateMany({
-      where: {
-        userId: payload.sub,
-        refreshTokenHash: this.hashToken(token),
-      },
-      data: {
-        refreshTokenHash: null,
-        refreshTokenExpiresAt: null,
-      },
-    });
+  async logout(token: string | undefined): Promise<void> {
+    await this.authSessions.revokeByRefreshToken(token);
   }
 
   /**
@@ -388,20 +296,28 @@ export class AuthService {
 
     const tokenHash = this.hashToken(token);
     const passwordHash = await bcrypt.hash(newPassword, 10);
-    const updated = await this.prisma.user.updateMany({
-      where: {
-        userId: payload.sub,
-        passwordResetTokenHash: tokenHash,
-        passwordResetExpiresAt: { gt: new Date() },
-      },
-      data: {
-        passwordHash,
-        passwordChangedAt: new Date(),
-        passwordResetTokenHash: null,
-        passwordResetExpiresAt: null,
-        refreshTokenHash: null,
-        refreshTokenExpiresAt: null,
-      },
+    const changedAt = new Date();
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const consumed = await tx.user.updateMany({
+        where: {
+          userId: payload.sub,
+          passwordResetTokenHash: tokenHash,
+          passwordResetExpiresAt: { gt: changedAt },
+        },
+        data: {
+          passwordHash,
+          passwordChangedAt: changedAt,
+          passwordResetTokenHash: null,
+          passwordResetExpiresAt: null,
+        },
+      });
+      if (consumed.count === 1) {
+        await tx.authSession.updateMany({
+          where: { userId: payload.sub, revokedAt: null },
+          data: { revokedAt: changedAt },
+        });
+      }
+      return consumed;
     });
 
     if (updated.count !== 1) {

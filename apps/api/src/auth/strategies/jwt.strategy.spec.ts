@@ -7,38 +7,42 @@ describe('JwtStrategy', () => {
     process.env.JWT_SECRET = 'test-only-jwt-secret-at-least-32-characters';
   });
 
-  const activeUser = {
-    userId: 'user-1',
-    role: UserRole.CUSTOMER,
-    status: UserStatus.ACTIVE,
-    passwordChangedAt: null,
-  };
+  it('delegates JWT validation to the database-backed session service', async () => {
+    const principal = {
+      userId: 'user-1',
+      sessionId: 'session-1',
+      role: UserRole.CUSTOMER,
+      status: UserStatus.ACTIVE,
+      partnerId: null,
+      branchId: null,
+      idleExpiresAt: new Date(),
+      absoluteExpiresAt: new Date(),
+    };
+    const authSessions = {
+      validateAccess: jest.fn().mockResolvedValue(principal),
+    };
+    const strategy = new JwtStrategy(authSessions as any);
+    const payload = {
+      sub: principal.userId,
+      sid: principal.sessionId,
+      purpose: 'access',
+      iat: 1,
+    };
 
-  it('accepts only access-purpose tokens', async () => {
-    const usersService = { findById: jest.fn() };
-    const strategy = new JwtStrategy(usersService as any);
-
-    await expect(
-      strategy.validate({ sub: activeUser.userId, purpose: 'refresh' }),
-    ).rejects.toThrow(UnauthorizedException);
-    expect(usersService.findById).not.toHaveBeenCalled();
+    await expect(strategy.validate(payload)).resolves.toBe(principal);
+    expect(authSessions.validateAccess).toHaveBeenCalledWith(payload);
   });
 
-  it('rejects access tokens issued before a password change', async () => {
-    const usersService = {
-      findById: jest.fn().mockResolvedValue({
-        ...activeUser,
-        passwordChangedAt: new Date('2026-08-17T10:00:00.000Z'),
-      }),
+  it('propagates session expiry and revocation failures', async () => {
+    const authSessions = {
+      validateAccess: jest
+        .fn()
+        .mockRejectedValue(new UnauthorizedException('Phiên đã hết hạn.')),
     };
-    const strategy = new JwtStrategy(usersService as any);
+    const strategy = new JwtStrategy(authSessions as any);
 
     await expect(
-      strategy.validate({
-        sub: activeUser.userId,
-        purpose: 'access',
-        iat: Math.floor(new Date('2026-08-17T09:59:00.000Z').getTime() / 1000),
-      }),
+      strategy.validate({ sub: 'user-1', purpose: 'refresh' }),
     ).rejects.toThrow(UnauthorizedException);
   });
 });

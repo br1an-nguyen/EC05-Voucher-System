@@ -1,19 +1,24 @@
-'use client';
+"use client";
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { apiRequest } from '../lib/api';
-
-interface User {
-  userId: string;
-  email: string | null;
-  phone: string | null;
-  fullName: string | null;
-  role: 'CUSTOMER' | 'PARTNER' | 'PARTNER_STAFF' | 'ADMIN';
-  partnerId: string | null;
-  branchId: string | null;
-  status: string;
-}
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { useRouter } from "next/navigation";
+import {
+  acceptAuthSession,
+  apiRequest,
+  AuthResponse,
+  AuthSessionMetadata,
+  AuthUser,
+  configureAuthCallbacks,
+  logoutSession,
+  refreshSession,
+} from "../lib/api";
 
 interface LoginData {
   email?: string;
@@ -22,134 +27,218 @@ interface LoginData {
 }
 
 interface RegisterData extends LoginData {
-  role: 'CUSTOMER' | 'PARTNER';
+  role: "CUSTOMER" | "PARTNER";
   fullName: string;
   companyName?: string;
   taxCode?: string;
   representative?: string;
 }
 
-interface AuthResponse {
-  accessToken: string;
-  refreshToken: string;
-  user: User;
-}
-
 interface AuthContextType {
-  user: User | null;
+  user: AuthUser | null;
   loading: boolean;
   login: (loginData: LoginData) => Promise<void>;
   register: (registerData: RegisterData) => Promise<void>;
-  logout: () => void;
-  setUser: React.Dispatch<React.SetStateAction<User | null>>;
+  logout: () => Promise<void>;
+  setUser: React.Dispatch<React.SetStateAction<AuthUser | null>>;
 }
 
+const IDLE_TIMEOUT_MS = 60 * 60 * 1000;
+const HEARTBEAT_INTERVAL_MS = 60 * 1000;
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-/**
- * Provider quản lý trạng thái đăng nhập, phân quyền (Auth & RBAC) trên Frontend.
- */
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [session, setSession] = useState<AuthSessionMetadata | null>(null);
   const [loading, setLoading] = useState(true);
+  const lastHeartbeatAt = useRef(0);
   const router = useRouter();
 
-  // Bước 1: Khôi phục phiên làm việc từ localStorage khi component mount
+  const applySession = useCallback((auth: AuthResponse) => {
+    setUser(auth.user);
+    setSession(auth.session);
+  }, []);
+
+  const endClientSession = useCallback(() => {
+    setUser(null);
+    setSession(null);
+  }, []);
+
+  const redirectAfterSessionEnd = useCallback(() => {
+    endClientSession();
+    if (typeof window !== "undefined") {
+      const path = window.location.pathname;
+      if (path !== "/login" && path !== "/register") {
+        router.replace("/login");
+      }
+    }
+  }, [endClientSession, router]);
+
   useEffect(() => {
     let active = true;
-
-    queueMicrotask(() => {
-      if (!active) return;
-
-      const storedUser = localStorage.getItem('user');
-      const token = localStorage.getItem('accessToken');
-      if (storedUser && token) {
-        try {
-          setUser(JSON.parse(storedUser) as User);
-        } catch {
-          localStorage.removeItem('user');
-        }
-      }
-      setLoading(false);
+    const removeCallbacks = configureAuthCallbacks({
+      onSessionUpdated: (auth) => {
+        if (active) applySession(auth);
+      },
+      onSessionEnded: () => {
+        if (active) redirectAfterSessionEnd();
+      },
     });
+
+    void refreshSession()
+      .then((auth) => {
+        if (active) applySession(auth);
+      })
+      .catch(() => {
+        if (active) endClientSession();
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
 
     return () => {
       active = false;
+      removeCallbacks();
     };
-  }, []);
+  }, [applySession, endClientSession, redirectAfterSessionEnd]);
 
-  /**
-   * Đăng nhập tài khoản và lưu tokens, thông tin user.
-   * Điều hướng dựa theo vai trò (Role-based Routing) sau khi đăng nhập thành công.
-   */
+  const logout = useCallback(async () => {
+    try {
+      await logoutSession();
+    } finally {
+      endClientSession();
+      router.replace("/login");
+    }
+  }, [endClientSession, router]);
+
+  useEffect(() => {
+    if (!user || !session) {
+      return;
+    }
+
+    const absoluteDeadline = Date.parse(session.absoluteExpiresAt);
+    let idleDeadline = Date.parse(session.idleExpiresAt);
+    let idleTimer: ReturnType<typeof setTimeout> | undefined;
+    let disposed = false;
+
+    const expire = () => {
+      if (!disposed) void logout();
+    };
+    const armIdleTimer = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(expire, Math.max(0, idleDeadline - Date.now()));
+    };
+    const syncActivity = async () => {
+      try {
+        const updated = await apiRequest<AuthSessionMetadata>(
+          "/auth/activity",
+          {
+            method: "POST",
+          },
+        );
+        if (!disposed) {
+          idleDeadline = Date.parse(updated.idleExpiresAt);
+          setSession(updated);
+          armIdleTimer();
+        }
+      } catch {
+        if (!disposed) expire();
+      }
+    };
+    const recordActivity = () => {
+      const now = Date.now();
+      if (now >= idleDeadline || now >= absoluteDeadline) {
+        expire();
+        return;
+      }
+
+      idleDeadline = Math.min(now + IDLE_TIMEOUT_MS, absoluteDeadline);
+      armIdleTimer();
+      if (now - lastHeartbeatAt.current >= HEARTBEAT_INTERVAL_MS) {
+        lastHeartbeatAt.current = now;
+        void syncActivity();
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        recordActivity();
+      }
+    };
+
+    armIdleTimer();
+    const absoluteTimer = setTimeout(
+      expire,
+      Math.max(0, absoluteDeadline - Date.now()),
+    );
+    window.addEventListener("pointerdown", recordActivity, { passive: true });
+    window.addEventListener("keydown", recordActivity);
+    window.addEventListener("scroll", recordActivity, { passive: true });
+    window.addEventListener("touchstart", recordActivity, { passive: true });
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      disposed = true;
+      if (idleTimer) clearTimeout(idleTimer);
+      clearTimeout(absoluteTimer);
+      window.removeEventListener("pointerdown", recordActivity);
+      window.removeEventListener("keydown", recordActivity);
+      window.removeEventListener("scroll", recordActivity);
+      window.removeEventListener("touchstart", recordActivity);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [logout, session, user]);
+
   const login = async (loginData: LoginData) => {
     setLoading(true);
     try {
-      const res = await apiRequest<AuthResponse>('/auth/login', {
-        method: 'POST',
+      const auth = await apiRequest<AuthResponse>("/auth/login", {
+        method: "POST",
         body: JSON.stringify(loginData),
       });
+      acceptAuthSession(auth);
+      applySession(auth);
 
-      localStorage.setItem('accessToken', res.accessToken);
-      localStorage.setItem('refreshToken', res.refreshToken);
-      localStorage.setItem('user', JSON.stringify(res.user));
-      setUser(res.user);
-
-      // Điều hướng thông minh dựa vào vai trò (RBAC)
-      if (res.user.role === 'ADMIN') {
-        router.push('/admin');
-      } else if (res.user.role === 'PARTNER') {
-        router.push('/partner');
-      } else if (res.user.role === 'PARTNER_STAFF') {
-        router.push('/partner/redeem'); // Nhân viên quét mã chuyển thẳng đến trang quét QR
+      if (auth.user.role === "ADMIN") {
+        router.push("/admin");
+      } else if (auth.user.role === "PARTNER") {
+        router.push("/partner");
+      } else if (auth.user.role === "PARTNER_STAFF") {
+        router.push("/partner/redeem");
       } else {
-        router.push('/'); // Khách hàng chuyển đến trang chủ catalog
+        router.push("/");
       }
     } finally {
       setLoading(false);
     }
   };
 
-  /**
-   * Đăng ký tài khoản mới.
-   */
   const register = async (registerData: RegisterData) => {
     setLoading(true);
     try {
-      await apiRequest<void>('/auth/register', {
-        method: 'POST',
+      await apiRequest<void>("/auth/register", {
+        method: "POST",
         body: JSON.stringify(registerData),
       });
-      
-      // Đăng nhập tự động sau khi đăng ký thành công nếu là khách hàng
-      if (registerData.role === 'CUSTOMER') {
+      if (registerData.role === "CUSTOMER") {
         await login({
           email: registerData.email,
           phone: registerData.phone,
           password: registerData.password,
         });
       } else {
-        // Đối tác đăng ký xong cần chờ duyệt (status: PENDING_VERIFICATION)
-        router.push('/login?registered=partner');
+        router.push("/login?registered=partner");
       }
     } finally {
       setLoading(false);
     }
   };
 
-  /**
-   * Đăng xuất, dọn sạch bộ nhớ và đưa về trang chủ.
-   */
-  const logout = () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('user');
-    setUser(null);
-    router.push('/login');
-  };
-
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, setUser }}>
+    <AuthContext.Provider
+      value={{ user, loading, login, register, logout, setUser }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -158,7 +247,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth phải được đặt trong AuthProvider');
+    throw new Error("useAuth phải được đặt trong AuthProvider");
   }
   return context;
 };

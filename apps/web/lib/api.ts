@@ -1,104 +1,158 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
-/**
- * Hàm gọi API chung (fetch wrapper) hỗ trợ tự động đính kèm Access Token 
- * và cơ chế tự động xoay vòng (refresh) token khi nhận lỗi 401 Unauthorized.
- * @param endpoint Đường dẫn API endpoint (vd: '/auth/login')
- * @param options Cấu hình RequestInit
- */
-interface RefreshTokenResponse {
+export interface AuthUser {
+  userId: string;
+  email: string | null;
+  phone: string | null;
+  fullName: string | null;
+  role: "CUSTOMER" | "PARTNER" | "PARTNER_STAFF" | "ADMIN";
+  partnerId: string | null;
+  branchId: string | null;
+  status: string;
+}
+
+export interface AuthSessionMetadata {
+  idleExpiresAt: string;
+  absoluteExpiresAt: string;
+}
+
+export interface AuthResponse {
   accessToken: string;
-  refreshToken: string;
+  user: AuthUser;
+  session: AuthSessionMetadata;
 }
 
 interface ApiErrorResponse {
-  message?: string;
+  message?: string | string[];
 }
 
-export async function apiRequest<T = unknown>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const headers = new Headers(options.headers || {});
-  
-  // Bước 1: Đọc Access Token từ localStorage để chèn vào Header Authorization
-  const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-  if (token && !headers.has('Authorization')) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
-  
-  // Mặc định thiết lập Content-Type là JSON nếu không upload file
-  if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
-    headers.set('Content-Type', 'application/json');
-  }
+interface AuthCallbacks {
+  onSessionUpdated?: (session: AuthResponse) => void;
+  onSessionEnded?: () => void;
+}
 
-  const config: RequestInit = {
-    ...options,
-    headers,
-  };
+const AUTH_ENDPOINTS_WITHOUT_RETRY = new Set([
+  "/auth/login",
+  "/auth/register",
+  "/auth/refresh",
+  "/auth/logout",
+  "/auth/forgot-password",
+  "/auth/reset-password",
+]);
 
-  let response = await fetch(`${API_URL}${endpoint}`, config);
+let accessToken: string | null = null;
+let refreshPromise: Promise<AuthResponse> | null = null;
+let authCallbacks: AuthCallbacks = {};
 
-  // Bước 2: Xử lý tự động Refresh Token nếu nhận mã lỗi 401 (Access Token hết hạn)
-  if (response.status === 401 && typeof window !== 'undefined') {
-    const refreshToken = localStorage.getItem('refreshToken');
-    
-    if (refreshToken) {
-      try {
-        // Gọi API refresh token lên NestJS backend
-        const refreshResponse = await fetch(`${API_URL}/auth/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken }),
-        });
-
-        if (refreshResponse.ok) {
-          const data = await refreshResponse.json() as RefreshTokenResponse;
-          
-          // Lưu cặp tokens mới vào localStorage
-          localStorage.setItem('accessToken', data.accessToken);
-          localStorage.setItem('refreshToken', data.refreshToken);
-
-          // Cập nhật lại header Authorization với token mới và gửi lại request ban đầu
-          headers.set('Authorization', `Bearer ${data.accessToken}`);
-          response = await fetch(`${API_URL}${endpoint}`, {
-            ...options,
-            headers,
-          });
-        } else {
-          // Nếu refresh token cũng hết hạn, tiến hành đăng xuất người dùng
-          logoutUser();
-        }
-      } catch (err) {
-        console.error('Lỗi kết nối khi tự động làm mới token:', err);
-        logoutUser();
-      }
+export function configureAuthCallbacks(callbacks: AuthCallbacks): () => void {
+  authCallbacks = callbacks;
+  return () => {
+    if (authCallbacks === callbacks) {
+      authCallbacks = {};
     }
-  }
+  };
+}
 
-  // Bước 3: Xử lý lỗi từ server
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({})) as ApiErrorResponse;
-    throw new Error(errorData.message || `Lỗi từ hệ thống (Mã: ${response.status})`);
-  }
+export function acceptAuthSession(session: AuthResponse): void {
+  accessToken = session.accessToken;
+  authCallbacks.onSessionUpdated?.(session);
+}
 
-  if (response.status === 204) {
-    return undefined as T;
-  }
+export function clearClientSession(): void {
+  accessToken = null;
+  authCallbacks.onSessionEnded?.();
+}
 
-  return response.json() as Promise<T>;
+async function readApiError(response: Response): Promise<string> {
+  const errorData = (await response
+    .json()
+    .catch(() => ({}))) as ApiErrorResponse;
+  if (Array.isArray(errorData.message)) {
+    return errorData.message.join(", ");
+  }
+  return errorData.message || `Lỗi từ hệ thống (Mã: ${response.status})`;
+}
+
+export async function refreshSession(): Promise<AuthResponse> {
+  if (!refreshPromise) {
+    refreshPromise = fetch(`${API_URL}/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(await readApiError(response));
+        }
+        const session = (await response.json()) as AuthResponse;
+        acceptAuthSession(session);
+        return session;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
+export async function logoutSession(): Promise<void> {
+  try {
+    await fetch(`${API_URL}/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+    });
+  } finally {
+    accessToken = null;
+  }
 }
 
 /**
- * Xóa thông tin đăng nhập và chuyển hướng về trang Login.
+ * Fetch wrapper giữ access token trong memory và chỉ cho phép một refresh request
+ * chạy tại một thời điểm. Refresh token được trình duyệt gửi bằng cookie HttpOnly.
  */
-function logoutUser() {
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('user');
-    
-    // Chỉ chuyển hướng nếu đang không nằm ở trang login/register để tránh lặp vô tận
-    const path = window.location.pathname;
-    if (path !== '/login' && path !== '/register') {
-      window.location.replace('/login');
+export async function apiRequest<T = unknown>(
+  endpoint: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const headers = new Headers(options.headers || {});
+  if (accessToken && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${accessToken}`);
+  }
+  if (!headers.has("Content-Type") && !(options.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const request = () =>
+    fetch(`${API_URL}${endpoint}`, {
+      ...options,
+      credentials: "include",
+      headers,
+    });
+
+  let response = await request();
+  if (
+    response.status === 401 &&
+    typeof window !== "undefined" &&
+    !AUTH_ENDPOINTS_WITHOUT_RETRY.has(endpoint)
+  ) {
+    try {
+      const refreshed = await refreshSession();
+      headers.set("Authorization", `Bearer ${refreshed.accessToken}`);
+      response = await request();
+    } catch {
+      clearClientSession();
     }
   }
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      clearClientSession();
+    }
+    throw new Error(await readApiError(response));
+  }
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  return response.json() as Promise<T>;
 }

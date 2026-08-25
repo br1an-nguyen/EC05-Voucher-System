@@ -7,6 +7,8 @@ import { UsersModule } from '../users/users.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { getJwtSecret } from './jwt-secret';
 import { PasswordResetDeliveryService } from './password-reset-delivery.service';
+import { AuthSessionService } from './auth-session.service';
+import { ACCESS_TOKEN_TTL_SECONDS } from './auth-session.constants';
 
 /**
  * Module quản lý toàn bộ các cấu hình xác thực JWT, Passport và kết nối UsersModule.
@@ -17,11 +19,16 @@ import { PasswordResetDeliveryService } from './password-reset-delivery.service'
     PassportModule,
     JwtModule.register({
       secret: getJwtSecret(),
-      signOptions: { expiresIn: '15m' },
+      signOptions: { expiresIn: ACCESS_TOKEN_TTL_SECONDS },
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, PasswordResetDeliveryService],
-  exports: [AuthService],
+  providers: [
+    AuthService,
+    AuthSessionService,
+    JwtStrategy,
+    PasswordResetDeliveryService,
+  ],
+  exports: [AuthService, AuthSessionService],
 })
 export class AuthModule {}
