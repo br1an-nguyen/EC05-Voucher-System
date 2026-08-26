@@ -2,12 +2,16 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from '@nes
 import { PrismaService } from '../prisma/prisma.service';
 import { OrderStatus, PaymentStatus, ReservationStatus, PaymentTransactionStatus, VoucherCodeStatus } from '@prisma/client';
 import * as crypto from 'crypto';
+import { EmailService } from './email.service';
 
 @Injectable()
 export class PaymentFinalizationService {
   private readonly logger = new Logger(PaymentFinalizationService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private emailService: EmailService,
+  ) {}
 
   /**
    * Hoàn tất giao dịch thanh toán và phát hành mã voucher (Idempotent).
@@ -25,7 +29,7 @@ export class PaymentFinalizationService {
       exchangeRate?: number;
     },
   ) {
-    return this.prisma.$transaction(async (tx) => {
+    const resultOrder = await this.prisma.$transaction(async (tx) => {
       // 1. Khóa và đọc dòng giao dịch thanh toán
       await tx.$executeRawUnsafe(
         `SELECT payment_id FROM "Payment_Transactions" WHERE payment_id = $1::uuid FOR UPDATE`,
@@ -139,7 +143,19 @@ export class PaymentFinalizationService {
         }
       }
 
-      // 6. Phát hành mã Voucher Code ngẫu nhiên bảo mật (độ dài 12 ký tự) (RB-05, RB-06)
+      // 6. Xác định customerId nhận voucher (xử lý quà tặng gửi cho tài khoản hiện có)
+      let targetCustomerId = order.customerId;
+      if (order.isGift && order.recipientEmail) {
+        const recipientUser = await tx.user.findUnique({
+          where: { email: order.recipientEmail },
+          select: { userId: true },
+        });
+        if (recipientUser) {
+          targetCustomerId = recipientUser.userId;
+        }
+      }
+
+      // 7. Phát hành mã Voucher Code ngẫu nhiên bảo mật (độ dài 12 ký tự) (RB-05, RB-06)
       for (const item of order.orderItems) {
         for (let i = 0; i < item.quantity; i++) {
           // Tạo mã ngẫu nhiên cryptographically secure bằng Node.js crypto
@@ -149,7 +165,7 @@ export class PaymentFinalizationService {
             data: {
               itemId: item.itemId,
               uniqueCode,
-              customerId: order.customerId,
+              customerId: targetCustomerId,
               status: VoucherCodeStatus.AVAILABLE,
               issuedAt: new Date(),
             },
@@ -160,5 +176,68 @@ export class PaymentFinalizationService {
       this.logger.log(`Hoàn tất thanh toán đơn hàng ${order.orderCode}. Đã phát hành mã voucher thành công.`);
       return updatedOrder;
     });
+
+    // Kích hoạt tác vụ gửi email ngầm bất đồng bộ sau khi transaction thành công thành công
+    this.triggerGiftEmailNotification(resultOrder.orderId).catch((err) => {
+      this.logger.error(`Lỗi khi xử lý gửi email quà tặng ngầm cho đơn ${resultOrder.orderCode}: ${err.message}`);
+    });
+
+    return resultOrder;
+  }
+
+  /**
+   * Helper xử lý đọc thông tin đơn hàng và gửi email quà tặng (nếu là Gift Order).
+   * Thực hiện ngầm ngoài transaction để tránh lock DB quá lâu và không block client callback.
+   */
+  private async triggerGiftEmailNotification(orderId: string) {
+    // 1. Đọc chi tiết thông tin đơn hàng cùng thông tin người mua và voucher codes vừa tạo
+    const order = await this.prisma.order.findUnique({
+      where: { orderId },
+      include: {
+        customer: {
+          select: { fullName: true },
+        },
+        orderItems: {
+          include: {
+            campaign: {
+              select: { title: true },
+            },
+            voucherCodes: {
+              select: { uniqueCode: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!order) return;
+
+    // 2. Kiểm tra điều kiện quà tặng
+    if (order.isGift && order.recipientEmail) {
+      const senderName = order.customer.fullName || 'Một người bạn';
+      const giftMessage = order.recipientNote; // Sử dụng recipient_note làm lời chúc
+
+      const vouchers: { title: string; code: string }[] = [];
+      for (const item of order.orderItems) {
+        for (const code of item.voucherCodes) {
+          vouchers.push({
+            title: item.campaign.title,
+            code: code.uniqueCode,
+          });
+        }
+      }
+
+      if (vouchers.length > 0) {
+        // Gửi email thực tế
+        await this.emailService.sendGiftEmail(
+          order.recipientEmail,
+          senderName,
+          giftMessage,
+          order.orderCode,
+          vouchers,
+        );
+      }
+    }
   }
 }
+

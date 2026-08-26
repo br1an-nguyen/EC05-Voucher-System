@@ -99,6 +99,8 @@ export class PaymentsController {
       orderId: payment.orderId,
       status: payment.status,
       paidAt: payment.paidAt,
+      isGift: payment.order.isGift,
+      recipientEmail: payment.order.recipientEmail,
     };
   }
 

@@ -109,6 +109,8 @@ export class OrdersService {
           orderCode,
           customerId,
           recipientNote: dto.recipientNote,
+          isGift: dto.isGift ?? false,
+          recipientEmail: dto.recipientEmail,
           totalAmount,
           selectedPaymentProvider: dto.paymentProvider,
           orderStatus: OrderStatus.PENDING,
