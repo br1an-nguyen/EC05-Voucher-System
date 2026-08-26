@@ -7,6 +7,7 @@ import {
   PaymentStatus,
   UserRole,
 } from '@prisma/client';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class PaymentsService {
@@ -144,6 +145,73 @@ export class PaymentsService {
     return this.prisma.paymentTransaction.update({
       where: { paymentId },
       data: { providerOrderId },
+    });
+  }
+
+  /**
+   * Tìm giao dịch thanh toán theo ID đơn hàng từ phía đối tác (providerOrderId).
+   * @param providerOrderId ID đơn hàng của cổng thanh toán
+   */
+  async getPaymentByProviderOrderId(providerOrderId: string) {
+    return this.prisma.paymentTransaction.findFirst({
+      where: { providerOrderId },
+      include: { order: true },
+    });
+  }
+
+  /**
+   * Đăng ký và lưu sự kiện webhook từ đối tác thanh toán, đảm bảo tính idempotent (chống replay).
+   * @param provider Loại cổng thanh toán
+   * @param providerEventId ID sự kiện duy nhất từ cổng thanh toán
+   * @param eventType Tên loại sự kiện
+   * @param payload Dữ liệu payload của webhook
+   * @returns True nếu sự kiện được ghi nhận mới, False nếu sự kiện đã tồn tại (bị trùng)
+   */
+  async registerWebhookEvent(
+    provider: PaymentProviderType,
+    providerEventId: string,
+    eventType: string,
+    payload: any,
+  ): Promise<boolean> {
+    try {
+      const payloadHash = crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+      
+      await this.prisma.paymentWebhookEvent.create({
+        data: {
+          provider,
+          providerEventId,
+          eventType,
+          signatureValid: true,
+          payloadHash,
+          processingStatus: 'PROCESSED',
+          receivedAt: new Date(),
+          processedAt: new Date(),
+        },
+      });
+      return true;
+    } catch (err: any) {
+      // P2002: Lỗi vi phạm ràng buộc duy nhất (Unique constraint failed) -> Sự kiện trùng lặp
+      if (err.code === 'P2002') {
+        return false;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Cập nhật trạng thái giao dịch thanh toán thành FAILED với mã lỗi và thông điệp tương ứng.
+   * @param paymentId ID giao dịch thanh toán cục bộ
+   * @param failureCode Mã lỗi thất bại
+   * @param failureMessage Chi tiết thông báo thất bại
+   */
+  async updatePaymentStatusFailed(paymentId: string, failureCode: string, failureMessage: string) {
+    return this.prisma.paymentTransaction.update({
+      where: { paymentId },
+      data: {
+        status: PaymentTransactionStatus.FAILED,
+        failureCode,
+        failureMessage,
+      },
     });
   }
 }

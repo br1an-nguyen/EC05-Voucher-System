@@ -10,6 +10,7 @@ export class PaypalAdapter implements PaymentProvider {
   private readonly clientSecret = process.env.PAYPAL_CLIENT_SECRET || 'mock_paypal_client_secret_456';
   private readonly apiUrl = process.env.PAYPAL_API_URL || 'https://api-m.sandbox.paypal.com';
   private readonly frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+  private readonly webhookId = process.env.PAYPAL_WEBHOOK_ID || 'mock_paypal_webhook_id';
 
   /**
    * Tạo PayPal Order và lấy Link phê duyệt (Approve Link).
@@ -26,6 +27,7 @@ export class PaypalAdapter implements PaymentProvider {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${accessToken}`,
+          'PayPal-Request-Id': payment.paymentId, // Đảm bảo tính bất biến (idempotency)
         },
         body: JSON.stringify({
           intent: 'CAPTURE',
@@ -60,26 +62,36 @@ export class PaypalAdapter implements PaymentProvider {
       };
     } catch (err: any) {
       this.logger.error('Lỗi khởi tạo đơn hàng PayPal:', err.message);
-      // Fallback url cho môi trường dev
-      return {
-        paymentUrl: `/payments/return/mock?paymentId=${payment.paymentId}&provider=PAYPAL`,
-        providerOrderId: `MOCK-PAYPAL-ID-${Date.now()}`,
-      };
+      
+      // Chỉ fallback URL cho môi trường dev nếu chưa cấu hình Client ID thật (P1)
+      const isMockConfig = this.clientId === 'mock_paypal_client_id_123';
+      if (process.env.NODE_ENV !== 'production' && isMockConfig) {
+        return {
+          paymentUrl: `/payments/return/mock?paymentId=${payment.paymentId}&provider=PAYPAL`,
+          providerOrderId: `MOCK-PAYPAL-ID-${Date.now()}`,
+        };
+      }
+      throw err;
     }
   }
 
   /**
    * Capture (bắt giữ) tiền sau khi khách hàng đã xác nhận đồng ý trên giao diện PayPal.
    */
-  async captureOrder(paypalOrderId: string): Promise<VerifiedPaymentResult> {
+  async captureOrder(paypalOrderId: string, paymentId?: string): Promise<VerifiedPaymentResult> {
     const accessToken = await this.getAccessToken();
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`,
+    };
+    if (paymentId) {
+      headers['PayPal-Request-Id'] = `${paymentId}-capture`; // Đảm bảo tính bất biến (idempotency)
+    }
 
     const response = await fetch(`${this.apiUrl}/v2/checkout/orders/${paypalOrderId}/capture`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`,
-      },
+      headers,
     });
 
     if (!response.ok) {
@@ -95,12 +107,15 @@ export class PaypalAdapter implements PaymentProvider {
 
     const data = await response.json();
     const capture = data.purchase_units?.[0]?.payments?.captures?.[0];
-    const status = data.status === 'COMPLETED' ? 'SUCCESS' : 'FAILED';
+    
+    // Xác định giao dịch thành công thực tế (P0 - tránh capture rỗng)
+    const isCaptureSuccess = data.status === 'COMPLETED' && capture && capture.status === 'COMPLETED';
+    const status = isCaptureSuccess ? 'SUCCESS' : 'FAILED';
 
     return {
-      providerTransactionId: capture?.id || paypalOrderId,
-      amountPaid: capture?.amount?.value ? Number(capture.amount.value) : 0,
-      currency: capture?.amount?.currency_code || 'USD',
+      providerTransactionId: isCaptureSuccess ? (capture.id || paypalOrderId) : '',
+      amountPaid: isCaptureSuccess && capture.amount?.value ? Number(capture.amount.value) : 0,
+      currency: isCaptureSuccess && capture.amount?.currency_code ? capture.amount.currency_code : 'USD',
       status: status as any,
     };
   }
@@ -148,12 +163,15 @@ export class PaypalAdapter implements PaymentProvider {
 
     const data = await response.json();
     const capture = data.purchase_units?.[0]?.payments?.captures?.[0];
+    
+    // Xác định giao dịch thành công thực tế (P0 - tránh capture rỗng)
+    const isSuccess = data.status === 'COMPLETED' && capture && capture.status === 'COMPLETED';
 
     return {
-      providerTransactionId: capture?.id || providerOrderId,
-      amountPaid: capture?.amount?.value ? Number(capture.amount.value) : 0,
-      currency: capture?.amount?.currency_code || 'USD',
-      status: data.status === 'COMPLETED' ? 'SUCCESS' : 'FAILED',
+      providerTransactionId: isSuccess ? (capture.id || providerOrderId) : '',
+      amountPaid: isSuccess && capture.amount?.value ? Number(capture.amount.value) : 0,
+      currency: isSuccess && capture.amount?.currency_code ? capture.amount.currency_code : 'USD',
+      status: isSuccess ? 'SUCCESS' : 'FAILED',
     };
   }
 
@@ -178,5 +196,53 @@ export class PaypalAdapter implements PaymentProvider {
 
     const data = await response.json();
     return data.access_token;
+  }
+
+  /**
+   * Xác thực chữ ký webhook từ PayPal bằng cách gửi yêu cầu kiểm tra lên PayPal API.
+   */
+  async verifyWebhookSignature(headers: Record<string, string>, payload: any): Promise<boolean> {
+    if (this.webhookId === 'mock_paypal_webhook_id' && process.env.NODE_ENV !== 'production') {
+      return true;
+    }
+
+    try {
+      const accessToken = await this.getAccessToken();
+      
+      // Chuyển đổi các khóa của header sang dạng chữ thường để truy cập an toàn
+      const lowerHeaders = Object.keys(headers).reduce((acc, key) => {
+        acc[key.toLowerCase()] = headers[key];
+        return acc;
+      }, {} as Record<string, string>);
+
+      const response = await fetch(`${this.apiUrl}/v1/notifications/verify-webhook-signature`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          auth_algo: lowerHeaders['paypal-auth-algo'],
+          cert_url: lowerHeaders['paypal-cert-url'],
+          transmission_id: lowerHeaders['paypal-transmission-id'],
+          transmission_sig: lowerHeaders['paypal-transmission-sig'],
+          transmission_time: lowerHeaders['paypal-transmission-time'],
+          webhook_id: this.webhookId,
+          webhook_event: payload,
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        this.logger.error('Lỗi gọi API xác thực webhook signature của PayPal:', errText);
+        return false;
+      }
+
+      const data = await response.json();
+      return data.verification_status === 'SUCCESS';
+    } catch (err: any) {
+      this.logger.error('Lỗi khi xác thực webhook signature:', err.message);
+      return false;
+    }
   }
 }

@@ -14,8 +14,17 @@ export class PaymentFinalizationService {
    * Sử dụng SELECT FOR UPDATE để khóa dòng đơn hàng và các chiến dịch voucher.
    * @param paymentId ID giao dịch thanh toán cục bộ
    * @param providerTransactionId ID giao dịch từ cổng thanh toán bên thứ ba (Stripe/PayPal/VNPay)
+   * @param settlement Thông tin quyết toán ngoại tệ thực tế (nếu có, ví dụ USD từ PayPal)
    */
-  async finalizePayment(paymentId: string, providerTransactionId: string) {
+  async finalizePayment(
+    paymentId: string,
+    providerTransactionId: string,
+    settlement?: {
+      settledAmountMinor: bigint;
+      settledCurrency: string;
+      exchangeRate?: number;
+    },
+  ) {
     return this.prisma.$transaction(async (tx) => {
       // 1. Khóa và đọc dòng giao dịch thanh toán
       await tx.$executeRawUnsafe(
@@ -49,6 +58,13 @@ export class PaymentFinalizationService {
 
       const order = payment.order;
 
+      // Cảnh báo nếu đơn hàng đã bị worker hủy trước đó, tiến hành khôi phục đơn
+      if (order.orderStatus === OrderStatus.CANCELLED) {
+        this.logger.warn(
+          `Đơn hàng ${order.orderCode} đã bị hủy trước đó nhưng nhận được thanh toán thành công. Tiến hành khôi phục đơn hàng.`,
+        );
+      }
+
       // 2. Khóa dòng đơn hàng và các voucher chiến dịch để đảm bảo nhất quán dữ liệu
       await tx.$executeRawUnsafe(
         `SELECT order_id FROM "Orders" WHERE order_id = $1::uuid FOR UPDATE`,
@@ -63,14 +79,19 @@ export class PaymentFinalizationService {
       }
 
       // 3. Cập nhật trạng thái giao dịch thanh toán thành SUCCEEDED
+      const settledAmountMinor = settlement ? settlement.settledAmountMinor : payment.requestAmountMinor;
+      const settledCurrency = settlement ? settlement.settledCurrency : payment.requestCurrency;
+      const exchangeRate = settlement?.exchangeRate ? settlement.exchangeRate : null;
+
       await tx.paymentTransaction.update({
         where: { paymentId },
         data: {
           status: PaymentTransactionStatus.SUCCEEDED,
           providerTransactionId,
           paidAt: new Date(),
-          settledAmountMinor: payment.requestAmountMinor,
-          settledCurrency: payment.requestCurrency,
+          settledAmountMinor,
+          settledCurrency,
+          exchangeRate,
         },
       });
 
