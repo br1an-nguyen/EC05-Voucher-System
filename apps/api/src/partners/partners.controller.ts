@@ -20,6 +20,16 @@ export class PartnersController {
   constructor(private partnersService: PartnersService) {}
 
   /**
+   * Lấy danh mục tỉnh/thành để khai báo khu vực chi nhánh.
+   * GET /partners/provinces
+   */
+  @Get('provinces')
+  @Roles(UserRole.PARTNER)
+  listProvinces() {
+    return this.partnersService.listProvinces();
+  }
+
+  /**
    * Lấy thông tin hồ sơ của đối tác hiện tại đang đăng nhập.
    * GET /partners/profile
    */

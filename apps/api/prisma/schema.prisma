@@ -173,6 +173,7 @@ model Branch {
   partnerId      String    @map("partner_id") @db.Uuid
   name           String    @map("name") @db.VarChar(255)
   address        String?   @map("address") @db.Text
+  provinceCode   String?   @map("province_code") @db.Char(2)
   sourceUrl      String?   @map("source_url") @db.Text
   externalSource String?   @map("external_source") @db.VarChar(100)
   externalId     String?   @map("external_id") @db.VarChar(255)
@@ -186,6 +187,7 @@ model Branch {
 
   @@unique([partnerId, branchId])
   @@unique([externalSource, externalId])
+  @@index([provinceCode], map: "Branches_province_code_idx")
   @@map("Branches")
 }
 
