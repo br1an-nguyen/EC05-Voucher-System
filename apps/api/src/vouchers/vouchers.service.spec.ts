@@ -45,3 +45,53 @@ describe('VouchersService redemption scope', () => {
     ).rejects.toThrow(ForbiddenException);
   });
 });
+
+describe('VouchersService public province filters', () => {
+  it('filters campaigns by a branch province code', async () => {
+    const prisma = {
+      voucherCampaign: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const service = new VouchersService(prisma as any, {} as any);
+
+    await service.findPublicCatalog({ provinceCode: '79' });
+
+    expect(prisma.voucherCampaign.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          campaignBranches: {
+            some: { branch: { is: { provinceCode: '79' } } },
+          },
+        }),
+      }),
+    );
+  });
+
+  it('counts each active campaign once per province', async () => {
+    const prisma = {
+      campaignBranch: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            campaignId: 'campaign-1',
+            branch: { provinceCode: '79' },
+            campaign: { capacity: 10, soldQuantity: 2 },
+          },
+          {
+            campaignId: 'campaign-1',
+            branch: { provinceCode: '79' },
+            campaign: { capacity: 10, soldQuantity: 2 },
+          },
+          {
+            campaignId: 'campaign-sold-out',
+            branch: { provinceCode: '79' },
+            campaign: { capacity: 10, soldQuantity: 10 },
+          },
+        ]),
+      },
+    };
+    const service = new VouchersService(prisma as any, {} as any);
+
+    await expect(service.findPublicProvinces()).resolves.toEqual([
+      { code: '79', name: 'Thành phố Hồ Chí Minh', campaignCount: 1 },
+    ]);
+  });
+});

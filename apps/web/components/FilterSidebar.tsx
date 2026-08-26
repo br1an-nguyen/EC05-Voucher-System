@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Tag, X, Filter, ChevronDown } from 'lucide-react';
+import { Tag, X, Filter, ChevronDown, MapPin } from 'lucide-react';
 
 interface CategoryFilterOption {
   code: string;
@@ -10,11 +10,20 @@ interface CategoryFilterOption {
   children?: CategoryFilterOption[];
 }
 
+interface ProvinceFilterOption {
+  code: string;
+  name: string;
+  campaignCount: number;
+}
+
 export interface FilterSidebarProps {
   category: string;
   categories: CategoryFilterOption[];
   totalCampaigns: number;
   onCategoryChange: (value: string) => void;
+  province: string;
+  provinces: ProvinceFilterOption[];
+  onProvinceChange: (value: string) => void;
   maxPrice: string;
   setMaxPrice: (val: string) => void;
   onFilter: () => void;
@@ -27,6 +36,9 @@ export default function FilterSidebar({
   categories,
   totalCampaigns,
   onCategoryChange,
+  province,
+  provinces,
+  onProvinceChange,
   maxPrice,
   setMaxPrice,
   onFilter,
@@ -107,6 +119,30 @@ export default function FilterSidebar({
         <h2 className="text-base font-extrabold text-slate-800 uppercase tracking-tight">
           Bộ lọc tìm kiếm
         </h2>
+      </div>
+
+      {/* Khu vực */}
+      <div className="space-y-3">
+        <label htmlFor="province-filter" className="block text-xs font-bold text-slate-700">
+          Khu vực
+        </label>
+        <div className="relative">
+          <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <select
+            id="province-filter"
+            value={province}
+            onChange={(event) => onProvinceChange(event.target.value)}
+            className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-8 text-xs font-semibold text-slate-700 outline-none transition-all focus:border-primary/50 focus:bg-white"
+          >
+            <option value="">Tất cả khu vực</option>
+            {provinces.map((option) => (
+              <option key={option.code} value={option.code}>
+                {option.name} ({option.campaignCount})
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        </div>
       </div>
 
       {/* Khoảng giá */}

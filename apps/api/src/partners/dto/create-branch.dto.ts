@@ -1,4 +1,5 @@
-import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsIn } from 'class-validator';
+import { VIETNAM_PROVINCE_CODES } from '../../common/constants/vietnam-provinces';
 
 /**
  * DTO dữ liệu đầu vào khi tạo chi nhánh mới.
@@ -12,4 +13,7 @@ export class CreateBranchDto {
   @IsOptional()
   address?: string;
 
+  @IsString({ message: 'Mã tỉnh/thành phải là chuỗi ký tự.' })
+  @IsIn(VIETNAM_PROVINCE_CODES, { message: 'Tỉnh/thành phố không hợp lệ.' })
+  provinceCode!: string;
 }

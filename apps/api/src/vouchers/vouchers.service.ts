@@ -5,6 +5,7 @@ import { UpdateCampaignDto } from './dto/update-campaign.dto';
 import { Prisma, VoucherStatus, PartnerApprovalStatus, UserRole } from '@prisma/client';
 import { PublicCatalogQueryDto } from './dto/public-catalog-query.dto';
 import { AuditService } from '../audit/audit.service';
+import { VIETNAM_PROVINCES } from '../common/constants/vietnam-provinces';
 
 /**
  * Service quản lý toàn bộ nghiệp vụ tạo, cập nhật, chuyển đổi trạng thái (vòng đời) chiến dịch Voucher.
@@ -440,11 +441,59 @@ export class VouchersService {
   }
 
   /**
+   * Lấy các tỉnh/thành đang có voucher công khai và số chiến dịch tương ứng.
+   * @returns Danh sách khu vực có ít nhất một voucher còn hàng, đang mở bán.
+   */
+  async findPublicProvinces() {
+    const now = new Date();
+    const relations = await this.prisma.campaignBranch.findMany({
+      where: {
+        branch: { provinceCode: { not: null } },
+        campaign: {
+          status: VoucherStatus.APPROVED,
+          saleStartTime: { lte: now },
+          saleEndTime: { gte: now },
+        },
+      },
+      select: {
+        campaignId: true,
+        branch: { select: { provinceCode: true } },
+        campaign: { select: { capacity: true, soldQuantity: true } },
+      },
+    });
+
+    const campaignIdsByProvince = new Map<string, Set<string>>();
+    for (const relation of relations) {
+      const provinceCode = relation.branch.provinceCode;
+      if (!provinceCode || relation.campaign.soldQuantity >= relation.campaign.capacity) {
+        continue;
+      }
+      const campaignIds = campaignIdsByProvince.get(provinceCode) ?? new Set<string>();
+      campaignIds.add(relation.campaignId);
+      campaignIdsByProvince.set(provinceCode, campaignIds);
+    }
+
+    return VIETNAM_PROVINCES.flatMap((province) => {
+      const campaignCount = campaignIdsByProvince.get(province.code)?.size ?? 0;
+      return campaignCount > 0 ? [{ ...province, campaignCount }] : [];
+    });
+  }
+
+  /**
    * Lấy danh sách voucher công khai để hiển thị trên trang chủ cho khách hàng.
    * Hỗ trợ tìm kiếm từ khóa, danh mục, khoảng giá và chi nhánh áp dụng.
    */
   async findPublicCatalog(query: PublicCatalogQueryDto) {
-    const { keyword, category, categoryCode, minPrice, maxPrice, branchId, sortPrice } = query;
+    const {
+      keyword,
+      category,
+      categoryCode,
+      minPrice,
+      maxPrice,
+      branchId,
+      provinceCode,
+      sortPrice,
+    } = query;
     const now = new Date();
 
     // Ràng buộc: Chiến dịch phải được phê duyệt và đang trong thời gian mở bán
@@ -517,10 +566,13 @@ export class VouchersService {
       whereClause.OR = searchConditions;
     }
 
-    if (branchId) {
+    if (branchId || provinceCode) {
       whereClause.campaignBranches = {
         some: {
-          branchId: branchId,
+          ...(branchId ? { branchId } : {}),
+          ...(provinceCode
+            ? { branch: { is: { provinceCode } } }
+            : {}),
         },
       };
     }
