@@ -90,6 +90,9 @@ describe('PaymentFinalizationService', () => {
       paymentTransaction: {
         findUnique: jest.fn().mockResolvedValue({ orderId }),
       },
+      order: {
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
       $transaction: jest.fn(
         (callback: (transaction: typeof tx) => Promise<unknown>) =>
           callback(tx),
@@ -98,13 +101,17 @@ describe('PaymentFinalizationService', () => {
     return { prisma, tx };
   }
 
+  const mockEmailService = {
+    sendGiftEmail: jest.fn().mockResolvedValue(true),
+  };
+
   it('rejects a late callback without issuing vouchers or increasing sold stock', async () => {
     const { prisma, tx } = createContext({
       orderStatus: OrderStatus.CANCELLED,
       transactionStatus: PaymentTransactionStatus.EXPIRED,
       expired: true,
     });
-    const service = new PaymentFinalizationService(prisma as any);
+    const service = new PaymentFinalizationService(prisma as any, mockEmailService as any);
 
     await expect(
       service.finalizePayment(paymentId, 'PROVIDER-LATE'),
@@ -119,7 +126,7 @@ describe('PaymentFinalizationService', () => {
     const { prisma, tx } = createContext({
       omitReservation: true,
     });
-    const service = new PaymentFinalizationService(prisma as any);
+    const service = new PaymentFinalizationService(prisma as any, mockEmailService as any);
 
     await expect(
       service.finalizePayment(paymentId, 'PROVIDER-MISSING-RESERVATION'),
@@ -131,7 +138,7 @@ describe('PaymentFinalizationService', () => {
 
   it('commits active reservations and issues vouchers for a valid payment', async () => {
     const { prisma, tx } = createContext();
-    const service = new PaymentFinalizationService(prisma as any);
+    const service = new PaymentFinalizationService(prisma as any, mockEmailService as any);
 
     await service.finalizePayment(paymentId, 'PROVIDER-SUCCESS');
 
@@ -157,7 +164,7 @@ describe('PaymentFinalizationService', () => {
 
   it('preserves the PayPal USD settlement contract from main', async () => {
     const { prisma, tx } = createContext();
-    const service = new PaymentFinalizationService(prisma as any);
+    const service = new PaymentFinalizationService(prisma as any, mockEmailService as any);
 
     await service.finalizePayment(paymentId, 'PAYPAL-CAPTURE-1', {
       settledAmountMinor: 400n,

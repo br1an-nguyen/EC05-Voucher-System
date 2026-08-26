@@ -145,7 +145,7 @@ describe('StripeAdapter', () => {
           payment_intent: 'pi_test_2',
         },
       },
-    } as Stripe.Event;
+    } as unknown as Stripe.Event;
 
     expect(() => adapter.parseWebhookEvent(event, Buffer.from('{}'))).toThrow(
       'client_reference_id',

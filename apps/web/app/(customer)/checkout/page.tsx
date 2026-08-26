@@ -81,6 +81,8 @@ function CheckoutPageContent() {
   // Checkout form state
   const [recipientNote, setRecipientNote] = useState('');
   const [paymentProvider, setPaymentProvider] = useState<'STRIPE' | 'PAYPAL' | 'VNPAY'>('STRIPE');
+  const [isGift, setIsGift] = useState(false);
+  const [recipientEmail, setRecipientEmail] = useState('');
   
   // Order created state
   const [createdOrder, setCreatedOrder] = useState<CheckoutOrder | null>(null);
@@ -188,6 +190,8 @@ function CheckoutPageContent() {
         body: JSON.stringify({
           recipientNote,
           paymentProvider,
+          isGift,
+          recipientEmail: isGift ? recipientEmail : undefined,
         }),
       });
       setCreatedOrder(order);
@@ -357,15 +361,54 @@ function CheckoutPageContent() {
                 </div>
               </div>
 
+              {/* Toggle mua làm quà tặng */}
+              <div className="flex items-center gap-2 pt-2 border-t border-border/40">
+                <input
+                  type="checkbox"
+                  id="isGift"
+                  checked={isGift}
+                  onChange={(e) => {
+                    setIsGift(e.target.checked);
+                    if (!e.target.checked) {
+                      setRecipientEmail('');
+                    }
+                  }}
+                  className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                />
+                <label htmlFor="isGift" className="text-xs font-semibold text-foreground cursor-pointer select-none">
+                  🎁 Gửi tặng voucher này cho người khác (làm quà tặng)
+                </label>
+              </div>
+
+              {/* Email người nhận khi là quà tặng */}
+              {isGift && (
+                <div className="space-y-1.5 pt-1.5 animate-fadeIn">
+                  <label className="block text-xs font-semibold text-foreground">
+                    Email người nhận quà <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={recipientEmail}
+                    onChange={(e) => setRecipientEmail(e.target.value)}
+                    placeholder="Nhập email của người nhận quà..."
+                    className="block w-full rounded-lg border border-border bg-card py-2 px-3 text-foreground placeholder-slate-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary text-sm transition-all"
+                  />
+                  <p className="text-[10px] text-muted">
+                    *Hệ thống sẽ tự động gửi email chứa các mã Voucher Code đến hòm thư này ngay khi bạn thanh toán thành công.
+                  </p>
+                </div>
+              )}
+
               {/* Note input */}
               <div className="space-y-1.5 pt-2">
                 <label className="block text-xs font-semibold text-foreground">
-                  Ghi chú đơn hàng (Tùy chọn)
+                  {isGift ? 'Lời chúc / Lời nhắn đi kèm (Tùy chọn)' : 'Ghi chú đơn hàng (Tùy chọn)'}
                 </label>
                 <textarea
                   value={recipientNote}
                   onChange={(e) => setRecipientNote(e.target.value)}
-                  placeholder="Ghi chú thêm cho đơn hàng..."
+                  placeholder={isGift ? "Chúc bạn một ngày vui vẻ!..." : "Ghi chú thêm cho đơn hàng..."}
                   rows={3}
                   className="block w-full rounded-lg border border-border bg-card py-2 px-3 text-foreground placeholder-slate-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary text-sm transition-all"
                 />
