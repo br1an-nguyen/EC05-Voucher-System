@@ -15,7 +15,8 @@ import {
   QrCode, 
   AlertCircle,
   Copy,
-  ChevronRight
+  ChevronRight,
+  Search
 } from 'lucide-react';
 import {
   Dialog,
@@ -79,6 +80,10 @@ export default function CustomerVouchersPage() {
   const [selectedVoucher, setSelectedVoucher] = useState<VoucherCode | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
 
+  const [filterText, setFilterText] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+
   const fetchWallet = async () => {
     setLoading(true);
     setErrorMsg(null);
@@ -110,13 +115,6 @@ export default function CustomerVouchersPage() {
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
-  if (authLoading || loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary mx-auto"></div>
-      </div>
-    );
-  }
 
   const groupVouchers = (list: VoucherCode[]) => {
     const groupedMap = new Map<string, GroupedVoucher>();
@@ -143,38 +141,57 @@ export default function CustomerVouchersPage() {
     }));
   };
 
-  // Filter vouchers based on current active tab
+  // Filter vouchers based on current active tab and text/date filters
   const filteredVouchers = vouchers.filter((v) => {
-    if (activeTab === 'AVAILABLE') return v.status === 'AVAILABLE';
-    if (activeTab === 'USED') return v.status === 'USED';
-    // EXPIRED or CANCELLED tabs
-    return v.status === 'EXPIRED' || v.status === 'CANCELLED';
+    if (activeTab === 'AVAILABLE' && v.status !== 'AVAILABLE') return false;
+    if (activeTab === 'USED' && v.status !== 'USED') return false;
+    if (activeTab === 'EXPIRED' && v.status !== 'EXPIRED' && v.status !== 'CANCELLED') return false;
+
+    const matchText = filterText === '' ||
+      v.uniqueCode.toLowerCase().includes(filterText.toLowerCase()) ||
+      v.orderItem.campaign.title.toLowerCase().includes(filterText.toLowerCase()) ||
+      v.orderItem.campaign.partner.companyName.toLowerCase().includes(filterText.toLowerCase());
+
+    let matchDate = true;
+    if (filterDateFrom !== '' || filterDateTo !== '') {
+      const d = new Date(v.issuedAt);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const localDateStr = `${yyyy}-${mm}-${dd}`;
+      
+      if (filterDateFrom !== '' && filterDateTo !== '') {
+        matchDate = localDateStr >= filterDateFrom && localDateStr <= filterDateTo;
+      } else if (filterDateFrom !== '') {
+        matchDate = localDateStr >= filterDateFrom;
+      } else if (filterDateTo !== '') {
+        matchDate = localDateStr <= filterDateTo;
+      }
+    }
+
+    return matchText && matchDate;
   });
 
   const groupedVouchers = groupVouchers(filteredVouchers);
 
   return (
-    <>
+    <div className="min-h-screen bg-slate-50/50 font-sans flex flex-col">
       <Header />
-      <div className="min-h-screen bg-background font-sans py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto space-y-6">
-        
-        {/* BREADCRUMB */}
-        <div className="flex items-center gap-2 text-xs text-muted">
-          <Link href="/" className="hover:text-primary font-semibold transition-colors">Trang chủ</Link>
-          <ChevronRight className="h-3.5 w-3.5" />
-          <span className="font-semibold text-foreground">Ví Voucher của tôi</span>
+      {authLoading || loading ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary mx-auto"></div>
         </div>
-
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-border/60">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-              <Ticket className="h-5 w-5" />
-            </div>
-            <div>
-              <h1 className="text-xl sm:text-2xl font-extrabold text-foreground">Ví Voucher cá nhân</h1>
-              <p className="text-xs text-muted">Quản lý và sử dụng các mã giảm giá bạn đã mua thành công.</p>
-            </div>
+      ) : (
+        <div className="flex-1 py-10 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-5xl mx-auto space-y-8">
+        
+        <div className="flex items-center gap-3 pb-4 border-b border-slate-200">
+          <div className="bg-primary/10 p-3 rounded-2xl">
+            <Ticket className="h-7 w-7 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-800">Ví Voucher cá nhân</h1>
+            <p className="text-sm text-slate-500 mt-1">Quản lý và sử dụng các mã giảm giá bạn đã mua thành công.</p>
           </div>
         </div>
 
@@ -186,13 +203,13 @@ export default function CustomerVouchersPage() {
         )}
 
         {/* TABS ĐIỀU HƯỚNG */}
-        <div className="flex border-b border-border">
+        <div className="flex border-b border-slate-200">
           <button
             onClick={() => setActiveTab('AVAILABLE')}
             className={`flex-1 py-3 text-xs font-bold border-b-2 transition-all ${
               activeTab === 'AVAILABLE'
                 ? 'border-primary text-primary'
-                : 'border-transparent text-muted hover:text-foreground'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
             Chưa sử dụng ({groupVouchers(vouchers.filter((v) => v.status === 'AVAILABLE')).length})
@@ -202,7 +219,7 @@ export default function CustomerVouchersPage() {
             className={`flex-1 py-3 text-xs font-bold border-b-2 transition-all ${
               activeTab === 'USED'
                 ? 'border-primary text-primary'
-                : 'border-transparent text-muted hover:text-foreground'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
             Đã sử dụng ({groupVouchers(vouchers.filter((v) => v.status === 'USED')).length})
@@ -212,15 +229,50 @@ export default function CustomerVouchersPage() {
             className={`flex-1 py-3 text-xs font-bold border-b-2 transition-all ${
               activeTab === 'EXPIRED'
                 ? 'border-primary text-primary'
-                : 'border-transparent text-muted hover:text-foreground'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
             Lịch sử khác ({groupVouchers(vouchers.filter((v) => v.status === 'EXPIRED' || v.status === 'CANCELLED')).length})
           </button>
         </div>
 
+        {/* THANH TÌM KIẾM VÀ LỌC */}
+        {vouchers.length > 0 && (
+          <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row gap-4 items-center">
+            <div className="relative flex-1 w-full">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input 
+                type="text" 
+                placeholder="Tìm theo mã code, tên voucher hoặc đối tác..." 
+                value={filterText}
+                onChange={(e) => setFilterText(e.target.value)}
+                className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all text-slate-700"
+              />
+            </div>
+            <div className="relative w-full sm:w-auto flex items-center gap-2">
+              <input 
+                type="date" 
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+                className="w-full sm:w-[160px] px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all text-slate-700"
+              />
+              <span className="text-slate-400 text-xs">-</span>
+              <input 
+                type="date" 
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+                className="w-full sm:w-[160px] px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all text-slate-700"
+              />
+            </div>
+          </div>
+        )}
+
         {/* DANH SÁCH VOUCHER */}
-        {groupedVouchers.length === 0 ? (
+        {vouchers.filter(v => {
+          if (activeTab === 'AVAILABLE') return v.status === 'AVAILABLE';
+          if (activeTab === 'USED') return v.status === 'USED';
+          return v.status === 'EXPIRED' || v.status === 'CANCELLED';
+        }).length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border p-12 text-center space-y-3">
             <Ticket className="h-10 w-10 text-muted mx-auto" />
             <h3 className="text-sm font-bold text-foreground">Không tìm thấy voucher nào</h3>
@@ -237,6 +289,20 @@ export default function CustomerVouchersPage() {
                 Mua sắm ngay
               </Link>
             )}
+          </div>
+        ) : groupedVouchers.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 p-12 text-center space-y-3">
+            <Search className="h-10 w-10 text-slate-400 mx-auto" />
+            <h3 className="text-sm font-bold text-slate-700">Không tìm thấy kết quả phù hợp</h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              Vui lòng thử lại với từ khóa hoặc ngày khác.
+            </p>
+            <button
+              onClick={() => { setFilterText(''); setFilterDateFrom(''); setFilterDateTo(''); }}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 text-xs font-bold transition-colors mt-2"
+            >
+              Xóa bộ lọc
+            </button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -383,7 +449,8 @@ export default function CustomerVouchersPage() {
         </Dialog>
 
       </div>
+        </div>
+      )}
     </div>
-    </>
   );
 }

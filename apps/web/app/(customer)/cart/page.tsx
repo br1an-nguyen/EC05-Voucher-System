@@ -14,8 +14,11 @@ import {
   ShieldAlert, 
   Store,
   Info,
-  ChevronRight
+  ChevronRight,
+  Sparkles
 } from 'lucide-react';
+import Header from '../../../components/Header';
+import toast from 'react-hot-toast';
 
 interface Partner {
   companyName: string;
@@ -110,9 +113,12 @@ export default function CartPage() {
 
   if (authLoading || loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary mx-auto"></div>
-      </div>
+      <>
+        <Header />
+        <div className="flex min-h-screen items-center justify-center bg-slate-50">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary mx-auto"></div>
+        </div>
+      </>
     );
   }
 
@@ -123,20 +129,22 @@ export default function CartPage() {
   );
 
   return (
-    <div className="min-h-screen bg-background font-sans py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto space-y-6">
-        
-        {/* THANH BREADCRUMB */}
-        <div className="flex items-center gap-2 text-xs text-muted">
-          <Link href="/" className="hover:text-primary font-semibold transition-colors">Trang chủ</Link>
-          <ChevronRight className="h-3.5 w-3.5" />
-          <span className="font-semibold text-foreground">Giỏ hàng</span>
-        </div>
+    <div className="min-h-screen bg-slate-50/50 font-sans flex flex-col">
+      <Header />
+      <div className="flex-1 py-10 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-5xl mx-auto space-y-8">
+          
 
-        <div className="flex items-center gap-2 pb-3 border-b border-border/60">
-          <ShoppingCart className="h-6 w-6 text-primary" />
-          <h1 className="text-xl sm:text-2xl font-extrabold text-foreground">Giỏ hàng của bạn</h1>
-        </div>
+
+          <div className="flex items-center gap-3 pb-4 border-b border-slate-200">
+            <div className="bg-primary/10 p-3 rounded-2xl">
+              <ShoppingCart className="h-7 w-7 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-800">Giỏ hàng của bạn</h1>
+              <p className="text-sm text-slate-500 mt-1">Quản lý và thanh toán các voucher bạn đã chọn</p>
+            </div>
+          </div>
 
         {errorMsg && (
           <div className="bg-red-500/10 border border-red-500/20 text-red-800 text-sm p-4 rounded-xl flex items-center gap-3">
@@ -277,6 +285,7 @@ export default function CartPage() {
           </div>
         )}
 
+        </div>
       </div>
     </div>
   );

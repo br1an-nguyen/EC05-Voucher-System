@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
 import { apiRequest } from '../lib/api';
 import { 
@@ -47,6 +47,7 @@ interface VoucherSuggestion {
 export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const [keyword, setKeyword] = useState(initialKeyword);
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -56,16 +57,25 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
   const [cartItemCount, setCartItemCount] = useState(0);
 
   useEffect(() => {
-    if (user?.role === 'CUSTOMER') {
-      apiRequest<CartItem[]>('/cart')
-        .then((data) => {
-          const count = Array.isArray(data) ? data.reduce((acc, item) => acc + (item.quantity || 1), 0) : 0;
-          setCartItemCount(count);
-        })
-        .catch(() => {
-          setCartItemCount(0);
-        });
-    }
+    const fetchCart = () => {
+      if (user?.role === 'CUSTOMER') {
+        apiRequest<CartItem[]>('/cart')
+          .then((data) => {
+            const count = Array.isArray(data) ? data.reduce((acc, item) => acc + (item.quantity || 1), 0) : 0;
+            setCartItemCount(count);
+          })
+          .catch(() => {
+            setCartItemCount(0);
+          });
+      } else {
+        setCartItemCount(0);
+      }
+    };
+
+    fetchCart();
+
+    window.addEventListener('cart-updated', fetchCart);
+    return () => window.removeEventListener('cart-updated', fetchCart);
   }, [user]);
 
   // Fetch suggestions with debounce
@@ -262,20 +272,26 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
               )}
               {user.role === 'CUSTOMER' && (
                 <>
-                  <Link href="/cart" className="relative p-2 text-slate-600 hover:text-primary transition-colors group">
-                    <ShoppingCart className="h-6 w-6" />
-                    {cartItemCount > 0 && (
-                      <span className="absolute -top-1 -right-1 h-[18px] min-w-[18px] px-1 bg-primary text-white text-[10px] font-bold flex items-center justify-center rounded-full border border-white group-hover:scale-110 transition-transform">
-                        {cartItemCount > 99 ? '99+' : cartItemCount}
-                      </span>
-                    )}
-                  </Link>
-                  <Link href="/customer/orders" className="p-2 text-slate-600 hover:text-primary transition-colors" title="Đơn hàng">
-                    <FileText className="h-6 w-6" />
-                  </Link>
-                  <Link href="/customer/vouchers" className="p-2 text-slate-600 hover:text-primary transition-colors" title="Ví Voucher">
-                    <Ticket className="h-6 w-6" />
-                  </Link>
+                  {pathname !== '/cart' && (
+                    <Link href="/cart" className="relative p-2 text-slate-600 hover:text-primary transition-colors group">
+                      <ShoppingCart className="h-6 w-6" />
+                      {cartItemCount > 0 && (
+                        <span className="absolute -top-1 -right-1 h-[18px] min-w-[18px] px-1 bg-primary text-white text-[10px] font-bold flex items-center justify-center rounded-full border border-white group-hover:scale-110 transition-transform">
+                          {cartItemCount > 99 ? '99+' : cartItemCount}
+                        </span>
+                      )}
+                    </Link>
+                  )}
+                  {pathname !== '/customer/orders' && (
+                    <Link href="/customer/orders" className="p-2 text-slate-600 hover:text-primary transition-colors" title="Đơn hàng">
+                      <FileText className="h-6 w-6" />
+                    </Link>
+                  )}
+                  {pathname !== '/customer/vouchers' && (
+                    <Link href="/customer/vouchers" className="p-2 text-slate-600 hover:text-primary transition-colors" title="Ví Voucher">
+                      <Ticket className="h-6 w-6" />
+                    </Link>
+                  )}
                 </>
               )}
               
@@ -433,18 +449,24 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
                 )}
                 {user.role === 'CUSTOMER' && (
                   <>
-                    <Link href="/cart" onClick={closeMobileNavigation} className="flex min-h-11 items-center gap-3 rounded-ui-md px-3 py-2.5 text-sm font-bold text-foreground hover:bg-surface-subtle">
-                      <ShoppingCart className="h-5 w-5 text-brand" aria-hidden="true" />
-                      Giỏ hàng {cartItemCount > 0 ? `(${cartItemCount})` : ''}
-                    </Link>
-                    <Link href="/customer/orders" onClick={closeMobileNavigation} className="flex min-h-11 items-center gap-3 rounded-ui-md px-3 py-2.5 text-sm font-bold text-foreground hover:bg-surface-subtle">
-                      <FileText className="h-5 w-5 text-brand" aria-hidden="true" />
-                      Đơn hàng
-                    </Link>
-                    <Link href="/customer/vouchers" onClick={closeMobileNavigation} className="flex min-h-11 items-center gap-3 rounded-ui-md px-3 py-2.5 text-sm font-bold text-foreground hover:bg-surface-subtle">
-                      <WalletCards className="h-5 w-5 text-brand" aria-hidden="true" />
-                      Ví voucher
-                    </Link>
+                    {pathname !== '/cart' && (
+                      <Link href="/cart" onClick={closeMobileNavigation} className="flex min-h-11 items-center gap-3 rounded-ui-md px-3 py-2.5 text-sm font-bold text-foreground hover:bg-surface-subtle">
+                        <ShoppingCart className="h-5 w-5 text-brand" aria-hidden="true" />
+                        Giỏ hàng {cartItemCount > 0 ? `(${cartItemCount})` : ''}
+                      </Link>
+                    )}
+                    {pathname !== '/customer/orders' && (
+                      <Link href="/customer/orders" onClick={closeMobileNavigation} className="flex min-h-11 items-center gap-3 rounded-ui-md px-3 py-2.5 text-sm font-bold text-foreground hover:bg-surface-subtle">
+                        <FileText className="h-5 w-5 text-brand" aria-hidden="true" />
+                        Đơn hàng
+                      </Link>
+                    )}
+                    {pathname !== '/customer/vouchers' && (
+                      <Link href="/customer/vouchers" onClick={closeMobileNavigation} className="flex min-h-11 items-center gap-3 rounded-ui-md px-3 py-2.5 text-sm font-bold text-foreground hover:bg-surface-subtle">
+                        <WalletCards className="h-5 w-5 text-brand" aria-hidden="true" />
+                        Ví voucher
+                      </Link>
+                    )}
                   </>
                 )}
                 <Link href="/profile" onClick={closeMobileNavigation} className="flex min-h-11 items-center gap-3 rounded-ui-md px-3 py-2.5 text-sm font-bold text-foreground hover:bg-surface-subtle">
