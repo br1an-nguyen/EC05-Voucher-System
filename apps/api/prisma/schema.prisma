@@ -414,6 +414,7 @@ model PaymentWebhookEvent {
   signatureValid   Boolean                        @map("signature_valid")
   payloadHash      String                         @map("payload_hash") @db.Char(64)
   processingStatus PaymentWebhookProcessingStatus @default(RECEIVED) @map("processing_status")
+  processingError  String?                        @map("processing_error") @db.VarChar(2000)
   paymentId        String?                        @map("payment_id") @db.Uuid
   receivedAt       DateTime                       @default(now()) @map("received_at") @db.Timestamptz
   processedAt      DateTime?                      @map("processed_at") @db.Timestamptz

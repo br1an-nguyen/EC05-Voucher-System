@@ -7,23 +7,35 @@ import {
   UseGuards,
   Req,
   ForbiddenException,
+  BadGatewayException,
   BadRequestException,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { PaymentFinalizationService } from './payment-finalization.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
-import { UserRole, PaymentProviderType, PaymentTransactionStatus, OrderStatus } from '@prisma/client';
+import {
+  UserRole,
+  PaymentProviderType,
+  PaymentTransactionStatus,
+  OrderStatus,
+} from '@prisma/client';
 import { IsEnum } from 'class-validator';
 
 import { VnPayAdapter } from './adapters/vnpay.adapter';
 import { StripeAdapter } from './adapters/stripe.adapter';
 import { PaypalAdapter } from './adapters/paypal.adapter';
 import { PaypalCaptureDto } from './dto/paypal-capture.dto';
+import { StripeWebhookService } from './stripe-webhook.service';
+import { StripeConfigService } from './stripe.config';
 
 export class CreatePaymentAttemptDto {
-  @IsEnum(PaymentProviderType, { message: 'Cổng thanh toán không hợp lệ (STRIPE, PAYPAL, VNPAY).' })
+  @IsEnum(PaymentProviderType, {
+    message: 'Cổng thanh toán không hợp lệ (STRIPE, PAYPAL, VNPAY).',
+  })
   provider: PaymentProviderType;
 }
 
@@ -39,6 +51,8 @@ export class PaymentsController {
     private vnPayAdapter: VnPayAdapter,
     private stripeAdapter: StripeAdapter,
     private paypalAdapter: PaypalAdapter,
+    private stripeWebhookService: StripeWebhookService,
+    private stripeConfig: StripeConfigService,
   ) {}
 
   /**
@@ -62,16 +76,52 @@ export class PaymentsController {
     let paymentUrl = `/payments/return/mock?paymentId=${payment.paymentId}`;
 
     if (payment.provider === PaymentProviderType.VNPAY) {
-      const res = await this.vnPayAdapter.createPayment(payment, (payment as any).order.orderCode);
+      const res = await this.vnPayAdapter.createPayment(
+        payment,
+        (payment as any).order.orderCode,
+      );
       paymentUrl = res.paymentUrl;
     } else if (payment.provider === PaymentProviderType.STRIPE) {
-      const res = await this.stripeAdapter.createPayment(payment, (payment as any).order.orderCode);
+      let res;
+      try {
+        res = await this.stripeAdapter.createPayment(
+          payment,
+          (payment as any).order.orderCode,
+        );
+      } catch (error: unknown) {
+        await this.paymentsService.failStripeSessionCreation(
+          payment.paymentId,
+          error,
+        );
+        throw new BadGatewayException(
+          'Không thể khởi tạo phiên thanh toán Stripe.',
+        );
+      }
+      try {
+        await this.paymentsService.bindStripeSession(
+          payment.paymentId,
+          res.providerOrderId,
+        );
+      } catch (error: unknown) {
+        try {
+          await this.stripeAdapter.expireSession(res.providerOrderId);
+        } catch {
+          // Best effort only: preserve the original local binding error.
+        }
+        throw error;
+      }
       paymentUrl = res.paymentUrl;
     } else if (payment.provider === PaymentProviderType.PAYPAL) {
-      const res = await this.paypalAdapter.createPayment(payment, (payment as any).order.orderCode);
+      const res = await this.paypalAdapter.createPayment(
+        payment,
+        (payment as any).order.orderCode,
+      );
       paymentUrl = res.paymentUrl;
       if (res.providerOrderId) {
-        await this.paymentsService.updateProviderOrderId(payment.paymentId, res.providerOrderId);
+        await this.paymentsService.updateProviderOrderId(
+          payment.paymentId,
+          res.providerOrderId,
+        );
       }
     }
 
@@ -89,7 +139,10 @@ export class PaymentsController {
   @Get(':paymentId/status')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CUSTOMER, UserRole.ADMIN)
-  async getPaymentStatus(@Req() req: any, @Param('paymentId') paymentId: string) {
+  async getPaymentStatus(
+    @Req() req: any,
+    @Param('paymentId') paymentId: string,
+  ) {
     const payment = await this.paymentsService.getPaymentDetailsForActor(
       paymentId,
       req.user,
@@ -109,14 +162,21 @@ export class PaymentsController {
    */
   @Post(':paymentId/mock-success')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
-  async mockSuccess(@Param('paymentId') paymentId: string) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new ForbiddenException('Endpoint mô phỏng bị vô hiệu hóa trong production.');
+  @Roles(UserRole.CUSTOMER, UserRole.ADMIN)
+  async mockSuccess(@Req() req: any, @Param('paymentId') paymentId: string) {
+    if (!this.stripeConfig.isSimulated()) {
+      throw new ForbiddenException(
+        'Endpoint mô phỏng chỉ hoạt động khi PAYMENT_MODE=SIMULATED.',
+      );
     }
 
+    await this.paymentsService.getPaymentDetailsForActor(paymentId, req.user);
+
     const providerTransactionId = `MOCK-TX-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const order = await this.paymentFinalizationService.finalizePayment(paymentId, providerTransactionId);
+    const order = await this.paymentFinalizationService.finalizePayment(
+      paymentId,
+      providerTransactionId,
+    );
     return {
       message: 'Mô phỏng thanh toán thành công!',
       orderId: order.orderId,
@@ -139,7 +199,10 @@ export class PaymentsController {
       const paymentId = query.vnp_TxnRef;
 
       // 1. Kiểm tra tính hợp lệ của chữ ký checksum
-      if (result.status === 'FAILED' && result.providerTransactionId === 'MOCK-VNP-TX') {
+      if (
+        result.status === 'FAILED' &&
+        result.providerTransactionId === 'MOCK-VNP-TX'
+      ) {
         return { RspCode: '97', Message: 'Invalid signature' };
       }
 
@@ -164,11 +227,18 @@ export class PaymentsController {
 
       // 5. Xác nhận trạng thái thanh toán từ VNPay (ResponseCode 00 = Thành công)
       if (query.vnp_ResponseCode === '00') {
-        await this.paymentFinalizationService.finalizePayment(paymentId, result.providerTransactionId);
+        await this.paymentFinalizationService.finalizePayment(
+          paymentId,
+          result.providerTransactionId,
+        );
         return { RspCode: '00', Message: 'Confirm Success' };
       } else {
         // Cập nhật trạng thái giao dịch thanh toán cục bộ thành FAILED
-        await this.paymentsService.createPaymentAttempt(payment.order.customerId, payment.orderId, PaymentProviderType.VNPAY);
+        await this.paymentsService.createPaymentAttempt(
+          payment.order.customerId,
+          payment.orderId,
+          PaymentProviderType.VNPAY,
+        );
         return { RspCode: '00', Message: 'Confirm Success' };
       }
     } catch (err: any) {
@@ -182,29 +252,24 @@ export class PaymentsController {
    * POST /payments/stripe/webhook
    */
   @Post('stripe/webhook')
+  @HttpCode(HttpStatus.OK)
   async handleStripeWebhook(@Req() req: any) {
-    const signature = req.headers['stripe-signature'];
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_test_mock_secret_key';
+    const signatureHeader = req.headers['stripe-signature'];
+    const signature = Array.isArray(signatureHeader)
+      ? signatureHeader[0]
+      : signatureHeader;
+    if (!signature || !req.rawBody) {
+      throw new BadRequestException('Invalid Stripe webhook request.');
+    }
 
-    let event: any;
+    let event;
     try {
-      // Dùng rawBody buffer được giữ lại ở bootstrap
-      event = this.stripeAdapter.verifyWebhookEvent(req.rawBody, signature, webhookSecret);
-    } catch (err: any) {
-      return { status: 'error', message: `Webhook signature verification failed: ${err.message}` };
+      event = this.stripeAdapter.verifyWebhookEvent(req.rawBody, signature);
+    } catch {
+      throw new BadRequestException('Invalid Stripe webhook signature.');
     }
 
-    if (event.type === 'checkout.session.completed') {
-      const result = await this.stripeAdapter.verifyAndParseNotification(event);
-      const session = event.data.object;
-      const paymentId = session.metadata?.paymentId;
-
-      if (result.status === 'SUCCESS' && paymentId) {
-        await this.paymentFinalizationService.finalizePayment(paymentId, result.providerTransactionId);
-      }
-    }
-
-    return { received: true };
+    return this.stripeWebhookService.processEvent(event, req.rawBody);
   }
 
   /**
@@ -215,23 +280,27 @@ export class PaymentsController {
   @Post('paypal/capture')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CUSTOMER)
-  async handlePaypalCapture(
-    @Req() req: any,
-    @Body() dto: PaypalCaptureDto,
-  ) {
+  async handlePaypalCapture(@Req() req: any, @Body() dto: PaypalCaptureDto) {
     // 1. Xác minh người dùng sở hữu giao dịch thanh toán này
-    await this.paymentsService.assertPaymentOwner(dto.paymentId, req.user.userId);
+    await this.paymentsService.assertPaymentOwner(
+      dto.paymentId,
+      req.user.userId,
+    );
 
     // Lấy chi tiết giao dịch để kiểm tra chéo (P0)
     const payment = await this.paymentsService.getPaymentDetails(dto.paymentId);
 
     // 2. Kiểm tra tính hợp lệ của giao dịch trước khi capture
     if (payment.provider !== PaymentProviderType.PAYPAL) {
-      throw new BadRequestException('Giao dịch thanh toán này không sử dụng cổng PayPal.');
+      throw new BadRequestException(
+        'Giao dịch thanh toán này không sử dụng cổng PayPal.',
+      );
     }
 
     if (payment.providerOrderId !== dto.paypalOrderId) {
-      throw new BadRequestException('Mã đơn hàng PayPal đối tác không khớp với dữ liệu giao dịch.');
+      throw new BadRequestException(
+        'Mã đơn hàng PayPal đối tác không khớp với dữ liệu giao dịch.',
+      );
     }
 
     if (payment.status === PaymentTransactionStatus.SUCCEEDED) {
@@ -243,33 +312,44 @@ export class PaymentsController {
     }
 
     if (payment.status !== PaymentTransactionStatus.CREATED) {
-      throw new BadRequestException('Giao dịch thanh toán không ở trạng thái hợp lệ để quét.');
+      throw new BadRequestException(
+        'Giao dịch thanh toán không ở trạng thái hợp lệ để quét.',
+      );
     }
 
     if (payment.order.orderStatus === OrderStatus.CANCELLED) {
-      throw new BadRequestException('Đơn hàng liên kết đã bị hủy do quá hạn thanh toán.');
+      throw new BadRequestException(
+        'Đơn hàng liên kết đã bị hủy do quá hạn thanh toán.',
+      );
     }
 
     // 3. Thực thi bắt giữ tiền từ PayPal Sandbox API
-    const result = await this.paypalAdapter.captureOrder(dto.paypalOrderId, dto.paymentId);
+    const result = await this.paypalAdapter.captureOrder(
+      dto.paypalOrderId,
+      dto.paymentId,
+    );
 
     if (result.status !== 'SUCCESS') {
-      throw new BadRequestException('Không thể xác thực capture tiền thành công từ PayPal Sandbox.');
+      throw new BadRequestException(
+        'Không thể xác thực capture tiền thành công từ PayPal Sandbox.',
+      );
     }
 
     // 4. Kiểm chứng số tiền và tiền tệ capture thực tế (P1)
     const expectedUsd = (Number(payment.baseAmount) / 25000).toFixed(2);
     const amountDifference = Math.abs(result.amountPaid - Number(expectedUsd));
-    
+
     // Cho phép sai số làm tròn nhỏ do chuyển đổi VND -> USD (dưới 1 cent)
     if (amountDifference >= 0.01) {
       throw new BadRequestException(
-        `Số tiền quyết toán không hợp lệ. Mong đợi ${expectedUsd} USD, thực nhận ${result.amountPaid} USD.`
+        `Số tiền quyết toán không hợp lệ. Mong đợi ${expectedUsd} USD, thực nhận ${result.amountPaid} USD.`,
       );
     }
 
     if (result.currency !== 'USD') {
-      throw new BadRequestException(`Định dạng tiền tệ quyết toán không hợp lệ (Mong đợi USD, nhận ${result.currency}).`);
+      throw new BadRequestException(
+        `Định dạng tiền tệ quyết toán không hợp lệ (Mong đợi USD, nhận ${result.currency}).`,
+      );
     }
 
     // 5. Tính toán minor unit và hoàn tất giao dịch trong DB transaction
@@ -282,7 +362,7 @@ export class PaymentsController {
         settledAmountMinor,
         settledCurrency: 'USD',
         exchangeRate: 25000,
-      }
+      },
     );
 
     return {
@@ -303,7 +383,10 @@ export class PaymentsController {
     const body = req.body;
 
     // 1. Xác thực chữ ký số webhook
-    const isValid = await this.paypalAdapter.verifyWebhookSignature(headers, body);
+    const isValid = await this.paypalAdapter.verifyWebhookSignature(
+      headers,
+      body,
+    );
     if (!isValid) {
       throw new BadRequestException('Chữ ký webhook PayPal không hợp lệ.');
     }
@@ -330,16 +413,20 @@ export class PaymentsController {
       const captureId = resource.id;
 
       if (paypalOrderId) {
-        const payment = await this.paymentsService.getPaymentByProviderOrderId(paypalOrderId);
+        const payment =
+          await this.paymentsService.getPaymentByProviderOrderId(paypalOrderId);
         if (payment && payment.status !== PaymentTransactionStatus.SUCCEEDED) {
           const amountPaid = Number(resource.amount.value);
           const currency = resource.amount.currency_code;
-          
+
           // Đối soát số tiền
           const expectedUsd = (Number(payment.baseAmount) / 25000).toFixed(2);
-          if (Math.abs(amountPaid - Number(expectedUsd)) < 0.01 && currency === 'USD') {
+          if (
+            Math.abs(amountPaid - Number(expectedUsd)) < 0.01 &&
+            currency === 'USD'
+          ) {
             const settledAmountMinor = BigInt(Math.round(amountPaid * 100));
-            
+
             await this.paymentFinalizationService.finalizePayment(
               payment.paymentId,
               captureId,
@@ -347,7 +434,7 @@ export class PaymentsController {
                 settledAmountMinor,
                 settledCurrency: 'USD',
                 exchangeRate: 25000,
-              }
+              },
             );
           } else {
             // Số tiền hoặc tiền tệ không khớp, đánh dấu giao dịch thất bại
