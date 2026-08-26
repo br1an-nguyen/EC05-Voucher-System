@@ -24,9 +24,16 @@ interface CatalogCategory {
 interface CatalogFilters {
   keyword: string;
   categoryCode: string;
+  provinceCode: string;
   maxPrice: string;
   sortPrice?: 'asc' | 'desc' | '';
   sortDiscount?: 'asc' | 'desc' | '';
+}
+
+interface CatalogProvince {
+  code: string;
+  name: string;
+  campaignCount: number;
 }
 
 interface CatalogCategoryResponse {
@@ -38,6 +45,7 @@ function buildCatalogUrl(filters: CatalogFilters) {
   const params = new URLSearchParams();
   if (filters.keyword) params.set('keyword', filters.keyword);
   if (filters.categoryCode) params.set('categoryCode', filters.categoryCode);
+  if (filters.provinceCode) params.set('provinceCode', filters.provinceCode);
   
   if (filters.maxPrice) {
     const rawMaxPrice = filters.maxPrice.replace(/\D/g, '');
@@ -57,6 +65,7 @@ function HomePageContent() {
     return {
       keyword: searchParams.get('keyword') || '',
       categoryCode: searchParams.get('category') || '',
+      provinceCode: searchParams.get('province') || '',
       maxPrice: rawMaxPrice ? Number(rawMaxPrice).toLocaleString('vi-VN') : '',
       sortPrice: (searchParams.get('sortPrice') as 'asc'|'desc'|'') || '',
       sortDiscount: (searchParams.get('sortDiscount') as 'asc'|'desc'|'') || '',
@@ -65,12 +74,14 @@ function HomePageContent() {
   
   const [campaigns, setCampaigns] = useState<VoucherCampaignCard[]>([]);
   const [categories, setCategories] = useState<CatalogCategory[]>([]);
+  const [provinces, setProvinces] = useState<CatalogProvince[]>([]);
   const [totalCampaigns, setTotalCampaigns] = useState(0);
   const [loading, setLoading] = useState(true);
   
   // States for filtering
   const [keyword, setKeyword] = useState(initialFilters.keyword);
   const [category, setCategory] = useState(initialFilters.categoryCode);
+  const [province, setProvince] = useState(initialFilters.provinceCode);
   const [maxPrice, setMaxPrice] = useState(initialFilters.maxPrice);
   const [sortPrice, setSortPrice] = useState<'asc'|'desc'|''>(initialFilters.sortPrice || '');
   const [sortDiscount, setSortDiscount] = useState<'asc'|'desc'|''>(initialFilters.sortDiscount || '');
@@ -94,12 +105,14 @@ function HomePageContent() {
       setLoading(true);
       setErrorMsg(null);
       try {
-        const [catalogData, categoryData] = await Promise.all([
+        const [catalogData, categoryData, provinceData] = await Promise.all([
           apiRequest<VoucherCampaignCard[]>(buildCatalogUrl(initialFilters)),
           apiRequest<CatalogCategoryResponse>('/vouchers/categories'),
+          apiRequest<CatalogProvince[]>('/vouchers/provinces'),
         ]);
         setCampaigns(catalogData);
         setCategories(categoryData.categories);
+        setProvinces(provinceData);
         setTotalCampaigns(categoryData.totalCampaignCount);
       } catch (error: unknown) {
         setErrorMsg(getErrorMessage(error, 'Không thể tải catalog voucher.'));
@@ -115,6 +128,7 @@ function HomePageContent() {
     const params = new URLSearchParams();
     if (filters.keyword) params.set('keyword', filters.keyword);
     if (filters.categoryCode) params.set('category', filters.categoryCode);
+    if (filters.provinceCode) params.set('province', filters.provinceCode);
     
     if (filters.maxPrice) {
       const rawMaxPrice = filters.maxPrice.replace(/\D/g, '');
@@ -133,14 +147,14 @@ function HomePageContent() {
 
   const handleHeaderSearch = (newKeyword: string) => {
     setKeyword(newKeyword);
-    const filters = { keyword: newKeyword, categoryCode: category, maxPrice, sortPrice, sortDiscount };
+    const filters = { keyword: newKeyword, categoryCode: category, provinceCode: province, maxPrice, sortPrice, sortDiscount };
     updateBrowserFilters(filters);
     void fetchCatalog(filters);
     setTimeout(scrollToProducts, 50);
   };
 
   const handleSidebarFilter = () => {
-    const filters = { keyword, categoryCode: category, maxPrice, sortPrice, sortDiscount };
+    const filters = { keyword, categoryCode: category, provinceCode: province, maxPrice, sortPrice, sortDiscount };
     updateBrowserFilters(filters);
     void fetchCatalog(filters);
     scrollToProducts();
@@ -148,7 +162,15 @@ function HomePageContent() {
 
   const handleCategoryChange = (categoryCode: string) => {
     setCategory(categoryCode);
-    const filters = { keyword, categoryCode, maxPrice, sortPrice, sortDiscount };
+    const filters = { keyword, categoryCode, provinceCode: province, maxPrice, sortPrice, sortDiscount };
+    updateBrowserFilters(filters);
+    void fetchCatalog(filters);
+    setTimeout(scrollToProducts, 50);
+  };
+
+  const handleProvinceChange = (provinceCode: string) => {
+    setProvince(provinceCode);
+    const filters = { keyword, categoryCode: category, provinceCode, maxPrice, sortPrice, sortDiscount };
     updateBrowserFilters(filters);
     void fetchCatalog(filters);
     setTimeout(scrollToProducts, 50);
@@ -157,12 +179,13 @@ function HomePageContent() {
   const handleClearFilters = () => {
     setKeyword('');
     setCategory('');
+    setProvince('');
     setMaxPrice('');
     setSortPrice('');
     setSortDiscount('');
     router.push('/', { scroll: false });
     
-    void fetchCatalog({ keyword: '', categoryCode: '', maxPrice: '', sortPrice: '', sortDiscount: '' });
+    void fetchCatalog({ keyword: '', categoryCode: '', provinceCode: '', maxPrice: '', sortPrice: '', sortDiscount: '' });
     setTimeout(scrollToProducts, 50);
   };
 
@@ -210,12 +233,15 @@ function HomePageContent() {
             categories={categories}
             totalCampaigns={totalCampaigns}
             onCategoryChange={handleCategoryChange}
+            province={province}
+            provinces={provinces}
+            onProvinceChange={handleProvinceChange}
             maxPrice={maxPrice}
             setMaxPrice={setMaxPrice}
             onFilter={handleSidebarFilter}
             onClear={handleClearFilters}
             onQuickPrice={(newPrice) => {
-              const filters = { keyword, categoryCode: category, maxPrice: newPrice, sortPrice, sortDiscount };
+              const filters = { keyword, categoryCode: category, provinceCode: province, maxPrice: newPrice, sortPrice, sortDiscount };
               updateBrowserFilters(filters);
               void fetchCatalog(filters);
               scrollToProducts();
@@ -243,7 +269,7 @@ function HomePageContent() {
                   const val = sortPrice === 'asc' ? '' : 'asc';
                   setSortPrice(val);
                   setSortDiscount(''); // clear other sort
-                  const filters: CatalogFilters = { keyword, categoryCode: category, maxPrice, sortPrice: val, sortDiscount: '' };
+                  const filters: CatalogFilters = { keyword, categoryCode: category, provinceCode: province, maxPrice, sortPrice: val, sortDiscount: '' };
                   updateBrowserFilters(filters);
                   void fetchCatalog(filters);
                 }}
@@ -261,7 +287,7 @@ function HomePageContent() {
                   const val = sortPrice === 'desc' ? '' : 'desc';
                   setSortPrice(val);
                   setSortDiscount(''); // clear other sort
-                  const filters: CatalogFilters = { keyword, categoryCode: category, maxPrice, sortPrice: val, sortDiscount: '' };
+                  const filters: CatalogFilters = { keyword, categoryCode: category, provinceCode: province, maxPrice, sortPrice: val, sortDiscount: '' };
                   updateBrowserFilters(filters);
                   void fetchCatalog(filters);
                 }}
@@ -279,7 +305,7 @@ function HomePageContent() {
                   const val = sortDiscount === 'desc' ? '' : 'desc';
                   setSortDiscount(val);
                   setSortPrice(''); // clear other sort
-                  const filters: CatalogFilters = { keyword, categoryCode: category, maxPrice, sortPrice: '', sortDiscount: val };
+                  const filters: CatalogFilters = { keyword, categoryCode: category, provinceCode: province, maxPrice, sortPrice: '', sortDiscount: val };
                   updateBrowserFilters(filters);
                   // Not strictly needed to refetch because sorting is done in-memory, but it keeps the URL in sync
                   void fetchCatalog(filters);

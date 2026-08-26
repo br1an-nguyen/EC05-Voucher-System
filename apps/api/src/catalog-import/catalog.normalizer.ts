@@ -6,6 +6,7 @@ import {
   PARENT_CATEGORIES,
 } from './catalog.types';
 import { readCsv, writeCsv, writeJson } from './csv-files';
+import { inferProvinceCode } from '../common/constants/vietnam-provinces';
 
 const splitIds = (value: string): string[] =>
   value
@@ -97,6 +98,11 @@ export async function normalizeCatalogCsv(inputDirectory: string): Promise<void>
       is_active: 'true',
     });
   }
+
+  const branchRows = branches.map((branch) => ({
+    ...branch,
+    province_code: inferProvinceCode(branch.address) ?? '',
+  }));
 
   const campaignRows = products.map((product) => {
     const { saleStart, saleEnd, usageValidityDays } = createDemoCampaignSchedule(
@@ -209,10 +215,11 @@ export async function normalizeCatalogCsv(inputDirectory: string): Promise<void>
         'brand_external_id',
         'name',
         'address',
+        'province_code',
         'source_url',
         'crawled_at',
       ],
-      branches,
+      branchRows,
     ),
     writeCsv(
       join(normalizedDirectory, 'campaign_brands.csv'),

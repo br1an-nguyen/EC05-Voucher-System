@@ -6,6 +6,7 @@ import {
   ValidationIssue,
   ValidationResult,
 } from './catalog.types';
+import { VIETNAM_PROVINCE_CODES } from '../common/constants/vietnam-provinces';
 
 const keyOf = (...parts: string[]): string => parts.join('::');
 const isHttpsUrl = (value: string): boolean => {
@@ -128,6 +129,19 @@ function validateCampaign(row: CsvRow): ValidationIssue[] {
   return issues;
 }
 
+function validateBranch(row: CsvRow): ValidationIssue[] {
+  if (!row.province_code || VIETNAM_PROVINCE_CODES.includes(row.province_code)) {
+    return [];
+  }
+  return [
+    {
+      externalId: row.external_id || '(missing)',
+      errorCode: 'INVALID_PROVINCE_CODE',
+      errorMessage: 'province_code của chi nhánh không hợp lệ.',
+    },
+  ];
+}
+
 export async function validateNormalizedCatalog(
   inputDirectory: string,
 ): Promise<ValidationResult> {
@@ -154,6 +168,7 @@ export async function validateNormalizedCatalog(
     });
   }
   for (const campaign of dataset.campaigns) issues.push(...validateCampaign(campaign));
+  for (const branch of dataset.branches) issues.push(...validateBranch(branch));
 
   if (dataset.branches.length > 10) {
     issues.push({

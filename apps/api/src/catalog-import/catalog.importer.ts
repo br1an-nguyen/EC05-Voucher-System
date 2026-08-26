@@ -157,6 +157,7 @@ async function upsertReferenceData(
         partnerId,
         name: row.name,
         address: row.address,
+        provinceCode: row.province_code || null,
         sourceUrl: row.source_url,
         externalSource: row.external_source,
         externalId: row.external_id,
@@ -165,6 +166,7 @@ async function upsertReferenceData(
       update: {
         name: row.name,
         address: row.address,
+        provinceCode: row.province_code || null,
         sourceUrl: row.source_url,
       },
       select: { branchId: true },

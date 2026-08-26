@@ -31,6 +31,7 @@ import {
 const branchSchema = z.object({
   name: z.string().min(1, 'Tên chi nhánh không được để trống.'),
   address: z.string().min(1, 'Địa chỉ không được để trống.'),
+  provinceCode: z.string().min(1, 'Vui lòng chọn tỉnh/thành phố.'),
 });
 
 type BranchSchemaType = z.infer<typeof branchSchema>;
@@ -39,10 +40,17 @@ interface Branch {
   branchId: string;
   name: string;
   address: string | null;
+  provinceCode: string | null;
+}
+
+interface Province {
+  code: string;
+  name: string;
 }
 
 export default function PartnerBranchesPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [provinces, setProvinces] = useState<Province[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
@@ -64,8 +72,12 @@ export default function PartnerBranchesPage() {
 
   const loadBranches = async () => {
     try {
-      const data = await apiRequest<Branch[]>('/partners/branches');
-      setBranches(data);
+      const [branchData, provinceData] = await Promise.all([
+        apiRequest<Branch[]>('/partners/branches'),
+        apiRequest<Province[]>('/partners/provinces'),
+      ]);
+      setBranches(branchData);
+      setProvinces(provinceData);
     } catch (error: unknown) {
       setErrorMsg(getErrorMessage(error, 'Không thể tải danh sách chi nhánh.'));
     } finally {
@@ -84,6 +96,7 @@ export default function PartnerBranchesPage() {
     reset({
       name: '',
       address: '',
+      provinceCode: '',
     });
     setErrorMsg(null);
     setModalOpen(true);
@@ -93,6 +106,7 @@ export default function PartnerBranchesPage() {
     setEditingBranch(branch);
     setValue('name', branch.name);
     setValue('address', branch.address || '');
+    setValue('provinceCode', branch.provinceCode || '');
     setErrorMsg(null);
     setModalOpen(true);
   };
@@ -102,6 +116,7 @@ export default function PartnerBranchesPage() {
     const payload = {
       name: data.name,
       address: data.address,
+      provinceCode: data.provinceCode,
     };
     try {
       if (editingBranch) {
@@ -146,6 +161,11 @@ export default function PartnerBranchesPage() {
       (b.address && b.address.toLowerCase().includes(searchTerm.toLowerCase()))
     );
   }, [branches, searchTerm]);
+
+  const provinceNameByCode = useMemo(
+    () => new Map(provinces.map((province) => [province.code, province.name])),
+    [provinces],
+  );
 
   if (loading) {
     return (
@@ -227,6 +247,7 @@ export default function PartnerBranchesPage() {
                 <tr className="bg-secondary/40 border-b border-border text-foreground/80 font-bold uppercase tracking-wider">
                   <th className="p-4">Tên chi nhánh / Cửa hàng</th>
                   <th className="p-4">Địa chỉ chi tiết</th>
+                  <th className="p-4">Tỉnh/Thành phố</th>
                   <th className="p-4 text-right">Thao tác</th>
                 </tr>
               </thead>
@@ -239,6 +260,11 @@ export default function PartnerBranchesPage() {
                         <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                         <span>{branch.address || 'Chưa cập nhật địa chỉ'}</span>
                       </div>
+                    </td>
+                    <td className="p-4 text-muted whitespace-nowrap">
+                      {branch.provinceCode
+                        ? provinceNameByCode.get(branch.provinceCode) || branch.provinceCode
+                        : 'Chưa cập nhật'}
                     </td>
                     <td className="p-4 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1.5">
@@ -295,6 +321,28 @@ export default function PartnerBranchesPage() {
               />
               {errors.name && (
                 <p className="mt-1 text-xs text-red-500">{errors.name.message}</p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="branch-province" className="mb-1.5 block text-xs font-semibold text-foreground">
+                Tỉnh/Thành phố
+              </label>
+              <select
+                id="branch-province"
+                {...register('provinceCode')}
+                aria-invalid={Boolean(errors.provinceCode)}
+                className="block w-full rounded-lg border border-border bg-card px-3 py-2 text-xs text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all"
+              >
+                <option value="">Chọn tỉnh/thành phố</option>
+                {provinces.map((province) => (
+                  <option key={province.code} value={province.code}>
+                    {province.name}
+                  </option>
+                ))}
+              </select>
+              {errors.provinceCode && (
+                <p className="mt-1 text-xs text-red-500">{errors.provinceCode.message}</p>
               )}
             </div>
 

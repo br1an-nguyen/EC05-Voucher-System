@@ -20,6 +20,9 @@ describe('PartnersService dashboard', () => {
           { quantity: 1, unitPrice: '50000', order: { customerId: 'u-1' } },
         ]),
       },
+      voucherCode: {
+        count: jest.fn().mockResolvedValue(4),
+      },
     };
 
     const service = new PartnersService(prisma as any, {} as any);
@@ -40,6 +43,31 @@ describe('PartnersService dashboard', () => {
     expect(result.soldVouchers).toBe(20);
     expect(result.customerCount).toBe(2);
     expect(result.revenue).toBe(950000);
+    expect(result.usedVouchers).toBe(4);
     expect(result.partnerName).toBe('Cửa hàng A');
+  });
+});
+
+describe('PartnersService branches', () => {
+  it('stores the normalized province code when creating a branch', async () => {
+    const prisma = {
+      branch: { create: jest.fn().mockResolvedValue({ branchId: 'branch-1' }) },
+    };
+    const service = new PartnersService(prisma as any, {} as any);
+
+    await service.createBranch('partner-1', {
+      name: 'Chi nhánh trung tâm',
+      address: '123 Lê Lợi',
+      provinceCode: '79',
+    });
+
+    expect(prisma.branch.create).toHaveBeenCalledWith({
+      data: {
+        partnerId: 'partner-1',
+        name: 'Chi nhánh trung tâm',
+        address: '123 Lê Lợi',
+        provinceCode: '79',
+      },
+    });
   });
 });

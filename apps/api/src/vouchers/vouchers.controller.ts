@@ -35,6 +35,15 @@ export class VouchersController {
   }
 
   /**
+   * Tỉnh/thành có voucher đang mở bán, dùng cho bộ lọc catalog.
+   * GET /vouchers/provinces
+   */
+  @Get('provinces')
+  async findPublicProvinces() {
+    return this.vouchersService.findPublicProvinces();
+  }
+
+  /**
    * Tạo chiến dịch voucher mới ở dạng nháp.
    * POST /vouchers
    */

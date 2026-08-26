@@ -13,6 +13,7 @@ import { AuditService } from '../audit/audit.service';
 import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
 import * as bcrypt from 'bcrypt';
+import { VIETNAM_PROVINCES } from '../common/constants/vietnam-provinces';
 
 /**
  * Service quản lý logic nghiệp vụ cho Đối tác (Partner) và Chi nhánh (Branch).
@@ -23,6 +24,14 @@ export class PartnersService {
     private prisma: PrismaService,
     private auditService: AuditService,
   ) {}
+
+  /**
+   * Lấy danh mục tỉnh/thành dùng khi khai báo chi nhánh.
+   * @returns Danh sách mã và tên tỉnh/thành theo mã hành chính hiện hành.
+   */
+  listProvinces() {
+    return VIETNAM_PROVINCES;
+  }
 
   /**
    * Lấy thông tin hồ sơ doanh nghiệp của đối tác kèm thông tin tài khoản user.
@@ -177,6 +186,7 @@ export class PartnersService {
         partnerId,
         name: createBranchDto.name,
         address: createBranchDto.address,
+        provinceCode: createBranchDto.provinceCode,
       },
     });
   }
@@ -205,6 +215,7 @@ export class PartnersService {
       data: {
         name: updateBranchDto.name,
         address: updateBranchDto.address,
+        provinceCode: updateBranchDto.provinceCode,
       },
     });
   }
