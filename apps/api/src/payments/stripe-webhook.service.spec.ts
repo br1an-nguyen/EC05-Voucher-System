@@ -157,6 +157,9 @@ describe('StripeWebhookService', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           processingStatus: PaymentWebhookProcessingStatus.FAILED,
+          processingError: expect.stringContaining(
+            'Stripe payment binding, amount, or currency does not match.',
+          ),
         }),
       }),
     );
