@@ -7,6 +7,7 @@ import { getErrorMessage } from '../../../../lib/errors';
 import { useAuth } from '../../../../context/AuthContext';
 import Link from 'next/link';
 import Image from 'next/image';
+import Header from '../../../../components/Header';
 import { 
   ArrowLeft, 
   MapPin, 
@@ -215,8 +216,10 @@ export default function VoucherDetailPage() {
   const discountPct = Math.round(((Number(campaign.originalPrice) - Number(campaign.salePrice)) / Number(campaign.originalPrice)) * 100);
 
   return (
-    <div className="min-h-screen bg-background font-sans py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-5xl mx-auto space-y-6">
+    <>
+      <Header />
+      <div className="min-h-screen bg-background font-sans py-8 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-5xl mx-auto space-y-6">
         
         {/* THANH BREADCRUMB / QUAY LẠI */}
         <div className="flex items-center gap-2 text-xs text-muted">
@@ -559,5 +562,6 @@ export default function VoucherDetailPage() {
 
       </div>
     </div>
+    </>
   );
 }
