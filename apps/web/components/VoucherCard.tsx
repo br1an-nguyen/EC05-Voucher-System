@@ -48,9 +48,12 @@ export default function VoucherCard({ campaign: c, index = 0 }: VoucherCardProps
     e.stopPropagation();
     try {
       await apiRequest<void>('/cart/items', {
-        campaignId: c.campaignId,
-        quantity: 1,
-      }, { method: 'POST' });
+        method: 'POST',
+        body: JSON.stringify({
+          campaignId: c.campaignId,
+          quantity: 1,
+        })
+      });
       alert('Đã thêm vào giỏ hàng!');
       // Tùy chọn: cập nhật global cart state hoặc trigger event ở đây
     } catch (err) {
