@@ -28,13 +28,14 @@ import { IsEnum } from 'class-validator';
 import { VnPayAdapter } from './adapters/vnpay.adapter';
 import { StripeAdapter } from './adapters/stripe.adapter';
 import { PaypalAdapter } from './adapters/paypal.adapter';
+import { MomoAdapter } from './adapters/momo.adapter';
 import { PaypalCaptureDto } from './dto/paypal-capture.dto';
 import { StripeWebhookService } from './stripe-webhook.service';
 import { StripeConfigService } from './stripe.config';
 
 export class CreatePaymentAttemptDto {
   @IsEnum(PaymentProviderType, {
-    message: 'Cổng thanh toán không hợp lệ (STRIPE, PAYPAL, VNPAY).',
+    message: 'Cổng thanh toán không hợp lệ (STRIPE, PAYPAL, VNPAY, MOMO).',
   })
   provider: PaymentProviderType;
 }
@@ -51,6 +52,7 @@ export class PaymentsController {
     private vnPayAdapter: VnPayAdapter,
     private stripeAdapter: StripeAdapter,
     private paypalAdapter: PaypalAdapter,
+    private momoAdapter: MomoAdapter,
     private stripeWebhookService: StripeWebhookService,
     private stripeConfig: StripeConfigService,
   ) {}
@@ -113,6 +115,18 @@ export class PaymentsController {
       paymentUrl = res.paymentUrl;
     } else if (payment.provider === PaymentProviderType.PAYPAL) {
       const res = await this.paypalAdapter.createPayment(
+        payment,
+        (payment as any).order.orderCode,
+      );
+      paymentUrl = res.paymentUrl;
+      if (res.providerOrderId) {
+        await this.paymentsService.updateProviderOrderId(
+          payment.paymentId,
+          res.providerOrderId,
+        );
+      }
+    } else if (payment.provider === PaymentProviderType.MOMO) {
+      const res = await this.momoAdapter.createPayment(
         payment,
         (payment as any).order.orderCode,
       );
@@ -245,6 +259,56 @@ export class PaymentsController {
       }
     } catch (err: any) {
       return { RspCode: '99', Message: err.message || 'Unknown error' };
+    }
+  }
+
+  /**
+   * MoMo IPN (Instant Payment Notification) Callback.
+   * POST /payments/momo/ipn
+   */
+  @Post('momo/ipn')
+  async handleMomoIpn(@Req() req: any) {
+    const body = req.body;
+    try {
+      const result = await this.momoAdapter.verifyAndParseNotification(body);
+      const paymentId = body.orderId; // Adapter map paymentId to orderId
+
+      if (result.status === 'FAILED' && result.providerTransactionId === 'MOCK-MOMO-TX') {
+        return { resultCode: 99, message: 'Invalid signature' };
+      }
+
+      let payment;
+      try {
+        payment = await this.paymentsService.getPaymentDetails(paymentId);
+      } catch (err) {
+        return { resultCode: 99, message: 'Order not found' };
+      }
+
+      const expectedAmount = Number(payment.baseAmount);
+      if (result.amountPaid !== expectedAmount) {
+        return { resultCode: 99, message: 'Invalid amount' };
+      }
+
+      if (payment.status === 'SUCCEEDED') {
+        return { resultCode: 0, message: 'Success' };
+      }
+
+      if (body.resultCode === 0) {
+        await this.paymentFinalizationService.finalizePayment(
+          paymentId,
+          result.providerTransactionId,
+        );
+        return { resultCode: 0, message: 'Success' };
+      } else {
+        await this.paymentsService.updatePaymentStatusFailed(
+          paymentId,
+          body.resultCode.toString(),
+          body.message || 'MoMo transaction failed',
+        );
+        return { resultCode: 0, message: 'Success (Acknowledged failure)' };
+      }
+    } catch (err: any) {
+      return { resultCode: 99, message: err.message || 'Unknown error' };
     }
   }
 

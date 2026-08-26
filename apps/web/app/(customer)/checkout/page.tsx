@@ -50,7 +50,7 @@ interface CheckoutOrder {
   orderCode: string;
   totalAmount: number;
   reservationExpiresAt: string;
-  selectedPaymentProvider: 'STRIPE' | 'PAYPAL' | 'VNPAY';
+  selectedPaymentProvider: 'STRIPE' | 'PAYPAL' | 'VNPAY' | 'MOMO';
   recipientNote?: string;
   orderItems?: CheckoutOrderItem[];
 }
@@ -80,7 +80,7 @@ function CheckoutPageContent() {
   
   // Checkout form state
   const [recipientNote, setRecipientNote] = useState('');
-  const [paymentProvider, setPaymentProvider] = useState<'STRIPE' | 'PAYPAL' | 'VNPAY'>('STRIPE');
+  const [paymentProvider, setPaymentProvider] = useState<'STRIPE' | 'PAYPAL' | 'VNPAY' | 'MOMO'>('STRIPE');
   const [isGift, setIsGift] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState('');
   
@@ -422,7 +422,7 @@ function CheckoutPageContent() {
                 Chọn Cổng thanh toán
               </h3>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 
                 {/* STRIPE */}
                 <label className={`flex flex-col items-center justify-center p-4 border rounded-xl cursor-pointer hover:border-primary/50 transition-all ${
@@ -475,7 +475,25 @@ function CheckoutPageContent() {
                     className="sr-only"
                   />
                   <span className="text-xs font-extrabold tracking-wider">VNPAY</span>
-                  <span className="text-[9px] text-muted mt-1">Thẻ ATM / QR Việt Nam</span>
+                  <span className="text-[9px] text-muted mt-1">Thẻ ATM / QR</span>
+                </label>
+
+                {/* MOMO */}
+                <label className={`flex flex-col items-center justify-center p-4 border rounded-xl cursor-pointer hover:border-pink-500/50 transition-all ${
+                  paymentProvider === 'MOMO'
+                    ? 'border-pink-500 bg-pink-50 text-pink-600'
+                    : 'border-border bg-card text-foreground'
+                }`}>
+                  <input
+                    type="radio"
+                    name="paymentProvider"
+                    value="MOMO"
+                    checked={paymentProvider === 'MOMO'}
+                    onChange={() => setPaymentProvider('MOMO')}
+                    className="sr-only"
+                  />
+                  <span className="text-xs font-extrabold tracking-wider">MOMO</span>
+                  <span className="text-[9px] text-muted mt-1 text-center">Ví điện tử MoMo</span>
                 </label>
 
               </div>

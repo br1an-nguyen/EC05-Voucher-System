@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { MapPin, Store, Flame, ShoppingCart, Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { apiRequest } from '../lib/api';
+import toast from 'react-hot-toast';
 
 export interface VoucherCampaignCard {
   campaignId: string;
@@ -54,11 +55,17 @@ export default function VoucherCard({ campaign: c, index = 0 }: VoucherCardProps
           quantity: 1,
         })
       });
-      alert('Đã thêm vào giỏ hàng!');
-      // Tùy chọn: cập nhật global cart state hoặc trigger event ở đây
-    } catch (err) {
-      alert('Vui lòng đăng nhập để thêm vào giỏ hàng');
-      window.location.href = '/login?redirect=/';
+      window.dispatchEvent(new Event('cart-updated'));
+      toast.success('Đã thêm vào giỏ hàng!');
+    } catch (err: any) {
+      const errorMessage = err?.message || 'Có lỗi xảy ra';
+      
+      if (errorMessage.toLowerCase().includes('unauthorized') || errorMessage.toLowerCase().includes('đăng nhập')) {
+        toast.error('Vui lòng đăng nhập để thêm vào giỏ hàng');
+        window.location.href = '/login?redirect=/';
+      } else {
+        toast.error(errorMessage);
+      }
     }
   };
 

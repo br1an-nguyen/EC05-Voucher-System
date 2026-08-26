@@ -15,6 +15,8 @@ export const metadata: Metadata = {
   description: "Trang thương mại điện tử mua sắm và đổi voucher quà tặng, buffet ẩm thực, làm đẹp và vui chơi hàng đầu.",
 };
 
+import { Toaster } from "react-hot-toast";
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
@@ -25,6 +27,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <TooltipProvider delay={350}>
           <AuthProvider>
             {children}
+            <Toaster position="bottom-right" toastOptions={{ duration: 3000, style: { borderRadius: '12px', background: '#333', color: '#fff' } }} />
           </AuthProvider>
         </TooltipProvider>
       </body>

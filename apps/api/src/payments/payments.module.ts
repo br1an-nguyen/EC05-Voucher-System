@@ -6,6 +6,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { VnPayAdapter } from './adapters/vnpay.adapter';
 import { StripeAdapter } from './adapters/stripe.adapter';
 import { PaypalAdapter } from './adapters/paypal.adapter';
+import { MomoAdapter } from './adapters/momo.adapter';
 import { StripeConfigService } from './stripe.config';
 import { StripeWebhookService } from './stripe-webhook.service';
 import { StripeReconciliationProcessor } from './stripe-reconciliation.processor';
@@ -23,6 +24,7 @@ import { EmailService } from './email.service';
     StripeWebhookService,
     StripeReconciliationProcessor,
     PaypalAdapter,
+    MomoAdapter,
     EmailService,
   ],
   exports: [
@@ -33,6 +35,7 @@ import { EmailService } from './email.service';
     StripeAdapter,
     StripeWebhookService,
     PaypalAdapter,
+    MomoAdapter,
     EmailService,
   ],
 })
