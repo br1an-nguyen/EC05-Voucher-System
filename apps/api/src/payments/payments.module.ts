@@ -9,6 +9,7 @@ import { PaypalAdapter } from './adapters/paypal.adapter';
 import { StripeConfigService } from './stripe.config';
 import { StripeWebhookService } from './stripe-webhook.service';
 import { StripeReconciliationProcessor } from './stripe-reconciliation.processor';
+import { EmailService } from './email.service';
 
 @Module({
   imports: [PrismaModule],
@@ -22,6 +23,7 @@ import { StripeReconciliationProcessor } from './stripe-reconciliation.processor
     StripeWebhookService,
     StripeReconciliationProcessor,
     PaypalAdapter,
+    EmailService,
   ],
   exports: [
     PaymentsService,
@@ -31,6 +33,9 @@ import { StripeReconciliationProcessor } from './stripe-reconciliation.processor
     StripeAdapter,
     StripeWebhookService,
     PaypalAdapter,
+    EmailService,
   ],
 })
 export class PaymentsModule {}
+
+

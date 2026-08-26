@@ -7,6 +7,7 @@ import { useAuth } from '../../../../context/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
+import Header from '../../../../components/Header';
 import { 
   Ticket, 
   Calendar, 
@@ -153,8 +154,10 @@ export default function CustomerVouchersPage() {
   const groupedVouchers = groupVouchers(filteredVouchers);
 
   return (
-    <div className="min-h-screen bg-background font-sans py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto space-y-6">
+    <>
+      <Header />
+      <div className="min-h-screen bg-background font-sans py-8 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto space-y-6">
         
         {/* BREADCRUMB */}
         <div className="flex items-center gap-2 text-xs text-muted">
@@ -381,5 +384,6 @@ export default function CustomerVouchersPage() {
 
       </div>
     </div>
+    </>
   );
 }

@@ -27,6 +27,7 @@ interface CatalogFilters {
   provinceCode: string;
   maxPrice: string;
   sortPrice?: 'asc' | 'desc' | '';
+  sortDiscount?: 'asc' | 'desc' | '';
 }
 
 interface CatalogProvince {
@@ -67,6 +68,7 @@ function HomePageContent() {
       provinceCode: searchParams.get('province') || '',
       maxPrice: rawMaxPrice ? Number(rawMaxPrice).toLocaleString('vi-VN') : '',
       sortPrice: (searchParams.get('sortPrice') as 'asc'|'desc'|'') || '',
+      sortDiscount: (searchParams.get('sortDiscount') as 'asc'|'desc'|'') || '',
     };
   });
   
@@ -82,6 +84,7 @@ function HomePageContent() {
   const [province, setProvince] = useState(initialFilters.provinceCode);
   const [maxPrice, setMaxPrice] = useState(initialFilters.maxPrice);
   const [sortPrice, setSortPrice] = useState<'asc'|'desc'|''>(initialFilters.sortPrice || '');
+  const [sortDiscount, setSortDiscount] = useState<'asc'|'desc'|''>(initialFilters.sortDiscount || '');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const fetchCatalog = useCallback(async (filters: CatalogFilters) => {
@@ -133,6 +136,7 @@ function HomePageContent() {
     }
     
     if (filters.sortPrice) params.set('sortPrice', filters.sortPrice);
+    if (filters.sortDiscount) params.set('sortDiscount', filters.sortDiscount);
     const queryString = params.toString();
     router.push(queryString ? `/?${queryString}` : '/', { scroll: false });
   };
@@ -143,14 +147,14 @@ function HomePageContent() {
 
   const handleHeaderSearch = (newKeyword: string) => {
     setKeyword(newKeyword);
-    const filters = { keyword: newKeyword, categoryCode: category, provinceCode: province, maxPrice, sortPrice };
+    const filters = { keyword: newKeyword, categoryCode: category, provinceCode: province, maxPrice, sortPrice, sortDiscount };
     updateBrowserFilters(filters);
     void fetchCatalog(filters);
     setTimeout(scrollToProducts, 50);
   };
 
   const handleSidebarFilter = () => {
-    const filters = { keyword, categoryCode: category, provinceCode: province, maxPrice, sortPrice };
+    const filters = { keyword, categoryCode: category, provinceCode: province, maxPrice, sortPrice, sortDiscount };
     updateBrowserFilters(filters);
     void fetchCatalog(filters);
     scrollToProducts();
@@ -158,7 +162,7 @@ function HomePageContent() {
 
   const handleCategoryChange = (categoryCode: string) => {
     setCategory(categoryCode);
-    const filters = { keyword, categoryCode, provinceCode: province, maxPrice, sortPrice };
+    const filters = { keyword, categoryCode, provinceCode: province, maxPrice, sortPrice, sortDiscount };
     updateBrowserFilters(filters);
     void fetchCatalog(filters);
     setTimeout(scrollToProducts, 50);
@@ -166,7 +170,7 @@ function HomePageContent() {
 
   const handleProvinceChange = (provinceCode: string) => {
     setProvince(provinceCode);
-    const filters = { keyword, categoryCode: category, provinceCode, maxPrice, sortPrice };
+    const filters = { keyword, categoryCode: category, provinceCode, maxPrice, sortPrice, sortDiscount };
     updateBrowserFilters(filters);
     void fetchCatalog(filters);
     setTimeout(scrollToProducts, 50);
@@ -178,10 +182,20 @@ function HomePageContent() {
     setProvince('');
     setMaxPrice('');
     setSortPrice('');
+    setSortDiscount('');
     router.push('/', { scroll: false });
     
-    void fetchCatalog({ keyword: '', categoryCode: '', provinceCode: '', maxPrice: '', sortPrice: '' });
+    void fetchCatalog({ keyword: '', categoryCode: '', provinceCode: '', maxPrice: '', sortPrice: '', sortDiscount: '' });
     setTimeout(scrollToProducts, 50);
+  };
+
+  const getDisplayedCampaigns = () => {
+    if (!sortDiscount) return campaigns;
+    return [...campaigns].sort((a, b) => {
+      const aDisc = ((a.originalPrice - a.salePrice) / a.originalPrice) * 100;
+      const bDisc = ((b.originalPrice - b.salePrice) / b.originalPrice) * 100;
+      return sortDiscount === 'desc' ? bDisc - aDisc : aDisc - bDisc;
+    });
   };
 
   return (
@@ -227,7 +241,7 @@ function HomePageContent() {
             onFilter={handleSidebarFilter}
             onClear={handleClearFilters}
             onQuickPrice={(newPrice) => {
-              const filters = { keyword, categoryCode: category, provinceCode: province, maxPrice: newPrice, sortPrice };
+              const filters = { keyword, categoryCode: category, provinceCode: province, maxPrice: newPrice, sortPrice, sortDiscount };
               updateBrowserFilters(filters);
               void fetchCatalog(filters);
               scrollToProducts();
@@ -248,41 +262,62 @@ function HomePageContent() {
               </span>
             </div>
 
-            {/* Sort Price Buttons */}
-            <div className="flex items-center bg-slate-100 p-1 rounded-xl shrink-0 self-start sm:self-auto">
+            {/* Sort Buttons */}
+            <div className="flex flex-wrap items-center bg-slate-100 p-1 rounded-xl shrink-0 self-start sm:self-auto gap-1">
               <button
                 onClick={() => {
                   const val = sortPrice === 'asc' ? '' : 'asc';
                   setSortPrice(val);
-                  const filters: CatalogFilters = { keyword, categoryCode: category, provinceCode: province, maxPrice, sortPrice: val };
+                  setSortDiscount(''); // clear other sort
+                  const filters: CatalogFilters = { keyword, categoryCode: category, provinceCode: province, maxPrice, sortPrice: val, sortDiscount: '' };
                   updateBrowserFilters(filters);
                   void fetchCatalog(filters);
                 }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
                   sortPrice === 'asc'
                     ? 'bg-white text-primary shadow-sm ring-1 ring-slate-200/50'
                     : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
                 }`}
               >
                 <ArrowUpNarrowWide className="h-4 w-4" />
-                <span className="hidden sm:inline">Giá tăng dần</span>
+                <span className="hidden sm:inline">Giá tăng</span>
               </button>
               <button
                 onClick={() => {
                   const val = sortPrice === 'desc' ? '' : 'desc';
                   setSortPrice(val);
-                  const filters: CatalogFilters = { keyword, categoryCode: category, provinceCode: province, maxPrice, sortPrice: val };
+                  setSortDiscount(''); // clear other sort
+                  const filters: CatalogFilters = { keyword, categoryCode: category, provinceCode: province, maxPrice, sortPrice: val, sortDiscount: '' };
                   updateBrowserFilters(filters);
                   void fetchCatalog(filters);
                 }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
                   sortPrice === 'desc'
                     ? 'bg-white text-primary shadow-sm ring-1 ring-slate-200/50'
                     : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
                 }`}
               >
                 <ArrowDownWideNarrow className="h-4 w-4" />
-                <span className="hidden sm:inline">Giá giảm dần</span>
+                <span className="hidden sm:inline">Giá giảm</span>
+              </button>
+              <button
+                onClick={() => {
+                  const val = sortDiscount === 'desc' ? '' : 'desc';
+                  setSortDiscount(val);
+                  setSortPrice(''); // clear other sort
+                  const filters: CatalogFilters = { keyword, categoryCode: category, provinceCode: province, maxPrice, sortPrice: '', sortDiscount: val };
+                  updateBrowserFilters(filters);
+                  // Not strictly needed to refetch because sorting is done in-memory, but it keeps the URL in sync
+                  void fetchCatalog(filters);
+                }}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+                  sortDiscount === 'desc'
+                    ? 'bg-white text-primary shadow-sm ring-1 ring-slate-200/50'
+                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
+                }`}
+              >
+                <ArrowDownWideNarrow className="h-4 w-4" />
+                <span className="hidden sm:inline">% Giảm</span>
               </button>
             </div>
           </div>
@@ -314,7 +349,7 @@ function HomePageContent() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {campaigns.map((c, i) => (
+              {getDisplayedCampaigns().map((c, i) => (
                 <VoucherCard key={c.campaignId} campaign={c} index={i} />
               ))}
             </div>

@@ -149,7 +149,7 @@ export default function FilterSidebar({
       <div className="space-y-3">
         <label className="block text-xs font-bold text-slate-700">Khoảng giá</label>
         
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-3 gap-2">
           {quickPrices.map((qp) => (
             <button
               key={qp.value}
@@ -157,7 +157,7 @@ export default function FilterSidebar({
                 setMaxPrice(qp.value);
                 if (onQuickPrice) onQuickPrice(qp.value);
               }}
-              className={`px-2.5 py-1.5 text-[11px] font-bold rounded-lg border transition-all ${
+              className={`text-center px-1 py-1.5 text-[11px] font-bold rounded-lg border transition-all truncate ${
                 maxPrice === qp.value
                   ? 'bg-primary text-white border-primary shadow-sm'
                   : 'bg-white text-slate-600 border-slate-200 hover:border-primary hover:text-primary'

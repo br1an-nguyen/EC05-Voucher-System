@@ -690,7 +690,26 @@ export class VouchersService {
    */
   async getCustomerWallet(customerId: string) {
     return this.prisma.voucherCode.findMany({
-      where: { customerId },
+      where: {
+        customerId,
+        OR: [
+          {
+            orderItem: {
+              order: {
+                isGift: false,
+              },
+            },
+          },
+          {
+            orderItem: {
+              order: {
+                isGift: true,
+                customerId: { not: customerId },
+              },
+            },
+          },
+        ],
+      },
       include: {
         orderItem: {
           include: {

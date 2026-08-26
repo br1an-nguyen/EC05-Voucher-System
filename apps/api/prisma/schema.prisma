@@ -59,6 +59,7 @@ enum PaymentProviderType {
   STRIPE
   PAYPAL
   VNPAY
+  MOMO
 }
 
 enum PaymentTransactionStatus {
@@ -322,6 +323,8 @@ model Order {
   orderCode               String               @unique @map("order_code") @db.VarChar(32)
   customerId              String               @map("customer_id") @db.Uuid
   recipientNote           String?              @map("recipient_note") @db.Text
+  isGift                  Boolean              @default(false) @map("is_gift")
+  recipientEmail          String?              @map("recipient_email") @db.VarChar(255)
   totalAmount             Decimal              @map("total_amount") @db.Decimal(12, 2)
   baseCurrency            String               @default("VND") @map("base_currency") @db.Char(3)
   selectedPaymentProvider PaymentProviderType? @map("selected_payment_provider")
@@ -416,10 +419,10 @@ model PaymentWebhookEvent {
   signatureValid   Boolean                        @map("signature_valid")
   payloadHash      String                         @map("payload_hash") @db.Char(64)
   processingStatus PaymentWebhookProcessingStatus @default(RECEIVED) @map("processing_status")
-  processingError  String?                        @map("processing_error") @db.VarChar(2000)
   paymentId        String?                        @map("payment_id") @db.Uuid
   receivedAt       DateTime                       @default(now()) @map("received_at") @db.Timestamptz
   processedAt      DateTime?                      @map("processed_at") @db.Timestamptz
+  processingError  String?                        @map("processing_error") @db.Text
 
   // Relations
   payment PaymentTransaction? @relation(fields: [paymentId], references: [paymentId], onDelete: SetNull)
