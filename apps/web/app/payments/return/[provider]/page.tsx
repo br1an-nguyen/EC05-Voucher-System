@@ -12,12 +12,15 @@ import {
   Home, 
   Ticket, 
   AlertTriangle,
-  Play
+  Play,
+  FileText
 } from 'lucide-react';
 
 interface PaymentStatusResponse {
   orderId: string;
   status: 'PENDING' | 'SUCCEEDED' | 'FAILED';
+  isGift?: boolean;
+  recipientEmail?: string;
 }
 
 interface PayPalCaptureResponse {
@@ -49,8 +52,10 @@ export default function PaymentReturnPage() {
     try {
       const paymentDetails = await apiRequest<PaymentStatusResponse>(`/payments/${paymentId}/status`);
       setOrderInfo(paymentDetails);
+      return paymentDetails;
     } catch (error: unknown) {
       console.error('Không thể lấy chi tiết trạng thái đơn:', error);
+      return null;
     }
   }, []);
 
@@ -61,8 +66,8 @@ export default function PaymentReturnPage() {
       try {
         const res = await apiRequest<PaymentStatusResponse>(`/payments/${paymentId}/status`);
         if (res.status === 'SUCCEEDED') {
+          await fetchPaymentStatus(paymentId);
           setStatus('SUCCESS');
-          void fetchPaymentStatus(paymentId);
           window.clearInterval(interval);
           setLoading(false);
         } else if (res.status === 'FAILED') {
@@ -102,8 +107,8 @@ export default function PaymentReturnPage() {
         });
 
         if (res.success) {
+          await fetchPaymentStatus(paymentId);
           setStatus('SUCCESS');
-          void fetchPaymentStatus(paymentId);
         } else {
           setStatus('FAILED');
           setErrorMsg(res.message || 'Thanh toán PayPal không thành công.');
@@ -118,9 +123,11 @@ export default function PaymentReturnPage() {
         const res = await apiRequest<VnPayResponse>(`/payments/vnpay/ipn${queryString}`);
         
         if (res.RspCode === '00' || res.RspCode === '02') {
-          setStatus('SUCCESS');
           const paymentId = searchParams.get('vnp_TxnRef');
-          if (paymentId) void fetchPaymentStatus(paymentId);
+          if (paymentId) {
+            await fetchPaymentStatus(paymentId);
+          }
+          setStatus('SUCCESS');
         } else {
           setStatus('FAILED');
           setErrorMsg(`VNPay phản hồi lỗi Code: ${res.RspCode}. Chi tiết: ${res.Message}`);
@@ -170,8 +177,8 @@ export default function PaymentReturnPage() {
       await apiRequest<void>(`/payments/${paymentId}/mock-success`, {
         method: 'POST',
       });
+      await fetchPaymentStatus(paymentId);
       setStatus('SUCCESS');
-      void fetchPaymentStatus(paymentId);
     } catch (error: unknown) {
       setErrorMsg(getErrorMessage(error, 'Không thể mô phỏng thành công.'));
     } finally {
@@ -250,22 +257,36 @@ export default function PaymentReturnPage() {
                   <span className="text-muted">Phương thức:</span>
                   <span className="font-bold text-foreground">{provider.toUpperCase()}</span>
                 </div>
-                <p className="text-[10px] text-primary font-bold text-center mt-2 pt-2 border-t border-border/60">
-                  Mã voucher đã được phát hành và gửi vào ví của bạn.
+                 <p className="text-[10px] text-primary font-bold text-center mt-2 pt-2 border-t border-border/60">
+                  {orderInfo.isGift
+                    ? `Mã voucher đã được gửi tới email quà tặng: ${orderInfo.recipientEmail}`
+                    : 'Mã voucher đã được phát hành và gửi vào ví của bạn.'}
                 </p>
               </div>
             )}
 
             <div className="space-y-3 pt-2">
-              <button
-                onClick={() => {
-                  router.push('/customer/vouchers');
-                }}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary hover:bg-primary-hover text-white py-3 text-sm font-bold transition-colors"
-              >
-                <Ticket className="h-4 w-4" />
-                Xem ví Voucher của tôi
-              </button>
+              {orderInfo?.isGift ? (
+                <button
+                  onClick={() => {
+                    router.push('/customer/orders');
+                  }}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary hover:bg-primary-hover text-white py-3 text-sm font-bold transition-colors"
+                >
+                  <FileText className="h-4 w-4" />
+                  Xem lịch sử đơn hàng
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    router.push('/customer/vouchers');
+                  }}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary hover:bg-primary-hover text-white py-3 text-sm font-bold transition-colors"
+                >
+                  <Ticket className="h-4 w-4" />
+                  Xem ví Voucher của tôi
+                </button>
+              )}
 
               <Link
                 href="/"

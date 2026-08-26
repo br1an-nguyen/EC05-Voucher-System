@@ -46,6 +46,8 @@ interface Order {
   paymentStatus: 'UNPAID' | 'PROCESSING' | 'PAID' | 'FAILED' | 'REFUND_PENDING' | 'REFUNDED';
   createdAt: string;
   orderItems: OrderItem[];
+  isGift: boolean;
+  recipientEmail?: string | null;
 }
 
 export default function CustomerOrdersPage() {
@@ -236,13 +238,19 @@ export default function CustomerOrdersPage() {
                       {/* Nút xem ví voucher nếu đã xác nhận thành công */}
                       {order.orderStatus === 'CONFIRMED' && order.paymentStatus === 'PAID' && (
                         <>
-                          <Link
-                            href="/customer/vouchers"
-                            className="inline-flex items-center gap-1 border border-border hover:bg-slate-50 text-foreground px-3 py-2 rounded-xl text-xs font-bold transition-colors"
-                          >
-                            <Ticket className="h-3.5 w-3.5 text-primary" />
-                            Xem Voucher
-                          </Link>
+                          {!order.isGift ? (
+                            <Link
+                              href="/customer/vouchers"
+                              className="inline-flex items-center gap-1 border border-border hover:bg-slate-50 text-foreground px-3 py-2 rounded-xl text-xs font-bold transition-colors"
+                            >
+                              <Ticket className="h-3.5 w-3.5 text-primary" />
+                              Xem Voucher
+                            </Link>
+                          ) : (
+                            <span className="text-[10px] text-primary font-bold bg-primary/5 border border-primary/10 px-2.5 py-2 rounded-xl">
+                              🎁 Đã gửi tặng: {order.recipientEmail}
+                            </span>
+                          )}
 
                           <button
                             onClick={() => setOrderToRefund(order)}
