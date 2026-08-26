@@ -7,18 +7,20 @@ import {
   UseGuards,
   Req,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { PaymentFinalizationService } from './payment-finalization.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
-import { UserRole, PaymentProviderType } from '@prisma/client';
+import { UserRole, PaymentProviderType, PaymentTransactionStatus, OrderStatus } from '@prisma/client';
 import { IsEnum } from 'class-validator';
 
 import { VnPayAdapter } from './adapters/vnpay.adapter';
 import { StripeAdapter } from './adapters/stripe.adapter';
 import { PaypalAdapter } from './adapters/paypal.adapter';
+import { PaypalCaptureDto } from './dto/paypal-capture.dto';
 
 export class CreatePaymentAttemptDto {
   @IsEnum(PaymentProviderType, { message: 'Cổng thanh toán không hợp lệ (STRIPE, PAYPAL, VNPAY).' })
@@ -215,33 +217,150 @@ export class PaymentsController {
   @Roles(UserRole.CUSTOMER)
   async handlePaypalCapture(
     @Req() req: any,
-    @Body() dto: { paypalOrderId: string; paymentId: string },
+    @Body() dto: PaypalCaptureDto,
   ) {
-    try {
-      await this.paymentsService.assertPaymentOwner(dto.paymentId, req.user.userId);
-      const result = await this.paypalAdapter.captureOrder(dto.paypalOrderId);
+    // 1. Xác minh người dùng sở hữu giao dịch thanh toán này
+    await this.paymentsService.assertPaymentOwner(dto.paymentId, req.user.userId);
 
-      if (result.status === 'SUCCESS') {
-        const order = await this.paymentFinalizationService.finalizePayment(
-          dto.paymentId,
-          result.providerTransactionId,
-        );
-        return {
-          success: true,
-          message: 'Thanh toán PayPal thành công!',
-          orderStatus: order.orderStatus,
-        };
-      } else {
-        return {
-          success: false,
-          message: 'Không thể xác thực capture tiền từ PayPal Sandbox.',
-        };
-      }
-    } catch (err: any) {
+    // Lấy chi tiết giao dịch để kiểm tra chéo (P0)
+    const payment = await this.paymentsService.getPaymentDetails(dto.paymentId);
+
+    // 2. Kiểm tra tính hợp lệ của giao dịch trước khi capture
+    if (payment.provider !== PaymentProviderType.PAYPAL) {
+      throw new BadRequestException('Giao dịch thanh toán này không sử dụng cổng PayPal.');
+    }
+
+    if (payment.providerOrderId !== dto.paypalOrderId) {
+      throw new BadRequestException('Mã đơn hàng PayPal đối tác không khớp với dữ liệu giao dịch.');
+    }
+
+    if (payment.status === PaymentTransactionStatus.SUCCEEDED) {
       return {
-        success: false,
-        message: err.message || 'Lỗi xử lý capture PayPal.',
+        success: true,
+        message: 'Thanh toán đã được xử lý thành công từ trước.',
+        orderStatus: payment.order.orderStatus,
       };
     }
+
+    if (payment.status !== PaymentTransactionStatus.CREATED) {
+      throw new BadRequestException('Giao dịch thanh toán không ở trạng thái hợp lệ để quét.');
+    }
+
+    if (payment.order.orderStatus === OrderStatus.CANCELLED) {
+      throw new BadRequestException('Đơn hàng liên kết đã bị hủy do quá hạn thanh toán.');
+    }
+
+    // 3. Thực thi bắt giữ tiền từ PayPal Sandbox API
+    const result = await this.paypalAdapter.captureOrder(dto.paypalOrderId, dto.paymentId);
+
+    if (result.status !== 'SUCCESS') {
+      throw new BadRequestException('Không thể xác thực capture tiền thành công từ PayPal Sandbox.');
+    }
+
+    // 4. Kiểm chứng số tiền và tiền tệ capture thực tế (P1)
+    const expectedUsd = (Number(payment.baseAmount) / 25000).toFixed(2);
+    const amountDifference = Math.abs(result.amountPaid - Number(expectedUsd));
+    
+    // Cho phép sai số làm tròn nhỏ do chuyển đổi VND -> USD (dưới 1 cent)
+    if (amountDifference >= 0.01) {
+      throw new BadRequestException(
+        `Số tiền quyết toán không hợp lệ. Mong đợi ${expectedUsd} USD, thực nhận ${result.amountPaid} USD.`
+      );
+    }
+
+    if (result.currency !== 'USD') {
+      throw new BadRequestException(`Định dạng tiền tệ quyết toán không hợp lệ (Mong đợi USD, nhận ${result.currency}).`);
+    }
+
+    // 5. Tính toán minor unit và hoàn tất giao dịch trong DB transaction
+    const settledAmountMinor = BigInt(Math.round(result.amountPaid * 100)); // USD cent minor unit
+
+    const order = await this.paymentFinalizationService.finalizePayment(
+      dto.paymentId,
+      result.providerTransactionId,
+      {
+        settledAmountMinor,
+        settledCurrency: 'USD',
+        exchangeRate: 25000,
+      }
+    );
+
+    return {
+      success: true,
+      message: 'Thanh toán PayPal thành công!',
+      orderStatus: order.orderStatus,
+    };
+  }
+
+  /**
+   * PayPal Webhook Callback.
+   * Cổng thanh toán gọi API này ẩn dưới nền để đồng bộ trạng thái thanh toán.
+   * POST /payments/paypal/webhook
+   */
+  @Post('paypal/webhook')
+  async handlePaypalWebhook(@Req() req: any) {
+    const headers = req.headers;
+    const body = req.body;
+
+    // 1. Xác thực chữ ký số webhook
+    const isValid = await this.paypalAdapter.verifyWebhookSignature(headers, body);
+    if (!isValid) {
+      throw new BadRequestException('Chữ ký webhook PayPal không hợp lệ.');
+    }
+
+    // 2. Chống trùng lặp sự kiện (Replay protection)
+    const providerEventId = body.id;
+    const eventType = body.event_type;
+
+    const isNewEvent = await this.paymentsService.registerWebhookEvent(
+      PaymentProviderType.PAYPAL,
+      providerEventId,
+      eventType,
+      body,
+    );
+
+    if (!isNewEvent) {
+      return { received: true, status: 'REPLAY_IGNORED' };
+    }
+
+    // 3. Xử lý sự kiện capture thành công
+    if (eventType === 'PAYMENT.CAPTURE.COMPLETED') {
+      const resource = body.resource;
+      const paypalOrderId = resource.supplementary_data?.related_ids?.order_id;
+      const captureId = resource.id;
+
+      if (paypalOrderId) {
+        const payment = await this.paymentsService.getPaymentByProviderOrderId(paypalOrderId);
+        if (payment && payment.status !== PaymentTransactionStatus.SUCCEEDED) {
+          const amountPaid = Number(resource.amount.value);
+          const currency = resource.amount.currency_code;
+          
+          // Đối soát số tiền
+          const expectedUsd = (Number(payment.baseAmount) / 25000).toFixed(2);
+          if (Math.abs(amountPaid - Number(expectedUsd)) < 0.01 && currency === 'USD') {
+            const settledAmountMinor = BigInt(Math.round(amountPaid * 100));
+            
+            await this.paymentFinalizationService.finalizePayment(
+              payment.paymentId,
+              captureId,
+              {
+                settledAmountMinor,
+                settledCurrency: 'USD',
+                exchangeRate: 25000,
+              }
+            );
+          } else {
+            // Số tiền hoặc tiền tệ không khớp, đánh dấu giao dịch thất bại
+            await this.paymentsService.updatePaymentStatusFailed(
+              payment.paymentId,
+              'AMOUNT_MISMATCH',
+              `Webhook đối soát thất bại: Nhận ${amountPaid} ${currency}, mong đợi ${expectedUsd} USD.`,
+            );
+          }
+        }
+      }
+    }
+
+    return { received: true };
   }
 }
