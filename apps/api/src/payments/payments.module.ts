@@ -6,11 +6,31 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { VnPayAdapter } from './adapters/vnpay.adapter';
 import { StripeAdapter } from './adapters/stripe.adapter';
 import { PaypalAdapter } from './adapters/paypal.adapter';
+import { StripeConfigService } from './stripe.config';
+import { StripeWebhookService } from './stripe-webhook.service';
+import { StripeReconciliationProcessor } from './stripe-reconciliation.processor';
 
 @Module({
   imports: [PrismaModule],
   controllers: [PaymentsController],
-  providers: [PaymentsService, PaymentFinalizationService, VnPayAdapter, StripeAdapter, PaypalAdapter],
-  exports: [PaymentsService, PaymentFinalizationService, VnPayAdapter, StripeAdapter, PaypalAdapter],
+  providers: [
+    PaymentsService,
+    PaymentFinalizationService,
+    VnPayAdapter,
+    StripeConfigService,
+    StripeAdapter,
+    StripeWebhookService,
+    StripeReconciliationProcessor,
+    PaypalAdapter,
+  ],
+  exports: [
+    PaymentsService,
+    PaymentFinalizationService,
+    VnPayAdapter,
+    StripeConfigService,
+    StripeAdapter,
+    StripeWebhookService,
+    PaypalAdapter,
+  ],
 })
 export class PaymentsModule {}

@@ -1,20 +1,30 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { OrderStatus, PaymentStatus, ReservationStatus, PaymentTransactionStatus, VoucherCodeStatus } from '@prisma/client';
+import {
+  OrderStatus,
+  PaymentStatus,
+  ReservationStatus,
+  PaymentTransactionStatus,
+  VoucherCodeStatus,
+} from '@prisma/client';
 import * as crypto from 'crypto';
 
 @Injectable()
 export class PaymentFinalizationService {
   private readonly logger = new Logger(PaymentFinalizationService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Hoàn tất giao dịch thanh toán và phát hành mã voucher (Idempotent).
    * Sử dụng SELECT FOR UPDATE để khóa dòng đơn hàng và các chiến dịch voucher.
    * @param paymentId ID giao dịch thanh toán cục bộ
    * @param providerTransactionId ID giao dịch từ cổng thanh toán bên thứ ba (Stripe/PayPal/VNPay)
-   * @param settlement Thông tin quyết toán ngoại tệ thực tế (nếu có, ví dụ USD từ PayPal)
    */
   async finalizePayment(
     paymentId: string,
@@ -25,12 +35,27 @@ export class PaymentFinalizationService {
       exchangeRate?: number;
     },
   ) {
+    const paymentReference = await this.prisma.paymentTransaction.findUnique({
+      where: { paymentId },
+      select: { orderId: true },
+    });
+
+    if (!paymentReference) {
+      throw new NotFoundException('Không tìm thấy giao dịch thanh toán.');
+    }
+
     return this.prisma.$transaction(async (tx) => {
-      // 1. Khóa và đọc dòng giao dịch thanh toán
-      await tx.$executeRawUnsafe(
-        `SELECT payment_id FROM "Payment_Transactions" WHERE payment_id = $1::uuid FOR UPDATE`,
-        paymentId,
-      );
+      // Luôn khóa Order trước Payment để đồng nhất với luồng hết hạn.
+      await tx.$queryRaw`
+        SELECT order_id FROM "Orders"
+        WHERE order_id = ${paymentReference.orderId}::uuid
+        FOR UPDATE
+      `;
+      await tx.$queryRaw`
+        SELECT payment_id FROM "Payment_Transactions"
+        WHERE payment_id = ${paymentId}::uuid
+        FOR UPDATE
+      `;
 
       const payment = await tx.paymentTransaction.findUnique({
         where: { paymentId },
@@ -39,8 +64,11 @@ export class PaymentFinalizationService {
             include: {
               orderItems: {
                 include: { campaign: true },
+                orderBy: { campaignId: 'asc' },
               },
-              inventoryReservations: true,
+              inventoryReservations: {
+                orderBy: { campaignId: 'asc' },
+              },
             },
           },
         },
@@ -50,52 +78,88 @@ export class PaymentFinalizationService {
         throw new NotFoundException('Không tìm thấy giao dịch thanh toán.');
       }
 
-      // Nếu giao dịch đã hoàn thành thành công trước đó (Replay Protection)
-      if (payment.status === PaymentTransactionStatus.SUCCEEDED) {
-        this.logger.log(`Giao dịch thanh toán ${paymentId} đã hoàn tất thành công từ trước.`);
-        return payment.order;
-      }
-
       const order = payment.order;
 
-      // Cảnh báo nếu đơn hàng đã bị worker hủy trước đó, tiến hành khôi phục đơn
-      if (order.orderStatus === OrderStatus.CANCELLED) {
-        this.logger.warn(
-          `Đơn hàng ${order.orderCode} đã bị hủy trước đó nhưng nhận được thanh toán thành công. Tiến hành khôi phục đơn hàng.`,
+      // Replay protection chỉ hợp lệ khi cả payment và order đã hoàn tất nhất quán.
+      if (
+        payment.status === PaymentTransactionStatus.SUCCEEDED &&
+        order.orderStatus === OrderStatus.CONFIRMED &&
+        order.paymentStatus === PaymentStatus.PAID
+      ) {
+        this.logger.log(
+          `Giao dịch thanh toán ${paymentId} đã hoàn tất thành công từ trước.`,
+        );
+        return order;
+      }
+
+      const now = new Date();
+      if (
+        order.orderStatus !== OrderStatus.PENDING ||
+        order.paymentStatus !== PaymentStatus.UNPAID ||
+        order.reservationExpiresAt <= now ||
+        (payment.expiresAt !== null && payment.expiresAt <= now) ||
+        (payment.status !== PaymentTransactionStatus.CREATED &&
+          payment.status !== PaymentTransactionStatus.PENDING)
+      ) {
+        throw new BadRequestException(
+          'Đơn hàng đã hết hạn hoặc không còn ở trạng thái chờ thanh toán.',
         );
       }
 
-      // 2. Khóa dòng đơn hàng và các voucher chiến dịch để đảm bảo nhất quán dữ liệu
-      await tx.$executeRawUnsafe(
-        `SELECT order_id FROM "Orders" WHERE order_id = $1::uuid FOR UPDATE`,
-        order.orderId,
+      await tx.$queryRaw`
+        SELECT reservation_id FROM "Inventory_Reservations"
+        WHERE order_id = ${order.orderId}::uuid
+        ORDER BY campaign_id
+        FOR UPDATE
+      `;
+
+      for (const item of order.orderItems) {
+        await tx.$queryRaw`
+          SELECT campaign_id FROM "Voucher_Campaigns"
+          WHERE campaign_id = ${item.campaignId}::uuid
+          FOR UPDATE
+        `;
+      }
+
+      const reservationsByCampaign = new Map(
+        order.inventoryReservations.map((reservation) => [
+          reservation.campaignId,
+          reservation,
+        ]),
       );
 
       for (const item of order.orderItems) {
-        await tx.$executeRawUnsafe(
-          `SELECT campaign_id FROM "Voucher_Campaigns" WHERE campaign_id = $1::uuid FOR UPDATE`,
-          item.campaignId,
-        );
+        const reservation = reservationsByCampaign.get(item.campaignId);
+        if (
+          !reservation ||
+          reservation.status !== ReservationStatus.ACTIVE ||
+          reservation.quantity !== item.quantity
+        ) {
+          throw new BadRequestException(
+            'Phiếu giữ chỗ của đơn hàng không còn hiệu lực.',
+          );
+        }
       }
 
-      // 3. Cập nhật trạng thái giao dịch thanh toán thành SUCCEEDED
-      const settledAmountMinor = settlement ? settlement.settledAmountMinor : payment.requestAmountMinor;
-      const settledCurrency = settlement ? settlement.settledCurrency : payment.requestCurrency;
-      const exchangeRate = settlement?.exchangeRate ? settlement.exchangeRate : null;
+      // Chỉ ghi nhận thanh toán sau khi toàn bộ invariant đã được xác thực.
+      const settledAmountMinor =
+        settlement?.settledAmountMinor ?? payment.requestAmountMinor;
+      const settledCurrency =
+        settlement?.settledCurrency ?? payment.requestCurrency;
+      const exchangeRate = settlement?.exchangeRate ?? null;
 
       await tx.paymentTransaction.update({
         where: { paymentId },
         data: {
           status: PaymentTransactionStatus.SUCCEEDED,
           providerTransactionId,
-          paidAt: new Date(),
+          paidAt: now,
           settledAmountMinor,
           settledCurrency,
           exchangeRate,
         },
       });
 
-      // 4. Cập nhật trạng thái thanh toán đơn hàng thành PAID, trạng thái đơn thành CONFIRMED
       const updatedOrder = await tx.order.update({
         where: { orderId: order.orderId },
         data: {
@@ -104,46 +168,47 @@ export class PaymentFinalizationService {
         },
       });
 
-      // 5. Chuyển đổi trạng thái phiếu giữ chỗ từ ACTIVE thành COMMITTED
       for (const item of order.orderItems) {
-        const reservation = order.inventoryReservations.find((r) => r.campaignId === item.campaignId);
+        const reservation = reservationsByCampaign.get(item.campaignId)!;
+        const committed = await tx.inventoryReservation.updateMany({
+          where: {
+            reservationId: reservation.reservationId,
+            status: ReservationStatus.ACTIVE,
+          },
+          data: { status: ReservationStatus.COMMITTED },
+        });
 
-        if (reservation && reservation.status === ReservationStatus.ACTIVE) {
-          // Commit phiếu giữ chỗ
-          await tx.inventoryReservation.update({
-            where: { reservationId: reservation.reservationId },
-            data: { status: ReservationStatus.COMMITTED },
-          });
+        if (committed.count !== 1) {
+          throw new BadRequestException(
+            'Phiếu giữ chỗ của đơn hàng vừa thay đổi trạng thái.',
+          );
+        }
 
-          // Giải phóng giữ chỗ và chuyển sang số lượng đã bán thực tế
-          await tx.voucherCampaign.update({
-            where: { campaignId: item.campaignId },
-            data: {
-              reservedStock: { decrement: item.quantity },
-              soldQuantity: { increment: item.quantity },
-            },
-          });
-        } else {
-          // Trường hợp đặc biệt: Phiếu giữ chỗ đã hết hạn và bị giải phóng bởi cron job trước đó,
-          // nhưng giao dịch thanh toán từ cổng vẫn thành công. Để bảo vệ quyền lợi người mua,
-          // hệ thống vẫn ghi nhận số lượng đã bán mới trực tiếp (bán lố tạm thời) và log cảnh báo.
-          await tx.voucherCampaign.update({
-            where: { campaignId: item.campaignId },
-            data: {
-              soldQuantity: { increment: item.quantity },
-            },
-          });
-          this.logger.warn(
-            `Đơn hàng ${order.orderCode} thanh toán sau khi hết hạn giữ chỗ. Tiến hành phát hành mã khẩn cấp.`,
+        const stockCommitted = await tx.voucherCampaign.updateMany({
+          where: {
+            campaignId: item.campaignId,
+            reservedStock: { gte: item.quantity },
+          },
+          data: {
+            reservedStock: { decrement: item.quantity },
+            soldQuantity: { increment: item.quantity },
+          },
+        });
+
+        if (stockCommitted.count !== 1) {
+          throw new Error(
+            `Reserved stock is inconsistent for campaign ${item.campaignId}.`,
           );
         }
       }
 
-      // 6. Phát hành mã Voucher Code ngẫu nhiên bảo mật (độ dài 12 ký tự) (RB-05, RB-06)
       for (const item of order.orderItems) {
         for (let i = 0; i < item.quantity; i++) {
           // Tạo mã ngẫu nhiên cryptographically secure bằng Node.js crypto
-          const uniqueCode = crypto.randomBytes(6).toString('hex').toUpperCase(); // 12 ký tự hex
+          const uniqueCode = crypto
+            .randomBytes(6)
+            .toString('hex')
+            .toUpperCase(); // 12 ký tự hex
 
           await tx.voucherCode.create({
             data: {
@@ -157,7 +222,9 @@ export class PaymentFinalizationService {
         }
       }
 
-      this.logger.log(`Hoàn tất thanh toán đơn hàng ${order.orderCode}. Đã phát hành mã voucher thành công.`);
+      this.logger.log(
+        `Hoàn tất thanh toán đơn hàng ${order.orderCode}. Đã phát hành mã voucher thành công.`,
+      );
       return updatedOrder;
     });
   }
