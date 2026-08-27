@@ -3,14 +3,14 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import { apiRequest } from '../../../lib/api';
-import { 
-  Shield, 
-  Users, 
-  Ticket, 
-  ShoppingBag, 
-  Coins, 
-  UserCheck, 
-  FolderTree, 
+import {
+  Shield,
+  Users,
+  Ticket,
+  ShoppingBag,
+  Coins,
+  UserCheck,
+  FolderTree,
   AlertCircle,
   TrendingUp,
   FileCheck,
@@ -57,38 +57,38 @@ const CAMPAIGN_STATUS_DISPLAY: Array<{
   label: string;
   colorClass: string;
 }> = [
-  {
-    key: 'approved',
-    label: 'Đang hoạt động (Approved)',
-    colorClass: 'bg-emerald-500',
-  },
-  {
-    key: 'pending',
-    label: 'Đang chờ phê duyệt (Pending)',
-    colorClass: 'bg-yellow-500',
-  },
-  { key: 'draft', label: 'Bản nháp (Draft)', colorClass: 'bg-blue-400' },
-  {
-    key: 'rejected',
-    label: 'Đã từ chối (Rejected)',
-    colorClass: 'bg-rose-500',
-  },
-  {
-    key: 'paused',
-    label: 'Đang tạm dừng (Paused)',
-    colorClass: 'bg-orange-400',
-  },
-  {
-    key: 'expired',
-    label: 'Đã hết hạn (Expired)',
-    colorClass: 'bg-slate-400',
-  },
-  {
-    key: 'soldOut',
-    label: 'Đã hết hàng (Sold out)',
-    colorClass: 'bg-violet-500',
-  },
-];
+    {
+      key: 'approved',
+      label: 'Đang hoạt động',
+      colorClass: 'bg-emerald-500',
+    },
+    {
+      key: 'pending',
+      label: 'Đang chờ phê duyệt',
+      colorClass: 'bg-yellow-500',
+    },
+    { key: 'draft', label: 'Bản nháp', colorClass: 'bg-blue-400' },
+    {
+      key: 'rejected',
+      label: 'Đã từ chối',
+      colorClass: 'bg-rose-500',
+    },
+    {
+      key: 'paused',
+      label: 'Đang tạm dừng',
+      colorClass: 'bg-orange-400',
+    },
+    {
+      key: 'expired',
+      label: 'Đã hết hạn',
+      colorClass: 'bg-slate-400',
+    },
+    {
+      key: 'soldOut',
+      label: 'Đã hết hàng',
+      colorClass: 'bg-violet-500',
+    },
+  ];
 
 export default function AdminDashboard() {
   const { user } = useAuth();
@@ -158,8 +158,8 @@ export default function AdminDashboard() {
   // Tính toán danh sách đối tác được tìm kiếm & sắp xếp động
   const sortedPartners = useMemo(() => {
     if (!summary?.partnerPerformance) return [];
-    
-    let list = summary.partnerPerformance.filter(p => 
+
+    let list = summary.partnerPerformance.filter(p =>
       p.companyName.toLowerCase().includes(partnerSearchTerm.toLowerCase())
     );
 
@@ -168,7 +168,7 @@ export default function AdminDashboard() {
       let valB = b[sortField];
 
       if (typeof valA === 'string' && typeof valB === 'string') {
-        return sortDirection === 'asc' 
+        return sortDirection === 'asc'
           ? valA.localeCompare(valB)
           : valB.localeCompare(valA);
       } else {
@@ -190,10 +190,10 @@ export default function AdminDashboard() {
   }
 
   // Tính tổng số lượng users từ stats
-  const totalUsers = 
-    (summary?.userStats.totalCustomers ?? 0) + 
-    (summary?.userStats.totalPartners ?? 0) + 
-    (summary?.userStats.totalAdmins ?? 0) + 
+  const totalUsers =
+    (summary?.userStats.totalCustomers ?? 0) +
+    (summary?.userStats.totalPartners ?? 0) +
+    (summary?.userStats.totalAdmins ?? 0) +
     (summary?.userStats.totalStaffs ?? 0);
 
   return (
@@ -205,7 +205,7 @@ export default function AdminDashboard() {
         <ChevronRight className="h-3.5 w-3.5" />
         <span className="font-semibold text-foreground">Dashboard</span>
       </div>
-      
+
       {/* TIÊU ĐỀ */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -221,7 +221,7 @@ export default function AdminDashboard() {
 
       {/* TỔNG QUAN STATS CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-        
+
         {/* Doanh thu (Gradient Card) */}
         <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-6 shadow-sm">
           <div className="flex items-center justify-between">
@@ -299,7 +299,7 @@ export default function AdminDashboard() {
             Phân bố tài khoản người dùng ({totalUsers})
           </h3>
           <div className="space-y-4">
-            
+
             {/* Customer */}
             <div>
               <div className="flex justify-between text-xs font-semibold mb-1">
@@ -307,8 +307,8 @@ export default function AdminDashboard() {
                 <span className="text-muted">{summary?.userStats.totalCustomers} ({getPercent(summary?.userStats.totalCustomers ?? 0, totalUsers)})</span>
               </div>
               <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-blue-500 rounded-full transition-all duration-500" 
+                <div
+                  className="h-full bg-blue-500 rounded-full transition-all duration-500"
                   style={{ width: getPercent(summary?.userStats.totalCustomers ?? 0, totalUsers) }}
                 />
               </div>
@@ -321,8 +321,8 @@ export default function AdminDashboard() {
                 <span className="text-muted">{summary?.userStats.totalPartners} ({getPercent(summary?.userStats.totalPartners ?? 0, totalUsers)})</span>
               </div>
               <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-orange-500 rounded-full transition-all duration-500" 
+                <div
+                  className="h-full bg-orange-500 rounded-full transition-all duration-500"
                   style={{ width: getPercent(summary?.userStats.totalPartners ?? 0, totalUsers) }}
                 />
               </div>
@@ -335,8 +335,8 @@ export default function AdminDashboard() {
                 <span className="text-muted">{summary?.userStats.totalStaffs} ({getPercent(summary?.userStats.totalStaffs ?? 0, totalUsers)})</span>
               </div>
               <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-amber-500 rounded-full transition-all duration-500" 
+                <div
+                  className="h-full bg-amber-500 rounded-full transition-all duration-500"
                   style={{ width: getPercent(summary?.userStats.totalStaffs ?? 0, totalUsers) }}
                 />
               </div>
@@ -349,8 +349,8 @@ export default function AdminDashboard() {
                 <span className="text-muted">{summary?.userStats.totalAdmins} ({getPercent(summary?.userStats.totalAdmins ?? 0, totalUsers)})</span>
               </div>
               <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-rose-500 rounded-full transition-all duration-500" 
+                <div
+                  className="h-full bg-rose-500 rounded-full transition-all duration-500"
                   style={{ width: getPercent(summary?.userStats.totalAdmins ?? 0, totalUsers) }}
                 />
               </div>
@@ -402,7 +402,7 @@ export default function AdminDashboard() {
             <TrendingUp className="h-4.5 w-4.5 text-primary" />
             Hiệu suất và Doanh thu của tất cả Đối tác liên kết
           </h3>
-          
+
           {/* Ô Tìm kiếm đối tác */}
           <div className="relative w-full sm:w-64 bg-card border border-border rounded-lg shadow-sm">
             <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted" />
@@ -415,7 +415,7 @@ export default function AdminDashboard() {
             />
           </div>
         </div>
-        
+
         {!summary?.partnerPerformance || summary.partnerPerformance.length === 0 ? (
           <p className="text-xs text-muted py-4 text-center">Chưa có dữ liệu hiệu suất đối tác.</p>
         ) : sortedPartners.length === 0 ? (
@@ -426,8 +426,8 @@ export default function AdminDashboard() {
               <table className="w-full border-collapse text-left text-xs">
                 <thead className="border-b border-border bg-secondary/15 font-semibold text-muted uppercase">
                   <tr>
-                    <th 
-                      onClick={() => handleSort('companyName')} 
+                    <th
+                      onClick={() => handleSort('companyName')}
                       className="px-4 py-3 cursor-pointer hover:text-foreground transition-colors select-none"
                     >
                       <div className="flex items-center gap-1">
@@ -435,8 +435,8 @@ export default function AdminDashboard() {
                         <ArrowUpDown className="h-3 w-3" />
                       </div>
                     </th>
-                    <th 
-                      onClick={() => handleSort('totalCampaigns')} 
+                    <th
+                      onClick={() => handleSort('totalCampaigns')}
                       className="px-4 py-3 cursor-pointer hover:text-foreground transition-colors select-none"
                     >
                       <div className="flex items-center gap-1">
@@ -444,8 +444,8 @@ export default function AdminDashboard() {
                         <ArrowUpDown className="h-3 w-3" />
                       </div>
                     </th>
-                    <th 
-                      onClick={() => handleSort('vouchersSold')} 
+                    <th
+                      onClick={() => handleSort('vouchersSold')}
                       className="px-4 py-3 cursor-pointer hover:text-foreground transition-colors select-none"
                     >
                       <div className="flex items-center gap-1">
@@ -453,8 +453,8 @@ export default function AdminDashboard() {
                         <ArrowUpDown className="h-3 w-3" />
                       </div>
                     </th>
-                    <th 
-                      onClick={() => handleSort('revenue')} 
+                    <th
+                      onClick={() => handleSort('revenue')}
                       className="px-4 py-3 cursor-pointer hover:text-foreground transition-colors select-none"
                     >
                       <div className="flex items-center gap-1">
@@ -462,8 +462,8 @@ export default function AdminDashboard() {
                         <ArrowUpDown className="h-3 w-3" />
                       </div>
                     </th>
-                    <th 
-                      onClick={() => handleSort('usageRate')} 
+                    <th
+                      onClick={() => handleSort('usageRate')}
                       className="px-4 py-3 cursor-pointer hover:text-foreground transition-colors select-none"
                     >
                       <div className="flex items-center gap-1">
@@ -484,8 +484,8 @@ export default function AdminDashboard() {
                         <div className="flex items-center gap-2">
                           <span className="w-8 shrink-0">{partner.usageRate}%</span>
                           <div className="h-1.5 w-16 bg-secondary rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-emerald-500 rounded-full" 
+                            <div
+                              className="h-full bg-emerald-500 rounded-full"
                               style={{ width: `${partner.usageRate}%` }}
                             />
                           </div>

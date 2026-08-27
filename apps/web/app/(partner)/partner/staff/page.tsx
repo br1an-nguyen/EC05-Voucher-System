@@ -5,13 +5,13 @@ import { apiRequest } from '../../../../lib/api';
 import { getErrorMessage } from '../../../../lib/errors';
 import { useAuth } from '../../../../context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { 
-  Users, 
-  UserPlus, 
-  Store, 
-  Mail, 
-  Lock, 
-  User, 
+import {
+  Users,
+  UserPlus,
+  Store,
+  Mail,
+  Lock,
+  User,
   Phone,
   AlertCircle,
   CheckCircle,
@@ -57,7 +57,7 @@ const createStaffSchema = z.object({
   password: z
     .string()
     .min(1, 'Vui lòng nhập mật khẩu.')
-    .min(6, 'Mật khẩu phải có ít nhất 6 ký tự.'),
+    .min(6, 'Mật khẩu phải có ít nhất 8 ký tự.'),
   confirmPassword: z.string().min(1, 'Vui lòng xác nhận lại mật khẩu.'),
   fullName: z.string().min(2, 'Họ và tên phải dài ít nhất 2 ký tự.'),
   phone: z
@@ -117,7 +117,7 @@ const editStaffSchema = z.object({
   }
   return true;
 }, {
-  message: 'Mật khẩu mới phải có ít nhất 6 ký tự.',
+  message: 'Mật khẩu mới phải có ít nhất 8 ký tự.',
   path: ['password'],
 });
 
@@ -374,7 +374,7 @@ export default function PartnerStaffPage() {
   };
 
   const filteredStaff = useMemo(() => {
-    return staffList.filter(s => 
+    return staffList.filter(s =>
       (s.fullName && s.fullName.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (s.email && s.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (s.phone && s.phone.includes(searchTerm))
@@ -391,7 +391,7 @@ export default function PartnerStaffPage() {
 
   return (
     <div className="space-y-6">
-      
+
       {/* BREADCRUMB */}
       <div className="flex items-center gap-2 text-xs text-muted">
         <span>Đối tác</span>
@@ -540,170 +540,170 @@ export default function PartnerStaffPage() {
       {/* MODAL 1: THÊM NHÂN VIÊN MỚI */}
       <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
         <DialogContent className="flex h-[min(84vh,720px)] w-[min(92vw,520px)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-[520px]">
-            <DialogHeader className="shrink-0 border-b border-border px-4 py-3 pr-12 text-left">
-              <DialogTitle className="text-sm">Thêm nhân viên mới</DialogTitle>
-              <DialogDescription className="text-[10px]">
-                Tạo tài khoản phụ trách cho nhân viên đứng quầy thu ngân.
-              </DialogDescription>
-            </DialogHeader>
+          <DialogHeader className="shrink-0 border-b border-border px-4 py-3 pr-12 text-left">
+            <DialogTitle className="text-sm">Thêm nhân viên mới</DialogTitle>
+            <DialogDescription className="text-[10px]">
+              Tạo tài khoản phụ trách cho nhân viên đứng quầy thu ngân.
+            </DialogDescription>
+          </DialogHeader>
 
-            <form ref={createFormRef} onSubmit={handleSubmitCreate(onCreateSubmit)} className="flex-1 space-y-2 overflow-y-auto p-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-              
-              {/* Chi nhánh */}
-              <div className="space-y-1">
-                <label id="create-staff-branch-label" className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Chi nhánh gán cố định</label>
-                <Controller
-                  name="branchId"
-                  control={controlCreate}
-                  render={({ field }) => (
-                    <Select
-                      name={field.name}
-                      items={branches.map((branch) => ({ label: branch.name, value: branch.branchId }))}
-                      value={field.value || null}
-                      onValueChange={(value) => field.onChange(value ?? '')}
+          <form ref={createFormRef} onSubmit={handleSubmitCreate(onCreateSubmit)} className="flex-1 space-y-2 overflow-y-auto p-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+
+            {/* Chi nhánh */}
+            <div className="space-y-1">
+              <label id="create-staff-branch-label" className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Chi nhánh gán cố định</label>
+              <Controller
+                name="branchId"
+                control={controlCreate}
+                render={({ field }) => (
+                  <Select
+                    name={field.name}
+                    items={branches.map((branch) => ({ label: branch.name, value: branch.branchId }))}
+                    value={field.value || null}
+                    onValueChange={(value) => field.onChange(value ?? '')}
+                  >
+                    <SelectTrigger
+                      data-field-name="branchId"
+                      aria-labelledby="create-staff-branch-label"
+                      aria-invalid={Boolean(errorsCreate.branchId)}
+                      className="w-full text-[11px]"
+                      size="sm"
                     >
-                      <SelectTrigger
-                        data-field-name="branchId"
-                        aria-labelledby="create-staff-branch-label"
-                        aria-invalid={Boolean(errorsCreate.branchId)}
-                        className="w-full text-[11px]"
-                        size="sm"
-                      >
-                        <SelectValue placeholder="Chọn chi nhánh cửa hàng" />
-                      </SelectTrigger>
-                      <SelectContent align="start" alignItemWithTrigger={false}>
-                        {branches.map((branch) => (
-                          <SelectItem key={branch.branchId} value={branch.branchId}>
-                            {branch.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
+                      <SelectValue placeholder="Chọn chi nhánh cửa hàng" />
+                    </SelectTrigger>
+                    <SelectContent align="start" alignItemWithTrigger={false}>
+                      {branches.map((branch) => (
+                        <SelectItem key={branch.branchId} value={branch.branchId}>
+                          {branch.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              {errorsCreate.branchId && (
+                <p className="text-[9px] text-red-500">{errorsCreate.branchId.message}</p>
+              )}
+            </div>
+
+            {/* Họ tên */}
+            <div className="space-y-1">
+              <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Họ và tên nhân viên</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Ví dụ: Nguyễn Văn A"
+                  {...registerCreate('fullName')}
+                  className="block w-full rounded-lg border border-border bg-card py-1.5 pl-8 pr-2.5 text-[11px] text-foreground focus:border-primary focus:outline-none"
                 />
-                {errorsCreate.branchId && (
-                  <p className="text-[9px] text-red-500">{errorsCreate.branchId.message}</p>
-                )}
+                <User className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
               </div>
+              {errorsCreate.fullName && (
+                <p className="text-[9px] text-red-500">{errorsCreate.fullName.message}</p>
+              )}
+            </div>
 
-              {/* Họ tên */}
-              <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Họ và tên nhân viên</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Ví dụ: Nguyễn Văn A"
-                    {...registerCreate('fullName')}
-                    className="block w-full rounded-lg border border-border bg-card py-1.5 pl-8 pr-2.5 text-[11px] text-foreground focus:border-primary focus:outline-none"
-                  />
-                  <User className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
-                </div>
-                {errorsCreate.fullName && (
-                  <p className="text-[9px] text-red-500">{errorsCreate.fullName.message}</p>
-                )}
+            {/* Email */}
+            <div className="space-y-1">
+              <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Địa chỉ Email đăng nhập</label>
+              <div className="relative">
+                <input
+                  type="email"
+                  placeholder="staff@company.com"
+                  {...registerCreate('email')}
+                  className="block w-full rounded-lg border border-border bg-card py-1.5 pl-8 pr-2.5 text-[11px] text-foreground focus:border-primary focus:outline-none"
+                />
+                <Mail className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
               </div>
+              {errorsCreate.email && (
+                <p className="text-[9px] text-red-500">{errorsCreate.email.message}</p>
+              )}
+            </div>
 
-              {/* Email */}
-              <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Địa chỉ Email đăng nhập</label>
-                <div className="relative">
-                  <input
-                    type="email"
-                    placeholder="staff@company.com"
-                    {...registerCreate('email')}
-                    className="block w-full rounded-lg border border-border bg-card py-1.5 pl-8 pr-2.5 text-[11px] text-foreground focus:border-primary focus:outline-none"
-                  />
-                  <Mail className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
-                </div>
-                {errorsCreate.email && (
-                  <p className="text-[9px] text-red-500">{errorsCreate.email.message}</p>
-                )}
-              </div>
-
-              {/* Password */}
-              <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Mật khẩu ban đầu</label>
-                <div className="relative">
-                  <input
-                    type={showPass ? 'text' : 'password'}
-                    placeholder="Tối thiểu 6 ký tự"
-                    {...registerCreate('password')}
-                    className="block w-full rounded-lg border border-border bg-card py-1.5 pl-8 pr-8 text-[11px] text-foreground focus:border-primary focus:outline-none"
-                  />
-                  <Lock className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
-                  <button
-                    type="button"
-                    onClick={() => setShowPass(!showPass)}
-                    className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400 hover:text-foreground"
-                  >
-                    {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                {errorsCreate.password && (
-                  <p className="text-[9px] text-red-500">{errorsCreate.password.message}</p>
-                )}
-              </div>
-
-              {/* Confirm Password */}
-              <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Nhập lại mật khẩu</label>
-                <div className="relative">
-                  <input
-                    type={showConfirmPass ? 'text' : 'password'}
-                    placeholder="Xác nhận trùng khớp mật khẩu"
-                    {...registerCreate('confirmPassword')}
-                    className="block w-full rounded-lg border border-border bg-card py-1.5 pl-8 pr-8 text-[11px] text-foreground focus:border-primary focus:outline-none"
-                  />
-                  <Lock className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPass(!showConfirmPass)}
-                    className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400 hover:text-foreground"
-                  >
-                    {showConfirmPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                {errorsCreate.confirmPassword && (
-                  <p className="text-[9px] text-red-500">{errorsCreate.confirmPassword.message}</p>
-                )}
-              </div>
-
-              {/* Điện thoại */}
-              <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Số điện thoại</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Ví dụ: 0987654321"
-                    {...registerCreate('phone')}
-                    className="block w-full rounded-lg border border-border bg-card py-1.5 pl-8 pr-2.5 text-[11px] text-foreground focus:border-primary focus:outline-none"
-                  />
-                  <Phone className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
-                </div>
-                {errorsCreate.phone && (
-                  <p className="text-[9px] text-red-500">{errorsCreate.phone.message}</p>
-                )}
-              </div>
-
-              {/* Actions */}
-              <div className="flex gap-2 justify-end pt-2 border-t border-border/60">
+            {/* Password */}
+            <div className="space-y-1">
+              <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Mật khẩu ban đầu</label>
+              <div className="relative">
+                <input
+                  type={showPass ? 'text' : 'password'}
+                  placeholder="Tối thiểu 8 ký tự"
+                  {...registerCreate('password')}
+                  className="block w-full rounded-lg border border-border bg-card py-1.5 pl-8 pr-8 text-[11px] text-foreground focus:border-primary focus:outline-none"
+                />
+                <Lock className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
                 <button
                   type="button"
-                  onClick={() => setCreateModalOpen(false)}
-                  className="px-3 py-2 rounded-xl border border-border hover:bg-slate-50 text-foreground text-xs font-bold transition-colors"
+                  onClick={() => setShowPass(!showPass)}
+                  className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400 hover:text-foreground"
                 >
-                  Hủy bỏ
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-3 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold transition-colors disabled:opacity-50"
-                >
-                  {submitting ? 'Đang tạo...' : 'Tạo tài khoản'}
+                  {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
+              {errorsCreate.password && (
+                <p className="text-[9px] text-red-500">{errorsCreate.password.message}</p>
+              )}
+            </div>
 
-            </form>
+            {/* Confirm Password */}
+            <div className="space-y-1">
+              <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Nhập lại mật khẩu</label>
+              <div className="relative">
+                <input
+                  type={showConfirmPass ? 'text' : 'password'}
+                  placeholder="Xác nhận trùng khớp mật khẩu"
+                  {...registerCreate('confirmPassword')}
+                  className="block w-full rounded-lg border border-border bg-card py-1.5 pl-8 pr-8 text-[11px] text-foreground focus:border-primary focus:outline-none"
+                />
+                <Lock className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPass(!showConfirmPass)}
+                  className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400 hover:text-foreground"
+                >
+                  {showConfirmPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {errorsCreate.confirmPassword && (
+                <p className="text-[9px] text-red-500">{errorsCreate.confirmPassword.message}</p>
+              )}
+            </div>
+
+            {/* Điện thoại */}
+            <div className="space-y-1">
+              <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Số điện thoại</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Ví dụ: 0987654321"
+                  {...registerCreate('phone')}
+                  className="block w-full rounded-lg border border-border bg-card py-1.5 pl-8 pr-2.5 text-[11px] text-foreground focus:border-primary focus:outline-none"
+                />
+                <Phone className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
+              </div>
+              {errorsCreate.phone && (
+                <p className="text-[9px] text-red-500">{errorsCreate.phone.message}</p>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2 justify-end pt-2 border-t border-border/60">
+              <button
+                type="button"
+                onClick={() => setCreateModalOpen(false)}
+                className="px-3 py-2 rounded-xl border border-border hover:bg-slate-50 text-foreground text-xs font-bold transition-colors"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="px-3 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold transition-colors disabled:opacity-50"
+              >
+                {submitting ? 'Đang tạo...' : 'Tạo tài khoản'}
+              </button>
+            </div>
+
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -725,7 +725,7 @@ export default function PartnerStaffPage() {
             </DialogHeader>
 
             <form ref={editFormRef} onSubmit={handleSubmitEdit(onEditSubmit)} className="flex-1 space-y-2 overflow-y-auto p-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-              
+
               {/* Chi nhánh */}
               <div className="space-y-1">
                 <label id="edit-staff-branch-label" className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Chi nhánh gán làm việc</label>

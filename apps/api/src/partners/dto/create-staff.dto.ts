@@ -6,7 +6,7 @@ export class CreateStaffDto {
   email: string;
 
   @IsString()
-  @MinLength(6, { message: 'Mật khẩu phải chứa ít nhất 6 ký tự.' })
+  @MinLength(6, { message: 'Mật khẩu phải chứa ít nhất 8 ký tự.' })
   password: string;
 
   @IsString()
