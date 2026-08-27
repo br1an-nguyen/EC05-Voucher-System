@@ -21,6 +21,7 @@ import {
   Building2,
   LayoutDashboard,
   WalletCards,
+  MessageSquareWarning,
 } from 'lucide-react';
 import {
   Sheet,
@@ -102,7 +103,7 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
               const isCheckout = pathname.startsWith('/checkout');
               const urlParams = new URLSearchParams(window.location.search);
               const checkoutItems = urlParams.get('items')?.split(',') || [];
-              
+
               data.forEach(item => {
                 if (isCheckout && item.cartItemId && checkoutItems.includes(item.cartItemId)) {
                   return;
@@ -347,6 +348,11 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
                       <Ticket className="h-6 w-6" />
                     </Link>
                   )}
+                  {pathname !== '/customer/complaints' && (
+                    <Link href="/customer/complaints" className="p-2 text-slate-600 hover:text-primary transition-colors" title="Hỗ trợ & Khiếu nại">
+                      <MessageSquareWarning className="h-6 w-6" />
+                    </Link>
+                  )}
                 </>
               )}
               
@@ -520,6 +526,12 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
                       <Link href="/customer/vouchers" onClick={closeMobileNavigation} className="flex min-h-11 items-center gap-3 rounded-ui-md px-3 py-2.5 text-sm font-bold text-foreground hover:bg-surface-subtle">
                         <WalletCards className="h-5 w-5 text-brand" aria-hidden="true" />
                         Ví voucher
+                      </Link>
+                    )}
+                    {pathname !== '/customer/complaints' && (
+                      <Link href="/customer/complaints" onClick={closeMobileNavigation} className="flex min-h-11 items-center gap-3 rounded-ui-md px-3 py-2.5 text-sm font-bold text-foreground hover:bg-surface-subtle">
+                        <MessageSquareWarning className="h-5 w-5 text-brand" aria-hidden="true" />
+                        Khiếu nại & Hỗ trợ
                       </Link>
                     )}
                   </>

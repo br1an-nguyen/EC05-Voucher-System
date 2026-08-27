@@ -28,7 +28,7 @@ export class PaymentFinalizationService {
    * Hoàn tất giao dịch thanh toán và phát hành mã voucher (Idempotent).
    * Sử dụng SELECT FOR UPDATE để khóa dòng đơn hàng và các chiến dịch voucher.
    * @param paymentId ID giao dịch thanh toán cục bộ
-   * @param providerTransactionId ID giao dịch từ cổng thanh toán bên thứ ba (Stripe/PayPal/VNPay)
+   * @param providerTransactionId ID giao dịch từ cổng thanh toán bên thứ ba (Stripe/PayPal/ZaloPay/MoMo)
    */
   async finalizePayment(
     paymentId: string,

@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, Req, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Param,
+  Body,
+  UseGuards,
+  Req,
+  Query,
+} from '@nestjs/common';
 import { VouchersService } from './vouchers.service';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 import { UpdateCampaignDto } from './dto/update-campaign.dto';
@@ -44,6 +55,15 @@ export class VouchersController {
   }
 
   /**
+   * Danh sách đối tác có voucher đang mở bán, dùng cho bộ lọc catalog.
+   * GET /vouchers/partners
+   */
+  @Get('partners')
+  async findPublicPartners() {
+    return this.vouchersService.findPublicPartners();
+  }
+
+  /**
    * Tạo chiến dịch voucher mới ở dạng nháp.
    * POST /vouchers
    */
@@ -72,10 +92,7 @@ export class VouchersController {
   @Post('redeem')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.PARTNER, UserRole.PARTNER_STAFF, UserRole.ADMIN)
-  async redeemVoucher(
-    @Req() req: any,
-    @Body() dto: RedeemVoucherDto,
-  ) {
+  async redeemVoucher(@Req() req: any, @Body() dto: RedeemVoucherDto) {
     return this.vouchersService.redeemVoucher(
       req.user,
       dto.uniqueCode,
@@ -95,7 +112,11 @@ export class VouchersController {
     @Param('id') campaignId: string,
     @Body() updateCampaignDto: UpdateCampaignDto,
   ) {
-    return this.vouchersService.update(req.user.userId, campaignId, updateCampaignDto);
+    return this.vouchersService.update(
+      req.user.userId,
+      campaignId,
+      updateCampaignDto,
+    );
   }
 
   /**
@@ -140,7 +161,6 @@ export class VouchersController {
     return this.vouchersService.findOne(campaignId);
   }
 
-
   // ================= ADMIN ENDPOINTS =================
 
   /**
@@ -162,7 +182,10 @@ export class VouchersController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   async adminApproveCampaign(@Req() req: any, @Param('id') campaignId: string) {
-    return this.vouchersService.adminApproveCampaign(req.user.userId, campaignId);
+    return this.vouchersService.adminApproveCampaign(
+      req.user.userId,
+      campaignId,
+    );
   }
 
   /**
@@ -173,7 +196,10 @@ export class VouchersController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   async adminRejectCampaign(@Req() req: any, @Param('id') campaignId: string) {
-    return this.vouchersService.adminRejectCampaign(req.user.userId, campaignId);
+    return this.vouchersService.adminRejectCampaign(
+      req.user.userId,
+      campaignId,
+    );
   }
 
   /**
@@ -195,12 +221,18 @@ export class VouchersController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   async adminCreateCategory(
+    @Req() req: any,
     @Body('code') code: string,
     @Body('nameVi') nameVi: string,
     @Body('parentId') parentId?: string,
     @Body('displayOrder') displayOrder?: number,
   ) {
-    return this.vouchersService.adminCreateCategory({ code, nameVi, parentId, displayOrder });
+    return this.vouchersService.adminCreateCategory(req.user.userId, {
+      code,
+      nameVi,
+      parentId,
+      displayOrder,
+    });
   }
 
   /**
@@ -211,13 +243,18 @@ export class VouchersController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   async adminUpdateCategory(
+    @Req() req: any,
     @Param('id') categoryId: string,
     @Body('nameVi') nameVi?: string,
     @Body('parentId') parentId?: string,
     @Body('displayOrder') displayOrder?: number,
     @Body('isActive') isActive?: boolean,
   ) {
-    return this.vouchersService.adminUpdateCategory(categoryId, { nameVi, parentId, displayOrder, isActive });
+    return this.vouchersService.adminUpdateCategory(
+      req.user.userId,
+      categoryId,
+      { nameVi, parentId, displayOrder, isActive },
+    );
   }
 
   /**
@@ -227,8 +264,11 @@ export class VouchersController {
   @Delete('admin/categories/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-  async adminDeleteCategory(@Param('id') categoryId: string) {
-    return this.vouchersService.adminDeleteCategory(categoryId);
+  async adminDeleteCategory(@Req() req: any, @Param('id') categoryId: string) {
+    return this.vouchersService.adminDeleteCategory(
+      req.user.userId,
+      categoryId,
+    );
   }
 
   /**
@@ -257,6 +297,32 @@ export class VouchersController {
     @Param('id') campaignId: string,
     @Body('status') status: VoucherStatus,
   ) {
-    return this.vouchersService.adminUpdateCampaignStatus(req.user.userId, campaignId, status);
+    return this.vouchersService.adminUpdateCampaignStatus(
+      req.user.userId,
+      campaignId,
+      status,
+    );
+  }
+
+  /**
+   * Admin/Partner: Khóa mã voucher ngưng cho phép đổi mã.
+   * PATCH /vouchers/codes/:codeId/lock
+   */
+  @Patch('codes/:codeId/lock')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.PARTNER)
+  async lockVoucherCode(@Req() req: any, @Param('codeId') codeId: string) {
+    return this.vouchersService.lockVoucherCode(req.user, codeId);
+  }
+
+  /**
+   * Admin/Partner: Mở khóa mã voucher.
+   * PATCH /vouchers/codes/:codeId/unlock
+   */
+  @Patch('codes/:codeId/unlock')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.PARTNER)
+  async unlockVoucherCode(@Req() req: any, @Param('codeId') codeId: string) {
+    return this.vouchersService.unlockVoucherCode(req.user, codeId);
   }
 }

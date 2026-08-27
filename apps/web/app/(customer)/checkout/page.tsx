@@ -96,11 +96,11 @@ function CheckoutPageContent() {
     try {
       const data = await apiRequest<CartItem[]>('/cart');
       let filteredData = data;
-      
+
       if (selectedIds && selectedIds.length > 0) {
         filteredData = data.filter(item => selectedIds.includes(item.cartItemId));
       }
-      
+
       setCartItems(filteredData);
       if (filteredData.length === 0) {
         router.push('/cart');
@@ -539,9 +539,23 @@ function CheckoutPageContent() {
                 </div>
               </div>
 
-              <div className="rounded-lg bg-yellow-50 border border-yellow-100 p-3 flex gap-2 text-[10px] text-yellow-800">
-                <Info className="h-4 w-4 text-yellow-600 shrink-0 mt-0.5" />
-                <span>Nhấn nút đặt mua sẽ khoá dòng dữ liệu để giữ chỗ voucher trong 15 phút.</span>
+              <div className="space-y-3">
+                <div className="rounded-lg bg-yellow-50 border border-yellow-100 p-3 flex gap-2 text-[10px] text-yellow-800">
+                  <Info className="h-4 w-4 text-yellow-600 shrink-0 mt-0.5" />
+                  <span>Nhấn nút đặt mua sẽ khoá dòng dữ liệu để giữ chỗ voucher trong 15 phút.</span>
+                </div>
+                
+                <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-[10px] text-slate-600">
+                  <h4 className="font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                    <ShieldAlert className="h-3.5 w-3.5 text-primary" />
+                    Chính sách Hủy / Hoàn tiền
+                  </h4>
+                  <ul className="list-disc pl-4 space-y-1">
+                    <li>Bạn có thể hủy đơn hàng chưa thanh toán bất cứ lúc nào.</li>
+                    <li>Voucher đã thanh toán nhưng chưa sử dụng và chưa hết hạn có thể gửi yêu cầu hoàn tiền (Refund).</li>
+                    <li>Voucher đã sử dụng hoặc quá hạn sẽ không được hoàn tiền dưới bất kỳ hình thức nào.</li>
+                  </ul>
+                </div>
               </div>
 
               <button

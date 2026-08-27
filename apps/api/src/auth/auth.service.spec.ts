@@ -1,6 +1,7 @@
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { UserRole, UserStatus } from '@prisma/client';
 import { AuthService } from './auth.service';
+import { createHash } from 'crypto';
 
 describe('AuthService', () => {
   const mockUser = {
@@ -200,5 +201,98 @@ describe('AuthService', () => {
       where: { userId: mockUser.userId, revokedAt: null },
       data: { revokedAt: expect.any(Date) },
     });
+  });
+
+  it('does not allow account verification to unlock a locked account', async () => {
+    const updateMany = jest.fn();
+    const service = createService({
+      users: {
+        findByEmail: jest.fn().mockResolvedValue({
+          ...mockUser,
+          status: UserStatus.LOCKED,
+        }),
+      },
+      prisma: { user: { updateMany } },
+    });
+
+    await expect(
+      service.verifyAccount({
+        email: mockUser.email,
+        code: '123456',
+      }),
+    ).rejects.toThrow(BadRequestException);
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it('consumes a valid per-account verification code only once', async () => {
+    const pendingUser = {
+      ...mockUser,
+      status: UserStatus.PENDING_VERIFICATION,
+    };
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const service = createService({
+      users: { findByEmail: jest.fn().mockResolvedValue(pendingUser) },
+      prisma: { user: { updateMany } },
+    });
+    const code = '654321';
+    const expectedHash = createHash('sha256')
+      .update(`${pendingUser.userId}:${code}`)
+      .digest('hex');
+
+    await expect(
+      service.verifyAccount({ email: pendingUser.email, code }),
+    ).resolves.toEqual({
+      message: 'Xác thực tài khoản thành công! Bạn hiện có thể đăng nhập.',
+    });
+    expect(updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        userId: pendingUser.userId,
+        status: UserStatus.PENDING_VERIFICATION,
+        accountVerificationCodeHash: expectedHash,
+        accountVerificationExpiresAt: { gt: expect.any(Date) },
+      }),
+      data: {
+        status: UserStatus.ACTIVE,
+        accountVerificationCodeHash: null,
+        accountVerificationExpiresAt: null,
+      },
+    });
+  });
+
+  it('issues an expiring verification code without returning it', async () => {
+    const pendingUser = {
+      ...mockUser,
+      status: UserStatus.PENDING_VERIFICATION,
+    };
+    const delivery = { deliver: jest.fn() };
+    const userUpdate = jest.fn().mockResolvedValue(pendingUser);
+    const service = new AuthService(
+      { findByEmail: jest.fn().mockResolvedValue(pendingUser) } as any,
+      {} as any,
+      { user: { update: userUpdate } } as any,
+      {} as any,
+      undefined,
+      delivery as any,
+    );
+
+    const response = await service.requestAccountVerification({
+      email: pendingUser.email,
+    });
+
+    expect(response).not.toHaveProperty('code');
+    expect(userUpdate).toHaveBeenCalledWith({
+      where: { userId: pendingUser.userId },
+      data: {
+        accountVerificationCodeHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        accountVerificationExpiresAt: expect.any(Date),
+      },
+    });
+    expect(delivery.deliver).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identifier: pendingUser.email,
+        code: expect.stringMatching(/^\d{6}$/),
+        expiresAt: expect.any(Date),
+      }),
+    );
   });
 });
