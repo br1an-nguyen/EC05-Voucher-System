@@ -40,9 +40,10 @@ export class OrdersService {
         orderBy: { campaignId: 'asc' },
       });
 
-      if (dto.cartItemIds && dto.cartItemIds.length > 0) {
+      const selectedIds = dto.cartItemIds;
+      if (selectedIds && selectedIds.length > 0) {
         cartItems = cartItems.filter((item) =>
-          dto.cartItemIds.includes(item.cartItemId),
+          selectedIds.includes(item.cartItemId),
         );
       }
 
