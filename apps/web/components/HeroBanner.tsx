@@ -10,28 +10,28 @@ export default function HeroBanner() {
         <div className="absolute -bottom-28 left-[30%] h-64 w-64 rounded-full bg-rose-950/25 blur-3xl" aria-hidden="true" />
         <div className="absolute left-0 top-0 h-2 w-full bg-[linear-gradient(90deg,#fde68a_0%,#fff7ed_45%,#fda4af_100%)]" aria-hidden="true" />
 
-        <div className="relative grid items-center gap-10 px-6 py-12 sm:px-10 sm:py-14 lg:grid-cols-[1.04fr_.96fr] lg:px-16 lg:py-16">
+        <div className="relative grid items-center gap-8 px-5 py-10 sm:gap-10 sm:px-10 sm:py-14 lg:grid-cols-[1.04fr_.96fr] lg:px-16 lg:py-16">
           <div className="max-w-2xl text-white">
             <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/12 px-3.5 py-2 text-xs font-extrabold uppercase tracking-[0.16em] text-white backdrop-blur-md">
               <Sparkles className="h-4 w-4 text-amber-200" aria-hidden="true" />
               Marketplace voucher điện tử
             </div>
 
-            <h1 id="landing-hero-title" className="max-w-2xl font-black leading-[1.03] tracking-[-0.045em] text-white">
+            <h1 id="landing-hero-title" className="max-w-2xl text-4xl sm:text-5xl lg:text-6xl font-black leading-[1.15] sm:leading-[1.05] tracking-[-0.045em] text-white">
               Săn ưu đãi có chọn lọc.
-              <span className="block text-amber-200">Tận hưởng đúng khoảnh khắc.</span>
+              <span className="block text-amber-200 mt-2 sm:mt-1">Tận hưởng đúng khoảnh khắc.</span>
             </h1>
 
-            <p className="mt-6 max-w-xl text-sm leading-relaxed text-orange-50 sm:text-base">
+            <p className="mt-5 sm:mt-6 max-w-xl text-sm sm:text-base leading-relaxed text-orange-50">
               Chạm vào những trải nghiệm đáng giá từ đối tác đã được kiểm duyệt. Mua nhanh, nhận QR riêng và dùng đúng tại chi nhánh.
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Link href="/register" className="group inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-white px-6 py-3 font-extrabold text-primary shadow-lg shadow-orange-950/20 transition duration-300 hover:-translate-y-1 hover:bg-orange-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+              <Link href="/register" className="group w-full sm:w-auto inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-white px-6 py-3 font-extrabold text-primary shadow-lg shadow-orange-950/20 transition duration-300 hover:-translate-y-1 hover:bg-orange-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
                 Bắt đầu săn ưu đãi
                 <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" aria-hidden="true" />
               </Link>
-              <a href="#how-it-works" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-white/30 bg-white/10 px-6 py-3 font-bold text-white backdrop-blur-sm transition duration-300 hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+              <a href="#how-it-works" className="w-full sm:w-auto inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-white/30 bg-white/10 px-6 py-3 font-bold text-white backdrop-blur-sm transition duration-300 hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
                 Xem cách hoạt động
               </a>
             </div>

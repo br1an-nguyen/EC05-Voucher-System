@@ -6,7 +6,14 @@ import { getErrorMessage } from '../lib/errors';
 import Header from '../components/Header';
 import FilterSidebar from '../components/FilterSidebar';
 import VoucherCard, { type VoucherCampaignCard } from '../components/VoucherCard';
-import { ArrowRight, ShieldAlert, Ticket, Grid, ArrowUpNarrowWide, ArrowDownWideNarrow } from 'lucide-react';
+import { ArrowRight, ShieldAlert, Ticket, Grid, ArrowUpNarrowWide, ArrowDownWideNarrow, Filter } from 'lucide-react';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '../components/ui/sheet';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 
@@ -283,8 +290,8 @@ function HomePageContent() {
 
       <main id="product-section" className="flex-grow max-w-7xl w-full mx-auto py-8 px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-4 gap-8">
         
-        {/* Sidebar */}
-        <div className="lg:col-span-1">
+        {/* Sidebar (Desktop) */}
+        <div className="hidden lg:block lg:col-span-1">
           <FilterSidebar
             category={category}
             categories={categories}
@@ -342,8 +349,68 @@ function HomePageContent() {
               </span>
             </div>
 
-            {/* Sort Buttons */}
-            <div className="flex flex-wrap items-center bg-slate-100 p-1 rounded-xl shrink-0 self-start sm:self-auto gap-1">
+            {/* Filter (Mobile) & Sort Buttons */}
+            <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4 w-full sm:w-auto self-start sm:self-auto overflow-x-auto pb-1 sm:pb-0">
+              <div className="lg:hidden shrink-0">
+                <Sheet>
+                  <SheetTrigger className="flex items-center gap-2 px-3 py-2 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-bold text-sm border border-primary/20">
+                      <Filter className="h-4 w-4" />
+                      Lọc & Sắp xếp
+                  </SheetTrigger>
+                  <SheetContent side="left" className="w-[min(22rem,88vw)] p-0">
+                    <SheetHeader className="p-0 border-0 hidden">
+                      <SheetTitle>Bộ lọc</SheetTitle>
+                    </SheetHeader>
+                    <div className="overflow-y-auto h-full">
+                      <FilterSidebar
+                        category={category}
+                        categories={categories}
+                        totalCampaigns={totalCampaigns}
+                        onCategoryChange={handleCategoryChange}
+                        province={province}
+                        provinces={provinces}
+                        onProvinceChange={handleProvinceChange}
+                        partnerId={partnerId}
+                        partners={partners}
+                        onPartnerChange={(p) => {
+                          setPartnerId(p);
+                          setPage(1);
+                          const filters = { ...currentFilters(), partnerId: p, page: 1 };
+                          updateBrowserFilters(filters);
+                          void fetchCatalog(filters);
+                          setTimeout(scrollToProducts, 50);
+                        }}
+                        validityStatus={validityStatus}
+                        onValidityChange={(s) => {
+                          setValidityStatus(s);
+                          setPage(1);
+                          const filters = { ...currentFilters(), validityStatus: s, page: 1 };
+                          updateBrowserFilters(filters);
+                          void fetchCatalog(filters);
+                          setTimeout(scrollToProducts, 50);
+                        }}
+                        minDiscount={minDiscount}
+                        onMinDiscountChange={(d) => setMinDiscount(d)}
+                        maxPrice={maxPrice}
+                        setMaxPrice={setMaxPrice}
+                        onFilter={handleSidebarFilter}
+                        onClear={handleClearFilters}
+                        onQuickPrice={(newPrice) => {
+                          setMaxPrice(newPrice);
+                          setPage(1);
+                          const filters = { ...currentFilters(), maxPrice: newPrice, page: 1 };
+                          updateBrowserFilters(filters);
+                          void fetchCatalog(filters);
+                          scrollToProducts();
+                        }}
+                      />
+                    </div>
+                  </SheetContent>
+                </Sheet>
+              </div>
+
+              {/* Sort Buttons */}
+              <div className="flex items-center bg-slate-100 p-1 rounded-xl shrink-0 gap-1">
               <button
                 onClick={() => {
                   const val = (sortPrice === 'asc' ? '' : 'asc') as 'asc' | 'desc' | '';
@@ -398,6 +465,7 @@ function HomePageContent() {
                 <ArrowDownWideNarrow className="h-4 w-4" />
                 <span className="hidden sm:inline">% Giảm</span>
               </button>
+            </div>
             </div>
           </div>
 

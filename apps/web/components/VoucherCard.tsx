@@ -274,7 +274,7 @@ export default function VoucherCard({
         </div>
 
         {/* Content Area */}
-        <div className="p-4 flex flex-col flex-grow">
+        <div className="p-3 sm:p-4 flex flex-col flex-grow">
           <h3
             className="text-sm font-bold text-slate-800 line-clamp-2 min-h-[40px] group-hover:text-primary transition-colors"
             title={c.title}
@@ -304,7 +304,7 @@ export default function VoucherCard({
             </span>
           </div>
 
-          <div className="mt-4 flex items-end justify-between">
+          <div className="mt-3 sm:mt-4 flex items-end justify-between">
             <div>
               <div className="text-xs text-slate-400 line-through font-medium mb-0.5">
                 {Number(c.originalPrice).toLocaleString("vi-VN")} đ
