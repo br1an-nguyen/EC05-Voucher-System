@@ -8,13 +8,18 @@ import { Prisma, User, UserStatus, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 
+import { AuditService } from '../audit/audit.service';
+
 /**
  * Service quản lý người dùng (Users), bao gồm các thao tác tìm kiếm,
  * khởi tạo và cập nhật trạng thái hoạt động của tài khoản.
  */
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private auditService: AuditService,
+  ) {}
 
   /**
    * Tìm kiếm người dùng bằng email duy nhất.
@@ -64,14 +69,15 @@ export class UsersService {
   /**
    * Cập nhật trạng thái hoạt động (ACTIVE/LOCKED) của người dùng.
    * Thường được gọi bởi các API quản trị hệ thống (Admin).
+   * @param adminId ID quản trị viên thực hiện (nếu có)
    * @param userId ID người dùng cần cập nhật
    * @param status Trạng thái mới cần áp dụng
    * @returns Bản ghi User sau khi cập nhật
    */
-  async updateStatus(userId: string, status: UserStatus): Promise<User> {
+  async updateStatus(adminId: string | null, userId: string, status: UserStatus): Promise<User> {
     const changedAt = new Date();
-    return this.prisma.$transaction(async (tx) => {
-      const user = await tx.user.update({
+    const user = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({
         where: { userId },
         data: { status },
       });
@@ -81,8 +87,19 @@ export class UsersService {
           data: { revokedAt: changedAt },
         });
       }
-      return user;
+      return updated;
     });
+
+    if (adminId) {
+      await this.auditService.logAction(
+        adminId,
+        status === UserStatus.LOCKED ? 'LOCK_USER' : 'UNLOCK_USER',
+        'User',
+        userId,
+      );
+    }
+
+    return user;
   }
 
   /**
@@ -221,24 +238,47 @@ export class UsersService {
 
   /**
    * Thay đổi vai trò người dùng (chỉ ADMIN).
-   * @param userId ID người dùng
+   * Đảm bảo tính nhất quán dữ liệu, thu hồi tất cả phiên đăng nhập hiện tại và ghi audit log.
+   * @param adminId ID quản trị viên thực hiện
+   * @param userId ID người dùng cần đổi vai trò
    * @param role Vai trò mới cần gán
    */
-  async adminUpdateRole(userId: string, role: UserRole) {
+  async adminUpdateRole(adminId: string, userId: string, role: UserRole) {
     const user = await this.prisma.user.findUnique({ where: { userId } });
     if (!user) {
       throw new NotFoundException('Người dùng không tồn tại.');
     }
-    
-    return this.prisma.user.update({
-      where: { userId },
-      data: { role },
-      select: {
-        userId: true,
-        email: true,
-        role: true,
-        status: true,
-      },
+
+    const changedAt = new Date();
+    const isPartnerRole = role === UserRole.PARTNER || role === UserRole.PARTNER_STAFF;
+
+    const updatedUser = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({
+        where: { userId },
+        data: {
+          role,
+          partnerId: isPartnerRole ? user.partnerId : null,
+          branchId: isPartnerRole ? user.branchId : null,
+        },
+        select: {
+          userId: true,
+          email: true,
+          role: true,
+          status: true,
+        },
+      });
+
+      // Thu hồi tất cả phiên đăng nhập active của người dùng để buộc re-authenticate với vai trò mới
+      await tx.authSession.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: changedAt },
+      });
+
+      return updated;
     });
+
+    await this.auditService.logAction(adminId, 'UPDATE_USER_ROLE', 'User', userId);
+
+    return updatedUser;
   }
 }

@@ -1,6 +1,11 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { ActivityCategory, UserRole } from '@prisma/client';
 
+/**
+ * Service ghi nhận nhật ký kiểm toán (Audit Logs) cho quản trị viên và nhật ký hoạt động (Activity Logs) cho toàn hệ thống.
+ * Đảm bảo không nuốt lỗi kiểm toán để đáp ứng yêu cầu NFR-06.
+ */
 @Injectable()
 export class AuditService {
   private readonly logger = new Logger(AuditService.name);
@@ -8,39 +13,68 @@ export class AuditService {
   constructor(private prisma: PrismaService) {}
 
   /**
-   * Ghi nhận lịch sử hoạt động quản trị của Admin (Idempotent Audit Logging).
+   * Ghi nhận lịch sử hoạt động quản trị của Admin.
+   * Ném ngoại lệ khi gặp lỗi để đảm bảo tính toàn vẹn nhật ký kiểm toán.
    * @param adminId ID quản trị viên thực hiện hành động
-   * @param actionType Loại hành động (vd: 'APPROVE_VOUCHER', 'REJECT_VOUCHER', 'APPROVE_PARTNER')
-   * @param targetEntity Tên bảng/thực thể bị tác động
+   * @param actionType Loại hành động (vd: 'APPROVE_VOUCHER', 'REJECT_VOUCHER', 'UPDATE_USER_ROLE')
+   * @param targetEntity Tên thực thể bị tác động (vd: 'VoucherCampaign', 'User')
    * @param targetId ID của thực thể bị tác động
    */
   async logAction(adminId: string, actionType: string, targetEntity: string, targetId: string | null) {
-    try {
-      // Tìm thông tin của admin để lấy snapshot tên và email lúc thực hiện
-      const admin = await this.prisma.user.findUnique({
-        where: { userId: adminId },
-      });
+    const admin = await this.prisma.user.findUnique({
+      where: { userId: adminId },
+    });
 
-      if (!admin) {
-        throw new NotFoundException(`Không tìm thấy tài khoản admin với ID: ${adminId}`);
-      }
-
-      const log = await this.prisma.auditLog.create({
-        data: {
-          adminId,
-          adminNameSnapshot: admin.fullName || 'Unknown Admin',
-          adminEmailSnapshot: admin.email,
-          actionType,
-          targetEntity,
-          targetId,
-        },
-      });
-
-      this.logger.log(`[AuditLog] Admin ${admin.fullName} (${admin.email}) thực hiện: ${actionType} trên ${targetEntity} (${targetId})`);
-      return log;
-    } catch (err: any) {
-      this.logger.error(`Lỗi khi ghi nhận audit log cho admin ${adminId}:`, err.stack);
+    if (!admin) {
+      throw new NotFoundException(`Không tìm thấy tài khoản admin với ID: ${adminId}`);
     }
+
+    const log = await this.prisma.auditLog.create({
+      data: {
+        adminId,
+        adminNameSnapshot: admin.fullName || 'Unknown Admin',
+        adminEmailSnapshot: admin.email,
+        actionType,
+        targetEntity,
+        targetId,
+      },
+    });
+
+    this.logger.log(`[AuditLog] Admin ${admin.fullName} (${admin.email}) thực hiện: ${actionType} trên ${targetEntity} (${targetId})`);
+    return log;
+  }
+
+  /**
+   * Ghi nhận lịch sử hoạt động tổng thể của người dùng/hệ thống (ActivityLog).
+   * @param data Thông tin hoạt động cần ghi nhận
+   */
+  async logActivity(data: {
+    actorUserId?: string | null;
+    actorRoleSnapshot?: UserRole | null;
+    category: ActivityCategory;
+    actionType: string;
+    targetEntity: string;
+    targetId?: string | null;
+    metadata?: any;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+  }) {
+    const log = await this.prisma.activityLog.create({
+      data: {
+        actorUserId: data.actorUserId || null,
+        actorRoleSnapshot: data.actorRoleSnapshot || null,
+        category: data.category,
+        actionType: data.actionType,
+        targetEntity: data.targetEntity,
+        targetId: data.targetId || null,
+        metadata: data.metadata ?? undefined,
+        ipAddress: data.ipAddress || null,
+        userAgent: data.userAgent || null,
+      },
+    });
+
+    this.logger.log(`[ActivityLog] [${data.category}] ${data.actionType} trên ${data.targetEntity} (${data.targetId})`);
+    return log;
   }
 
   /**

@@ -68,7 +68,7 @@ export class OrdersController {
    */
   @Post('admin/:id/refund')
   @Roles(UserRole.ADMIN)
-  async adminRefundOrder(@Param('id') orderId: string) {
-    return this.ordersService.adminRefundOrder(orderId);
+  async adminRefundOrder(@Req() req: any, @Param('id') orderId: string) {
+    return this.ordersService.adminRefundOrder(req.user.userId, orderId);
   }
 }

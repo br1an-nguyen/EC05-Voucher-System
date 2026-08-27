@@ -56,10 +56,11 @@ export class UsersController {
   @Patch('admin/:id/status')
   @Roles(UserRole.ADMIN)
   async adminUpdateStatus(
+    @Req() req: any,
     @Param('id') userId: string,
     @Body('status') status: UserStatus,
   ) {
-    return this.usersService.updateStatus(userId, status);
+    return this.usersService.updateStatus(req.user.userId, userId, status);
   }
 
   /**
@@ -69,9 +70,10 @@ export class UsersController {
   @Patch('admin/:id/role')
   @Roles(UserRole.ADMIN)
   async adminUpdateRole(
+    @Req() req: any,
     @Param('id') userId: string,
     @Body('role') role: UserRole,
   ) {
-    return this.usersService.adminUpdateRole(userId, role);
+    return this.usersService.adminUpdateRole(req.user.userId, userId, role);
   }
 }

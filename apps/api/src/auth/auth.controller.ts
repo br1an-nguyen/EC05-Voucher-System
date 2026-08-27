@@ -154,4 +154,15 @@ export class AuthController {
   async resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
     return this.authService.resetPassword(resetPasswordDto);
   }
+
+  /**
+   * Endpoint xác thực tài khoản mô phỏng (simulated account verification).
+   * POST /auth/verify-account
+   */
+  @Post('verify-account')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: MINUTE_MS } })
+  async verifyAccount(@Body() dto: { email?: string; phone?: string; code: string }) {
+    return this.authService.verifyAccount(dto);
+  }
 }

@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ConflictException,
   UnauthorizedException,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
@@ -329,6 +330,43 @@ export class AuthService {
     return {
       message: 'Mật khẩu đã được cập nhật thành công.',
     };
+  }
+
+  /**
+   * Xác thực tài khoản mô phỏng (Simulated verification) bằng OTP/Mã xác nhận.
+   */
+  async verifyAccount(dto: { email?: string; phone?: string; code: string }) {
+    const { email, phone, code } = dto;
+    if (!email && !phone) {
+      throw new BadRequestException(
+        'Vui lòng cung cấp email hoặc số điện thoại để xác thực.',
+      );
+    }
+
+    // Mã mô phỏng mặc định là '123456'
+    if (!code || code !== '123456') {
+      throw new BadRequestException('Mã xác thực không chính xác hoặc đã hết hạn.');
+    }
+
+    const normalizedEmail = email?.trim().toLowerCase();
+    const user = normalizedEmail
+      ? await this.usersService.findByEmail(normalizedEmail)
+      : await this.usersService.findByPhone(phone!);
+
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy tài khoản tương ứng.');
+    }
+
+    if (user.status === UserStatus.ACTIVE) {
+      return { message: 'Tài khoản đã được xác thực thành công từ trước.' };
+    }
+
+    await this.prisma.user.update({
+      where: { userId: user.userId },
+      data: { status: UserStatus.ACTIVE },
+    });
+
+    return { message: 'Xác thực tài khoản thành công! Bạn hiện có thể đăng nhập.' };
   }
 
   private hashToken(token: string): string {
