@@ -37,7 +37,7 @@ interface RegisterData extends LoginData {
 interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
-  login: (loginData: LoginData) => Promise<void>;
+  login: (loginData: LoginData, redirectPath?: string | null) => Promise<void>;
   register: (registerData: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   setUser: React.Dispatch<React.SetStateAction<AuthUser | null>>;
