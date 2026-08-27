@@ -265,7 +265,7 @@ export class AuthService {
     const frontendUrl =
       process.env.FRONTEND_URL?.trim() || 'http://localhost:3000';
     const resetUrl = `${frontendUrl.replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(resetToken)}`;
-    this.passwordResetDelivery?.deliver({
+    await this.passwordResetDelivery?.deliver({
       email: normalizedEmail,
       resetUrl,
       expiresAt: resetExpiresAt,

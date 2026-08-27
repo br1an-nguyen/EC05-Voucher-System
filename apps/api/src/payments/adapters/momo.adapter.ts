@@ -98,21 +98,21 @@ export class MomoAdapter implements PaymentProvider {
 
     const rawSignature = `accessKey=${this.accessKey}&amount=${amount}&extraData=${extraData}&message=${message}&orderId=${orderId}&orderInfo=${orderInfo}&orderType=${orderType}&partnerCode=${partnerCode}&payType=${payType}&requestId=${requestId}&responseTime=${responseTime}&resultCode=${resultCode}&transId=${transId}`;
 
-    const calculatedSignature = crypto
+    const expectedSignature = crypto
       .createHmac('sha256', this.secretKey)
       .update(rawSignature)
       .digest('hex');
 
-    const isValid = calculatedSignature === signature;
+    this.logger.log(`[MOMO IPN] Received Signature: ${signature}`);
+    this.logger.log(`[MOMO IPN] Expected Signature: ${expectedSignature}`);
+    this.logger.log(`[MOMO IPN] Raw Signature String: ${rawSignature}`);
+
+    const isValid = expectedSignature === signature;
 
     if (!isValid) {
-      console.error('MOMO IPN SIGNATURE MISMATCH!');
-      console.error('Raw Signature String:', rawSignature);
-      console.error('Calculated:', calculatedSignature);
-      console.error('Received:', signature);
-      console.error('Request Body:', reqBody);
+      this.logger.error('[MOMO IPN] LỖI: Chữ ký IPN MoMo không hợp lệ!');
     } else {
-      console.log('MOMO IPN SUCCESS:', reqBody.orderId);
+      this.logger.log('MOMO IPN SUCCESS:', reqBody.orderId);
     }
 
     return {
