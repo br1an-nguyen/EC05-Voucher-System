@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
@@ -55,8 +55,43 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showMobileSearch, setShowMobileSearch] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   
   const [cartItemCount, setCartItemCount] = useState(0);
+  const intentProcessedRef = useRef(false);
+
+  // Auto-intent processing
+  useEffect(() => {
+    if (user?.role === 'CUSTOMER' && typeof window !== 'undefined') {
+      if (intentProcessedRef.current) return;
+      
+      const urlParams = new URLSearchParams(window.location.search);
+      const intent = urlParams.get('intent');
+      const campaignId = urlParams.get('campaignId');
+
+      if (intent && campaignId) {
+        intentProcessedRef.current = true;
+        window.history.replaceState(null, '', pathname);
+        
+        apiRequest<any>('/cart/items', {
+          method: 'POST',
+          body: JSON.stringify({ campaignId, quantity: 1 }),
+        })
+          .then((data) => {
+            window.dispatchEvent(new Event('cart-updated'));
+            if (intent === 'buy_now') {
+              router.push(`/checkout?items=${data.cartItemId}`);
+            } else {
+              setToastMessage('Đã tự động thêm voucher vào giỏ hàng.');
+              setTimeout(() => setToastMessage(null), 3500);
+            }
+          })
+          .catch((err) => {
+            console.error('Failed to process intent', err);
+          });
+      }
+    }
+  }, [user, pathname, router]);
 
   useEffect(() => {
     const fetchCart = () => {
@@ -171,7 +206,14 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
           </span>
         </Link>
 
-        {/* Search Bar - Center */}
+        {/* Auto-intent Toast */}
+        {toastMessage && typeof document !== 'undefined' && (
+          <div className="fixed top-4 right-4 z-[100] bg-emerald-50 text-emerald-600 px-4 py-3 rounded-xl shadow-lg border border-emerald-100 font-bold text-sm animate-in slide-in-from-top-2 fade-in duration-300">
+            ✓ {toastMessage}
+          </div>
+        )}
+
+        {/* Tối ưu SEO cho header */}
         <div className="flex-1 max-w-2xl hidden md:block relative" onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}>
           <form onSubmit={handleSearch} className="relative flex items-center w-full">
             <input
