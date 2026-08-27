@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString, MaxLength, IsBoolean, IsEmail } from 'class-validator';
+import { IsEnum, IsOptional, IsString, MaxLength, IsBoolean, IsEmail, IsArray } from 'class-validator';
 import { PaymentProviderType } from '@prisma/client';
 
 export class CheckoutDto {
@@ -18,5 +18,10 @@ export class CheckoutDto {
   @IsEmail({}, { message: 'Email người nhận không đúng định dạng.' })
   @MaxLength(255)
   recipientEmail?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  cartItemIds?: string[];
 }
 

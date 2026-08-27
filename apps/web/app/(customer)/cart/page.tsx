@@ -48,8 +48,25 @@ export default function CartPage() {
   const router = useRouter();
   
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const toggleItemSelection = (cartItemId: string) => {
+    setSelectedItemIds(prev =>
+      prev.includes(cartItemId)
+        ? prev.filter(id => id !== cartItemId)
+        : [...prev, cartItemId]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedItemIds.length === cartItems.length) {
+      setSelectedItemIds([]);
+    } else {
+      setSelectedItemIds(cartItems.map(item => item.cartItemId));
+    }
+  };
 
   // Gọi API lấy giỏ hàng
   const fetchCart = async () => {
@@ -106,6 +123,7 @@ export default function CartPage() {
         method: 'DELETE',
       });
       setCartItems(prev => prev.filter(item => item.cartItemId !== cartItemId));
+      setSelectedItemIds(prev => prev.filter(id => id !== cartItemId));
     } catch (error: unknown) {
       setErrorMsg(getErrorMessage(error, 'Không thể xóa sản phẩm khỏi giỏ hàng.'));
     }
@@ -122,9 +140,14 @@ export default function CartPage() {
     );
   }
 
-  // Tính tổng tiền giỏ hàng
-  const totalAmount = cartItems.reduce(
+  // Tính tổng tiền giỏ hàng (chỉ tính những sản phẩm được chọn)
+  const selectedCartItems = cartItems.filter(item => selectedItemIds.includes(item.cartItemId));
+  const totalAmount = selectedCartItems.reduce(
     (sum, item) => sum + Number(item.campaign.salePrice) * item.quantity,
+    0
+  );
+  const totalSelectedQuantity = selectedCartItems.reduce(
+    (sum, item) => sum + item.quantity,
     0
   );
 
@@ -173,6 +196,18 @@ export default function CartPage() {
             
             {/* DANH SÁCH SẢN PHẨM (2 CỘT) */}
             <div className="lg:col-span-2 space-y-4">
+              <div className="flex items-center gap-3 p-4 rounded-xl border border-border bg-card shadow-sm mb-4">
+                <input
+                  type="checkbox"
+                  checked={cartItems.length > 0 && selectedItemIds.length === cartItems.length}
+                  onChange={toggleSelectAll}
+                  className="w-5 h-5 rounded border-border text-primary focus:ring-primary cursor-pointer"
+                />
+                <span className="text-sm font-bold text-foreground cursor-pointer select-none" onClick={toggleSelectAll}>
+                  Chọn tất cả ({cartItems.length})
+                </span>
+              </div>
+
               {cartItems.map((item) => {
                 const campaign = item.campaign;
                 const remaining = campaign.capacity - campaign.soldQuantity;
@@ -181,8 +216,14 @@ export default function CartPage() {
                 return (
                   <div
                     key={item.cartItemId}
-                    className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl border border-border bg-card shadow-sm"
+                    className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 rounded-xl border border-border bg-card shadow-sm"
                   >
+                    <input
+                      type="checkbox"
+                      checked={selectedItemIds.includes(item.cartItemId)}
+                      onChange={() => toggleItemSelection(item.cartItemId)}
+                      className="w-5 h-5 mt-1 sm:mt-0 rounded border-border text-primary focus:ring-primary cursor-pointer"
+                    />
                     <div className="flex-1">
                       <span className="inline-block text-[9px] font-bold text-primary bg-primary/5 rounded px-1.5 py-0.5 uppercase tracking-wide">
                         {campaign.category || 'Ẩm thực'}
@@ -254,9 +295,9 @@ export default function CartPage() {
                 
                 <div className="space-y-3 text-xs text-muted border-t border-border/60 pt-4">
                   <div className="flex items-center justify-between">
-                    <span>Số lượng voucher:</span>
+                    <span>Sản phẩm đã chọn:</span>
                     <span className="font-bold text-foreground">
-                      {cartItems.reduce((sum, item) => sum + item.quantity, 0)}
+                      {totalSelectedQuantity}
                     </span>
                   </div>
                   <div className="flex items-center justify-between border-t border-dashed border-border/40 pt-3">
@@ -272,13 +313,18 @@ export default function CartPage() {
                   <span>Giá bán trên đã bao gồm VAT. Voucher không thể quy đổi thành tiền mặt sau khi mua.</span>
                 </div>
 
-                <Link
-                  href="/checkout"
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary hover:bg-primary-hover text-white py-3 text-sm font-bold transition-colors shadow shadow-primary/10"
+                <button
+                  onClick={() => {
+                    if (selectedItemIds.length > 0) {
+                      router.push(`/checkout?items=${selectedItemIds.join(',')}`);
+                    }
+                  }}
+                  disabled={selectedItemIds.length === 0}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary hover:bg-primary-hover text-white py-3 text-sm font-bold transition-colors shadow shadow-primary/10 disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
                 >
-                  Đặt mua hàng
+                  Đặt mua hàng {selectedItemIds.length > 0 ? `(${selectedItemIds.length})` : ''}
                   <ArrowRight className="h-4 w-4" />
-                </Link>
+                </button>
               </div>
             </div>
 
