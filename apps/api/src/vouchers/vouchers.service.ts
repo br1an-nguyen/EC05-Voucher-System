@@ -830,8 +830,8 @@ export class VouchersService {
     } else if (validityStatus === 'UPCOMING') {
       whereClause.saleStartTime = { gt: now };
     } else {
-      // Mặc định: bỏ lọc saleEndTime để hiện thị dữ liệu mẫu cũ (seed) ở local
-      // whereClause.saleEndTime = { gte: now };
+      // Khôi phục bộ lọc saleEndTime mặc định để chỉ lấy voucher còn hạn
+      whereClause.saleEndTime = { gte: now };
     }
 
     if (partnerId) {
