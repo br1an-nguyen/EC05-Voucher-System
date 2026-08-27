@@ -283,13 +283,14 @@ export class PaymentsController {
    * POST /payments/momo/ipn
    */
   @Post('momo/ipn')
+  @HttpCode(HttpStatus.OK)
   async handleMomoIpn(@Req() req: any) {
     const body = req.body;
     try {
       const result = await this.momoAdapter.verifyAndParseNotification(body);
       const paymentId = body.orderId; // Adapter map paymentId to orderId
 
-      if (result.status === 'FAILED' && result.providerTransactionId === 'MOCK-MOMO-TX') {
+      if (result.status === 'FAILED') {
         return { resultCode: 99, message: 'Invalid signature' };
       }
 
@@ -324,6 +325,7 @@ export class PaymentsController {
         return { resultCode: 0, message: 'Success (Acknowledged failure)' };
       }
     } catch (err: any) {
+      console.error('[MOMO IPN] Error handling IPN:', err);
       return { resultCode: 99, message: err.message || 'Unknown error' };
     }
   }
