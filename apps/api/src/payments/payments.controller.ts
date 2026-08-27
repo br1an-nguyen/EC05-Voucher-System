@@ -285,6 +285,11 @@ export class PaymentsController {
   @Post('momo/ipn')
   @HttpCode(HttpStatus.OK)
   async handleMomoIpn(@Req() req: any) {
+    console.log('\n\n======================================================');
+    console.log('[MOMO IPN] INCOMING WEBHOOK REQUEST RECEIVED!');
+    console.log('[MOMO IPN] Headers:', req.headers);
+    console.log('[MOMO IPN] Body:', req.body);
+    console.log('======================================================\n');
     const body = req.body;
     try {
       const result = await this.momoAdapter.verifyAndParseNotification(body);

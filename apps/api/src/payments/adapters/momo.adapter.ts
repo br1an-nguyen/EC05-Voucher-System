@@ -54,6 +54,9 @@ export class MomoAdapter implements PaymentProvider {
     };
 
     try {
+      console.log('\n[MOMO API] Creating payment with payload:', JSON.stringify(requestBody, null, 2));
+      console.log(`[MOMO API] Expected IPN URL to receive webhook: ${ipnUrl}\n`);
+      
       const response = await fetch(this.apiUrl, {
         method: 'POST',
         headers: {
