@@ -9,8 +9,10 @@ import {
   MapPinned,
   QrCode,
   ShieldCheck,
+  Sparkles,
   Store,
   Ticket,
+  TrendingUp,
   Users,
 } from 'lucide-react';
 
@@ -102,31 +104,31 @@ export default function PartnerLandingPage() {
         </div>
       </header>
 
-      <main>
-        <section className="px-4 pt-6 sm:px-6 lg:px-8" aria-labelledby="partner-hero-title">
-          <div className="relative mx-auto grid w-full max-w-7xl items-center gap-12 overflow-hidden rounded-3xl bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.24),_transparent_36%),linear-gradient(135deg,#9a3412_0%,#ea580c_52%,#fb7185_100%)] px-6 py-14 text-white shadow-xl shadow-orange-950/10 sm:px-10 lg:grid-cols-[1.05fr_0.95fr] lg:px-16 lg:py-16">
+      <main className="overflow-hidden">
+        <section className="relative px-4 pt-6 sm:px-6 lg:px-8" aria-labelledby="partner-hero-title">
+          <div className="relative isolate mx-auto grid w-full max-w-7xl items-center gap-12 overflow-hidden rounded-[2rem] bg-[linear-gradient(122deg,#7c2d12_0%,#c2410c_45%,#f43f5e_100%)] px-6 py-14 text-white shadow-[0_28px_70px_-26px_rgba(124,45,18,.55)] sm:px-10 lg:grid-cols-[1.05fr_0.95fr] lg:px-16 lg:py-16">
+            <div className="absolute inset-0 opacity-25 [background-image:linear-gradient(rgba(255,255,255,.16)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.16)_1px,transparent_1px)] [background-size:32px_32px]" aria-hidden="true" />
             <div className="absolute -left-24 bottom-0 h-64 w-64 rounded-full bg-amber-300/20 blur-3xl" aria-hidden="true" />
+            <div className="absolute -right-16 top-0 h-64 w-64 rounded-full bg-rose-100/20 blur-3xl" aria-hidden="true" />
+            <div className="absolute left-0 top-0 h-2 w-full bg-[linear-gradient(90deg,#fde68a_0%,#fff7ed_45%,#fda4af_100%)]" aria-hidden="true" />
 
             <div className="relative max-w-2xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/15 px-3 py-1.5 text-xs font-extrabold uppercase tracking-[0.16em] text-white backdrop-blur-md">
-                <Building2 className="h-4 w-4 text-amber-200" aria-hidden="true" />
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/15 px-3.5 py-2 text-xs font-extrabold uppercase tracking-[0.16em] text-white backdrop-blur-md">
+                <Sparkles className="h-4 w-4 text-amber-200" aria-hidden="true" />
                 Nền tảng dành cho đối tác
               </div>
-              <h1 id="partner-hero-title" className="mt-6 max-w-2xl font-black leading-[1.08] tracking-tight text-white">
-                Biến ưu đãi thành một quy trình
-                <span className="block text-amber-200">dễ quản lý hơn.</span>
+              <h1 id="partner-hero-title" className="mt-6 max-w-2xl font-black leading-[1.03] tracking-[-0.045em] text-white">
+                Biến ưu đãi thành
+                <span className="block text-amber-200">một hệ vận hành sắc nét.</span>
               </h1>
               <p className="mt-5 max-w-xl text-sm leading-relaxed text-orange-50 sm:text-base">
-                Tạo chiến dịch voucher, quản lý chi nhánh và xác thực mã QR tại quầy trên cùng một hệ thống dành cho doanh nghiệp.
+                Tạo chiến dịch, kiểm soát điểm bán và xác thực mã QR tại quầy — mọi điểm chạm của doanh nghiệp trong một luồng rõ ràng.
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-                <Link
-                  href="/register"
-                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-white px-6 py-3 font-extrabold text-primary shadow-lg transition hover:-translate-y-0.5 hover:bg-orange-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-                >
+                <Link href="/register" className="group inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-white px-6 py-3 font-extrabold text-primary shadow-lg shadow-orange-950/20 transition duration-300 hover:-translate-y-1 hover:bg-orange-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
                   Đăng ký làm đối tác
-                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                  <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" aria-hidden="true" />
                 </Link>
                 <a
                   href="#partner-flow"
@@ -140,18 +142,29 @@ export default function PartnerLandingPage() {
                 <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
                 Tài khoản và chiến dịch cần được Admin phê duyệt trước khi vận hành.
               </p>
+
+              <div className="mt-7 grid max-w-xl grid-cols-3 divide-x divide-white/20 rounded-2xl border border-white/15 bg-slate-950/15 px-2 py-3 backdrop-blur-sm">
+                {[
+                  ['01', 'một dashboard'],
+                  ['QR', 'xác thực tại quầy'],
+                  ['24/7', 'nắm trạng thái'],
+                ].map(([value, label]) => (
+                  <div key={value} className="px-3 first:pl-2"><p className="font-black text-amber-200">{value}</p><p className="mt-0.5 text-[11px] font-semibold leading-tight text-orange-100">{label}</p></div>
+                ))}
+              </div>
             </div>
 
-            <div className="relative hidden min-h-80 lg:block" aria-hidden="true">
+            <div className="relative hidden min-h-[22rem] lg:block" aria-hidden="true">
               <div className="absolute inset-0 rounded-full bg-amber-200/20 blur-3xl" />
-              <div className="absolute inset-x-0 top-0 rounded-2xl border border-white/70 bg-white/95 p-5 text-slate-900 shadow-2xl shadow-orange-950/20">
+              <div className="absolute inset-x-0 top-0 overflow-hidden rounded-[1.65rem] border border-white/70 bg-white/95 p-5 text-slate-900 shadow-2xl shadow-orange-950/20 hero-float">
+                <div className="absolute right-0 top-0 h-20 w-20 rounded-bl-[2.5rem] bg-orange-100" />
                 <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                   <div>
                     <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-primary">Quy trình hệ thống</p>
                     <p className="mt-1 font-black">Vòng đời một chiến dịch</p>
                   </div>
                   <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-50 text-primary">
-                    <ClipboardCheck className="h-5 w-5" />
+                    <TrendingUp className="h-5 w-5" />
                   </span>
                 </div>
 
@@ -171,9 +184,12 @@ export default function PartnerLandingPage() {
                     </div>
                   ))}
                 </div>
+                <div className="mt-4 flex items-end gap-1.5 rounded-xl bg-slate-950 px-3 py-2.5">
+                  {[35, 52, 39, 68, 57, 82, 71, 94].map((height, index) => <span key={index} className="w-full rounded-t bg-gradient-to-t from-orange-500 to-amber-300" style={{ height: `${height / 6}px` }} />)}
+                </div>
               </div>
 
-              <div className="absolute -bottom-1 -left-5 flex items-center gap-3 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-slate-900 shadow-xl">
+              <div className="absolute -bottom-1 -left-5 flex items-center gap-3 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-slate-900 shadow-xl hero-float-delayed">
                 <CheckCircle2 className="h-6 w-6 text-emerald-600" />
                 <div>
                   <p className="text-xs font-extrabold uppercase tracking-wider text-primary">Kiểm soát trạng thái</p>
