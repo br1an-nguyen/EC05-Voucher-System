@@ -517,7 +517,7 @@ model VoucherCode {
   customerId String            @map("customer_id") @db.Uuid
   status     VoucherCodeStatus @default(AVAILABLE) @map("status")
   issuedAt   DateTime          @default(now()) @map("issued_at") @db.Timestamptz
-  expiresAt  DateTime          @map("expires_at") @db.Timestamptz
+  expiresAt  DateTime?         @map("expires_at") @db.Timestamptz
   updatedAt  DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
