@@ -33,8 +33,8 @@ async function bootstrap() {
   );
 
   const port = process.env.PORT ?? 3001;
-  await app.listen(port);
-  console.log(`NestJS API is running at http://localhost:${port}`);
+  await app.listen(port, '0.0.0.0');
+  console.log(`NestJS API is running at http://0.0.0.0:${port}`);
 }
 
 void bootstrap();
