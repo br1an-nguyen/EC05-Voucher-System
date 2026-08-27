@@ -870,51 +870,71 @@ export class VouchersService {
       // Keyword to Category Mapping (Semantic search approximation)
       if (
         [
-          'đồ ăn',
-          'ăn uống',
-          'ẩm thực',
-          'nhà hàng',
-          'quán ăn',
-          'cafe',
-          'trà sữa',
-          'buffet',
-          'lẩu',
-          'nướng',
+          // Đồ ăn & Uống
+          'đồ ăn', 'ăn uống', 'đồ uống', 'nước uống', 'thức uống', 'giải khát', 'nước', 'trà', 'cà phê', 'sinh tố', 'nước ép', 
+          'ẩm thực', 'nhà hàng', 'quán ăn', 'cafe', 'trà sữa', 'buffet', 'lẩu', 'nướng', 'bbq', 'đồ nướng',
+          'bánh', 'bánh ngọt', 'pizza', 'hải sản', 'gà rán', 'hamburger', 'burger', 'tráng miệng', 'kem', 
+          'sushi', 'sashimi', 'cua', 'ốc', 'phở', 'bún', 'cơm', 'trái cây', 'hoa quả'
         ].some((w) => lowerKeyword.includes(w))
       ) {
         mappedCategories.push('Food & Beverage', 'FOOD_DRINK');
       }
       if (
         [
-          'spa',
-          'làm đẹp',
-          'cắt tóc',
-          'massage',
-          'skincare',
-          'nail',
-          'gội đầu',
+          // Làm đẹp & Sức khỏe
+          'spa', 'làm đẹp', 'cắt tóc', 'massage', 'skincare', 'nail', 'gội đầu',
+          'tẩy trắng răng', 'nha khoa', 'răng', 'da liễu', 'trị mụn', 'phòng khám', 'sức khỏe', 'khám bệnh',
+          'thẩm mỹ', 'salon', 'uốn tóc', 'nhuộm', 'giảm béo', 'chăm sóc da', 'tắm trắng', 'triệt lông'
         ].some((w) => lowerKeyword.includes(w))
       ) {
-        mappedCategories.push('Beauty & Spa');
+        mappedCategories.push('Beauty & Spa', 'Beauty', 'BEAUTY_HEALTH');
       }
       if (
         [
-          'mua sắm',
-          'quần áo',
-          'giày dép',
-          'thời trang',
-          'siêu thị',
-          'thực phẩm',
+          // Mua sắm & Bán lẻ
+          'mua sắm', 'quần áo', 'giày dép', 'thời trang', 'siêu thị', 'thực phẩm',
+          'túi xách', 'mỹ phẩm', 'đồng hồ', 'trang sức', 'cửa hàng', 'tạp hóa', 'bách hóa', 
+          'đồ gia dụng', 'điện máy', 'phụ kiện', 'balo', 'ví', 'quà tặng'
         ].some((w) => lowerKeyword.includes(w))
       ) {
-        mappedCategories.push('Shopping');
+        mappedCategories.push('Shopping', 'SHOPPING_RETAIL');
       }
       if (
-        ['giải trí', 'xem phim', 'vui chơi', 'du lịch', 'khách sạn', 'vé'].some(
-          (w) => lowerKeyword.includes(w),
-        )
+        [
+          // Giải trí & Du lịch
+          'giải trí', 'xem phim', 'vui chơi', 'du lịch', 'khách sạn', 'vé', 'công viên',
+          'khu vui chơi', 'vé máy bay', 'tour', 'resort', 'homestay', 'trò chơi', 'game', 
+          'rạp chiếu phim', 'bể bơi', 'thủy cung', 'bảo tàng', 'nghỉ dưỡng'
+        ].some((w) => lowerKeyword.includes(w))
       ) {
-        mappedCategories.push('Entertainment');
+        mappedCategories.push('Entertainment', 'ENTERTAINMENT');
+      }
+      if (
+        [
+          // Viễn thông & Số
+          'điện thoại', 'viễn thông', 'thẻ cào', 'data', '4g', '5g', 'nạp tiền', 'cước', 
+          'internet', 'phần mềm', 'ứng dụng', 'bản quyền', 'nhạc số'
+        ].some((w) => lowerKeyword.includes(w))
+      ) {
+        mappedCategories.push('Digital', 'DIGITAL_TELECOM');
+      }
+      if (
+        [
+          // Dịch vụ đời sống
+          'giặt ủi', 'giặt là', 'dịch vụ', 'dọn dẹp', 'vệ sinh', 'sửa chữa', 'bảo dưỡng', 
+          'chụp ảnh', 'studio', 'thú cưng', 'chó mèo', 'thú y', 'chăm sóc'
+        ].some((w) => lowerKeyword.includes(w))
+      ) {
+        mappedCategories.push('Lifestyle', 'LIFESTYLE_SERVICES');
+      }
+      if (
+        [
+          // Di chuyển
+          'xe', 'di chuyển', 'taxi', 'xe công nghệ', 'xe ôm', 'giao hàng', 
+          'vận chuyển', 'xe khách', 'thuê xe', 'đặt xe'
+        ].some((w) => lowerKeyword.includes(w))
+      ) {
+        mappedCategories.push('Transport', 'TRANSPORT');
       }
 
       const searchConditions: any[] = [
@@ -934,6 +954,18 @@ export class VouchersService {
 
       if (mappedCategories.length > 0) {
         searchConditions.push({ category: { in: mappedCategories } });
+        searchConditions.push({
+          campaignCategories: {
+            some: {
+              category: {
+                OR: [
+                  { code: { in: mappedCategories } },
+                  { parent: { is: { code: { in: mappedCategories } } } },
+                ],
+              },
+            },
+          },
+        });
       }
 
       whereClause.OR = searchConditions;
