@@ -105,6 +105,16 @@ export class MomoAdapter implements PaymentProvider {
 
     const isValid = calculatedSignature === signature;
 
+    if (!isValid) {
+      console.error('MOMO IPN SIGNATURE MISMATCH!');
+      console.error('Raw Signature String:', rawSignature);
+      console.error('Calculated:', calculatedSignature);
+      console.error('Received:', signature);
+      console.error('Request Body:', reqBody);
+    } else {
+      console.log('MOMO IPN SUCCESS:', reqBody.orderId);
+    }
+
     return {
       providerTransactionId: transId ? transId.toString() : 'MOCK-MOMO-TX',
       amountPaid: Number(amount),
