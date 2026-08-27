@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
@@ -6,6 +7,15 @@ import { useRouter } from "next/navigation";
 import { MapPin, Store, Flame, Plus, CheckCircle2, X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { apiRequest } from "../lib/api";
+=======
+import React from 'react';
+import Link from 'next/link';
+import Image from 'next/image';
+import { MapPin, Store, Flame, ShoppingCart, Plus } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { apiRequest } from '../lib/api';
+import toast from 'react-hot-toast';
+>>>>>>> origin/main
 
 export interface VoucherCampaignCard {
   campaignId: string;
@@ -95,6 +105,7 @@ export default function VoucherCard({
           quantity: 1,
         }),
       });
+<<<<<<< HEAD
       showToast({
         kind: "success",
         message: `Đã thêm “${c.title}” vào giỏ hàng.`,
@@ -112,6 +123,19 @@ export default function VoucherCard({
       }, 900);
     } finally {
       setIsAdding(false);
+=======
+      window.dispatchEvent(new Event('cart-updated'));
+      toast.success('Đã thêm vào giỏ hàng!');
+    } catch (err: any) {
+      const errorMessage = err?.message || 'Có lỗi xảy ra';
+      
+      if (errorMessage.toLowerCase().includes('unauthorized') || errorMessage.toLowerCase().includes('đăng nhập')) {
+        toast.error('Vui lòng đăng nhập để thêm vào giỏ hàng');
+        window.location.href = '/login?redirect=/';
+      } else {
+        toast.error(errorMessage);
+      }
+>>>>>>> origin/main
     }
   };
 

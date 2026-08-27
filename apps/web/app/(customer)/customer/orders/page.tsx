@@ -14,7 +14,8 @@ import {
   RefreshCw, 
   ChevronRight, 
   AlertCircle,
-  Ticket
+  Ticket,
+  Search
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -26,6 +27,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../../../../components/ui/alert-dialog';
+import toast from 'react-hot-toast';
 
 interface OrderCampaign {
   title: string;
@@ -60,6 +62,10 @@ export default function CustomerOrdersPage() {
   const [refundingOrderId, setRefundingOrderId] = useState<string | null>(null);
   const [orderToRefund, setOrderToRefund] = useState<Order | null>(null);
 
+  const [filterText, setFilterText] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+
   const fetchOrders = async () => {
     setLoading(true);
     setErrorMsg(null);
@@ -93,48 +99,96 @@ export default function CustomerOrdersPage() {
       await apiRequest<void>(`/orders/${orderId}/refund`, {
         method: 'POST',
       });
-      alert('Yêu cầu hoàn tiền đã được xử lý thành công! Số tiền đã được hoàn lại tài khoản.');
+      toast.success('Yêu cầu hoàn tiền đã được xử lý thành công! Số tiền đã được hoàn lại tài khoản.');
       fetchOrders(); // Refresh order history
     } catch (error: unknown) {
-      setErrorMsg(getErrorMessage(error, 'Yêu cầu hoàn tiền thất bại. Vui lòng kiểm tra lại.'));
+      toast.error(getErrorMessage(error, 'Yêu cầu hoàn tiền thất bại. Vui lòng kiểm tra lại.'));
     } finally {
       setRefundingOrderId(null);
     }
   };
 
-  if (authLoading || loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary mx-auto"></div>
-      </div>
-    );
-  }
+  const filteredOrders = orders.filter(order => {
+    const matchText = filterText === '' || 
+      order.orderCode.toLowerCase().includes(filterText.toLowerCase()) ||
+      order.orderItems.some(item => item.campaign.title.toLowerCase().includes(filterText.toLowerCase()));
+    
+    let matchDate = true;
+    if (filterDateFrom !== '' || filterDateTo !== '') {
+      const d = new Date(order.createdAt);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const localDateStr = `${yyyy}-${mm}-${dd}`;
+      
+      if (filterDateFrom !== '' && filterDateTo !== '') {
+        matchDate = localDateStr >= filterDateFrom && localDateStr <= filterDateTo;
+      } else if (filterDateFrom !== '') {
+        matchDate = localDateStr >= filterDateFrom;
+      } else if (filterDateTo !== '') {
+        matchDate = localDateStr <= filterDateTo;
+      }
+    }
+      
+    return matchText && matchDate;
+  });
 
   return (
-    <>
+    <div className="min-h-screen bg-slate-50/50 font-sans flex flex-col">
       <Header />
-      <div className="min-h-screen bg-background font-sans py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto space-y-6">
-        
-        {/* BREADCRUMB */}
-        <div className="flex items-center gap-2 text-xs text-muted">
-          <Link href="/" className="hover:text-primary font-semibold transition-colors">Trang chủ</Link>
-          <ChevronRight className="h-3.5 w-3.5" />
-          <span className="font-semibold text-foreground">Lịch sử đơn hàng</span>
+      {authLoading || loading ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary mx-auto"></div>
         </div>
-
-        <div className="pb-4 border-b border-border/60">
-          <h1 className="text-xl sm:text-2xl font-extrabold text-foreground flex items-center gap-2">
-            <FileText className="h-6 w-6 text-primary" />
-            Lịch sử đơn hàng của tôi
-          </h1>
-          <p className="text-xs text-muted mt-1">Theo dõi trạng thái giao dịch, thanh toán và hoàn tiền các voucher đã đặt mua.</p>
+      ) : (
+        <div className="flex-1 py-10 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-5xl mx-auto space-y-8">
+        
+        <div className="flex items-center gap-3 pb-4 border-b border-slate-200">
+          <div className="bg-primary/10 p-3 rounded-2xl">
+            <FileText className="h-7 w-7 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-800">Lịch sử đơn hàng của tôi</h1>
+            <p className="text-sm text-slate-500 mt-1">Theo dõi trạng thái giao dịch, thanh toán và hoàn tiền các voucher đã đặt mua.</p>
+          </div>
         </div>
 
         {errorMsg && (
           <div className="bg-red-500/10 border border-red-500/20 text-red-800 text-xs p-4 rounded-xl flex items-center gap-3">
             <AlertCircle className="h-5 w-5 text-red-600 shrink-0" />
             <span>{errorMsg}</span>
+          </div>
+        )}
+
+        {/* THANH TÌM KIẾM VÀ LỌC */}
+        {orders.length > 0 && (
+          <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row gap-4 items-center">
+            <div className="relative flex-1 w-full">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input 
+                type="text" 
+                placeholder="Tìm theo mã đơn hoặc tên voucher..." 
+                value={filterText}
+                onChange={(e) => setFilterText(e.target.value)}
+                className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all text-slate-700"
+              />
+            </div>
+            <div className="relative w-full sm:w-auto flex items-center gap-2">
+              <input 
+                type="date" 
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+                className="w-full sm:w-[160px] px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all text-slate-700"
+              />
+              <span className="text-slate-400 text-xs">-</span>
+              <input 
+                type="date" 
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+                className="w-full sm:w-[160px] px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all text-slate-700"
+              />
+            </div>
           </div>
         )}
 
@@ -153,9 +207,23 @@ export default function CustomerOrdersPage() {
               Xem danh sách Voucher khuyến mãi
             </Link>
           </div>
+        ) : filteredOrders.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-border p-12 text-center space-y-3">
+            <Search className="h-10 w-10 text-muted mx-auto" />
+            <h3 className="text-sm font-bold text-foreground">Không tìm thấy kết quả phù hợp</h3>
+            <p className="text-xs text-muted max-w-sm mx-auto">
+              Vui lòng thử lại với từ khóa hoặc ngày khác.
+            </p>
+            <button
+              onClick={() => { setFilterText(''); setFilterDateFrom(''); setFilterDateTo(''); }}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 text-xs font-bold transition-colors mt-2"
+            >
+              Xóa bộ lọc
+            </button>
+          </div>
         ) : (
           <div className="space-y-4">
-            {orders.map((order) => {
+            {filteredOrders.map((order) => {
               const formattedDate = new Date(order.createdAt).toLocaleDateString('vi-VN');
               const formattedTime = new Date(order.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 
@@ -297,7 +365,8 @@ export default function CustomerOrdersPage() {
         </AlertDialog>
 
       </div>
+        </div>
+      )}
     </div>
-    </>
   );
 }
