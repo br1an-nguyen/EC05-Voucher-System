@@ -190,13 +190,13 @@ export class PaymentsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CUSTOMER, UserRole.ADMIN)
   async mockSuccess(@Req() req: any, @Param('paymentId') paymentId: string) {
-    if (!this.stripeConfig.isSimulated()) {
+    const payment = await this.paymentsService.getPaymentDetailsForActor(paymentId, req.user);
+
+    if (!this.stripeConfig.isSimulated() && payment.provider !== PaymentProviderType.MOMO) {
       throw new ForbiddenException(
-        'Endpoint mô phỏng chỉ hoạt động khi PAYMENT_MODE=SIMULATED.',
+        'Endpoint mô phỏng chỉ hoạt động khi PAYMENT_MODE=SIMULATED (trừ MoMo Sandbox do thường xuyên bị lỗi IPN).',
       );
     }
-
-    await this.paymentsService.getPaymentDetailsForActor(paymentId, req.user);
 
     const providerTransactionId = `MOCK-TX-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const order = await this.paymentFinalizationService.finalizePayment(

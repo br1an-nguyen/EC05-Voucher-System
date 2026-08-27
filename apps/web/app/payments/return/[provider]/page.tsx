@@ -349,6 +349,15 @@ export default function PaymentReturnPage() {
             </div>
 
             <div className="space-y-3 pt-4">
+              {provider === "momo" && (
+                <button
+                  onClick={triggerMockSuccess}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-yellow-500 hover:bg-yellow-600 text-white py-3 text-sm font-bold transition-colors"
+                >
+                  <Play className="h-4 w-4 fill-white" />
+                  Nhận IPN Giả lập (Dành cho Báo cáo)
+                </button>
+              )}
               <Link
                 href="/"
                 className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary hover:bg-primary-hover text-white py-3 text-sm font-bold transition-colors"
