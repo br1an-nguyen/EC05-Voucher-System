@@ -141,6 +141,13 @@ export default function PaymentReturnPage() {
         // Stripe xử lý qua Webhook bất đồng bộ, chúng ta sẽ Polling trạng thái trong 6 giây
         pollStripeStatus(paymentId);
 
+      } else if (provider === 'momo') {
+        const paymentId = searchParams.get('orderId');
+        if (!paymentId) throw new Error('Không tìm thấy Payment ID của MoMo.');
+        
+        // MoMo xử lý IPN bất đồng bộ, chúng ta sẽ Polling trạng thái giống Stripe
+        pollStripeStatus(paymentId);
+
       } else if (provider === 'mock') {
         const paymentId = searchParams.get('paymentId');
         if (!paymentId) throw new Error('Không tìm thấy Payment ID.');
