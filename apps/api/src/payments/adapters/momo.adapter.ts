@@ -26,7 +26,7 @@ export class MomoAdapter implements PaymentProvider {
     const orderInfo = `Thanh toan don hang ${orderCode}`;
     const redirectUrl = this.returnUrl;
     const ipnUrl = this.notifyUrl;
-    const requestType = 'captureWallet'; // Thử dùng captureWallet thay vì payWithATM
+    const requestType = 'payWithATM';
     const extraData = '';
 
     const rawSignature = `accessKey=${this.accessKey}&amount=${amountVal}&extraData=${extraData}&ipnUrl=${ipnUrl}&orderId=${orderId}&orderInfo=${orderInfo}&partnerCode=${this.partnerCode}&redirectUrl=${redirectUrl}&requestId=${requestId}&requestType=${requestType}`;
@@ -54,9 +54,6 @@ export class MomoAdapter implements PaymentProvider {
     };
 
     try {
-      console.log('\n[MOMO API] Creating payment with payload:', JSON.stringify(requestBody, null, 2));
-      console.log(`[MOMO API] Expected IPN URL to receive webhook: ${ipnUrl}\n`);
-      
       const response = await fetch(this.apiUrl, {
         method: 'POST',
         headers: {
