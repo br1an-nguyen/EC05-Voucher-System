@@ -842,7 +842,7 @@ export class VouchersService {
     if (validityStatus === 'UPCOMING') {
       whereClause.saleStartTime = { gt: now };
     } else {
-      // Catalog mặc định chỉ hiển thị voucher đang mở bán.
+      // Catalog mặc định chỉ hiển thị voucher đang mở bán (đã bắt đầu và còn hạn)
       whereClause.saleStartTime = { lte: now };
       whereClause.saleEndTime = { gte: now };
     }

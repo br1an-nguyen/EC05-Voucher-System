@@ -6,6 +6,7 @@ import { getErrorMessage } from "../../lib/errors";
 import { useAuth } from "../../context/AuthContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Header from "../../components/Header";
 import {
   User,
   Mail,
@@ -61,7 +62,7 @@ const profileSchema = z
   .refine(
     (data) => {
       if (data.newPassword && data.newPassword.length > 0) {
-        return data.newPassword.length >= 6;
+        return data.newPassword.length >= 8;
       }
       return true;
     },
@@ -157,14 +158,14 @@ export default function UserProfilePage() {
         },
       );
 
-      if (user) {
-        setUser({ ...user, ...updatedUser });
-      }
-
       if (data.newPassword) {
         alert("Mật khẩu đã được thay đổi. Vui lòng đăng nhập lại.");
         await logout();
         return;
+      }
+
+      if (user) {
+        setUser({ ...user, ...updatedUser });
       }
 
       setSuccessMsg("Cập nhật thông tin tài khoản thành công!");
@@ -216,33 +217,9 @@ export default function UserProfilePage() {
   };
 
   return (
-    <div className="min-h-screen bg-background font-sans py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-xl mx-auto space-y-6">
-        {/* THANH ĐIỀU HƯỚNG QUAY LẠI */}
-        <div className="flex items-center justify-between">
-          <Link
-            href={
-              user.role === "ADMIN"
-                ? "/admin"
-                : user.role === "PARTNER"
-                  ? "/partner"
-                  : user.role === "PARTNER_STAFF"
-                    ? "/partner/redeem"
-                    : "/"
-            }
-            className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-primary font-semibold transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Quay lại Portal / Trang chủ
-          </Link>
-
-          <div className="flex items-center gap-2 text-xs text-muted">
-            <span>Tài khoản</span>
-            <ChevronRight className="h-3.5 w-3.5" />
-            <span className="font-semibold text-foreground">Hồ sơ cá nhân</span>
-          </div>
-        </div>
-
+    <div className="min-h-screen bg-slate-50 font-sans flex flex-col">
+      <Header />
+      <main className="flex-grow w-full max-w-3xl mx-auto py-10 px-4 sm:px-6 lg:px-8 space-y-6">
         <div className="rounded-2xl border border-border bg-card p-6 sm:p-8 shadow-sm space-y-6">
           {/* AVATAR & TIÊU ĐỀ */}
           <div className="flex items-center gap-4 pb-4 border-b border-border">
@@ -517,7 +494,7 @@ export default function UserProfilePage() {
             </div>
           )}
         </div>
-      </div>
+      </main>
     </div>
   );
 }
