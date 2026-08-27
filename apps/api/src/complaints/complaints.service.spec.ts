@@ -1,5 +1,10 @@
-import { BadRequestException } from '@nestjs/common';
-import { ComplaintStatus, ComplaintType } from '@prisma/client';
+import { BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  ComplaintMessageVisibility,
+  ComplaintStatus,
+  ComplaintType,
+  UserRole,
+} from '@prisma/client';
 import { ComplaintsService } from './complaints.service';
 
 describe('ComplaintsService complaint integrity', () => {
@@ -24,16 +29,21 @@ describe('ComplaintsService complaint integrity', () => {
           status: ComplaintStatus.OPEN,
           ...data,
         })),
+        findFirst: jest.fn(),
         findUnique: jest.fn(),
         update: jest
           .fn()
           .mockImplementation(({ data }) => ({ complaintId, ...data })),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ complaintId }),
       },
       complaintMessage: { create: jest.fn() },
       complaintEvent: { create: jest.fn() },
+      user: { findFirst: jest.fn() },
     };
     let transactionActive = false;
     const prisma = {
+      complaint: tx.complaint,
       $transaction: jest.fn(async (callback) => {
         transactionActive = true;
         try {
@@ -162,7 +172,16 @@ describe('ComplaintsService complaint integrity', () => {
     const { service, tx, audit } = createContext();
     tx.complaint.findUnique.mockResolvedValue({
       complaintId,
-      status: ComplaintStatus.OPEN,
+      status: ComplaintStatus.IN_REVIEW,
+      version: 1,
+      priority: 'NORMAL',
+      assignedAdminId: null,
+      partnerId,
+      partnerDueAt: null,
+      customerDueAt: null,
+      resolutionResponse: null,
+      resolvedById: null,
+      resolvedAt: null,
     });
 
     await service.replyComplaint(complaintId, adminId, {
@@ -170,8 +189,8 @@ describe('ComplaintsService complaint integrity', () => {
       resolutionResponse: 'Đang chờ đối tác xác minh.',
     });
 
-    expect(tx.complaint.update).toHaveBeenCalledWith({
-      where: { complaintId },
+    expect(tx.complaint.updateMany).toHaveBeenCalledWith({
+      where: { complaintId, version: 1, status: ComplaintStatus.IN_REVIEW },
       data: expect.objectContaining({
         status: ComplaintStatus.WAITING_PARTNER,
         assignedAdminId: adminId,
@@ -181,7 +200,7 @@ describe('ComplaintsService complaint integrity', () => {
       }),
     });
     expect(audit.logActivity).toHaveBeenCalledWith(
-      expect.objectContaining({ actionType: 'ADMIN_REPLY_COMPLAINT' }),
+      expect.objectContaining({ actionType: 'ADMIN_MANAGE_COMPLAINT' }),
       tx,
     );
   });
@@ -191,6 +210,15 @@ describe('ComplaintsService complaint integrity', () => {
     tx.complaint.findUnique.mockResolvedValue({
       complaintId,
       status: ComplaintStatus.IN_REVIEW,
+      version: 1,
+      priority: 'NORMAL',
+      assignedAdminId: adminId,
+      partnerId,
+      partnerDueAt: null,
+      customerDueAt: null,
+      resolutionResponse: null,
+      resolvedById: null,
+      resolvedAt: null,
     });
 
     await service.replyComplaint(complaintId, adminId, {
@@ -198,8 +226,8 @@ describe('ComplaintsService complaint integrity', () => {
       resolutionResponse: 'Đã hoàn tất xử lý.',
     });
 
-    expect(tx.complaint.update).toHaveBeenCalledWith({
-      where: { complaintId },
+    expect(tx.complaint.updateMany).toHaveBeenCalledWith({
+      where: { complaintId, version: 1, status: ComplaintStatus.IN_REVIEW },
       data: expect.objectContaining({
         status: ComplaintStatus.RESOLVED,
         resolvedById: adminId,
@@ -218,5 +246,119 @@ describe('ComplaintsService complaint integrity', () => {
         toStatus: ComplaintStatus.RESOLVED,
       }),
     });
+  });
+
+  it('limits partner detail to complaints owned by that partner', async () => {
+    const { service, tx } = createContext();
+    tx.complaint.findFirst.mockResolvedValue({ complaintId, partnerId });
+
+    await service.findPartnerComplaintDetail(partnerId, complaintId);
+
+    expect(tx.complaint.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { complaintId, partnerId } }),
+    );
+    const include = tx.complaint.findFirst.mock.calls[0][0].include;
+    expect(include.messages.where).toEqual({
+      visibility: ComplaintMessageVisibility.ALL_PARTIES,
+    });
+  });
+
+  it('accepts a partner response only while waiting for that partner', async () => {
+    const { service, tx } = createContext();
+    tx.complaint.findFirst.mockResolvedValue({
+      complaintId,
+      partnerId,
+      status: ComplaintStatus.WAITING_PARTNER,
+      version: 3,
+      customerDueAt: null,
+      partnerDueAt: new Date(),
+    });
+
+    await service.partnerReply(partnerId, complaintId, {
+      body: 'Đối tác đã kiểm tra giao dịch.',
+      expectedVersion: 3,
+    });
+
+    expect(tx.complaint.findFirst).toHaveBeenCalledWith({
+      where: { complaintId, partnerId },
+    });
+    expect(tx.complaint.updateMany).toHaveBeenCalledWith({
+      where: {
+        complaintId,
+        version: 3,
+        status: ComplaintStatus.WAITING_PARTNER,
+      },
+      data: expect.objectContaining({
+        status: ComplaintStatus.IN_REVIEW,
+        partnerDueAt: null,
+      }),
+    });
+    expect(tx.complaintMessage.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        senderId: partnerId,
+        senderRoleSnapshot: UserRole.PARTNER,
+        visibility: ComplaintMessageVisibility.ALL_PARTIES,
+      }),
+    });
+  });
+
+  it('rejects a customer response when it is not the customer turn', async () => {
+    const { service, tx } = createContext();
+    tx.complaint.findFirst.mockResolvedValue({
+      complaintId,
+      customerId,
+      status: ComplaintStatus.WAITING_PARTNER,
+      version: 1,
+    });
+
+    await expect(
+      service.customerReply(customerId, complaintId, { body: 'Bổ sung.' }),
+    ).rejects.toThrow(BadRequestException);
+    expect(tx.complaint.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('detects concurrent admin updates with optimistic locking', async () => {
+    const { service, tx } = createContext();
+    tx.complaint.findUnique.mockResolvedValue({
+      complaintId,
+      status: ComplaintStatus.IN_REVIEW,
+      version: 4,
+      priority: 'NORMAL',
+      assignedAdminId: adminId,
+      partnerId,
+      partnerDueAt: null,
+      customerDueAt: null,
+      resolutionResponse: null,
+      resolvedById: null,
+      resolvedAt: null,
+    });
+    tx.complaint.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      service.adminManageComplaint(complaintId, adminId, {
+        priority: 'HIGH',
+        visibility: ComplaintMessageVisibility.ADMIN_ONLY,
+        expectedVersion: 3,
+      }),
+    ).rejects.toThrow(ConflictException);
+    expect(tx.complaintMessage.create).not.toHaveBeenCalled();
+  });
+
+  it('keeps closed complaints immutable', async () => {
+    const { service, tx } = createContext();
+    tx.complaint.findUnique.mockResolvedValue({
+      complaintId,
+      status: ComplaintStatus.CLOSED,
+      version: 2,
+    });
+
+    await expect(
+      service.adminManageComplaint(complaintId, adminId, {
+        message: 'Thử cập nhật.',
+        visibility: ComplaintMessageVisibility.ADMIN_ONLY,
+        expectedVersion: 2,
+      }),
+    ).rejects.toThrow(BadRequestException);
+    expect(tx.complaint.updateMany).not.toHaveBeenCalled();
   });
 });

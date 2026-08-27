@@ -19,6 +19,11 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole, VoucherStatus } from '@prisma/client';
 import { RedeemVoucherDto } from './dto/redeem-voucher.dto';
 import { PublicCatalogQueryDto } from './dto/public-catalog-query.dto';
+import {
+  AdminCategoryQueryDto,
+  CreateAdminCategoryDto,
+  UpdateAdminCategoryDto,
+} from './dto/admin-category.dto';
 import { PartnerVoucherCodesQueryDto } from './dto/partner-voucher-codes-query.dto';
 import { UpdatePartnerCampaignStatusDto } from './dto/update-partner-campaign-status.dto';
 
@@ -266,8 +271,8 @@ export class VouchersController {
   @Get('admin/categories')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-  async adminListCategories() {
-    return this.vouchersService.adminListCategories();
+  async adminListCategories(@Query() query: AdminCategoryQueryDto) {
+    return this.vouchersService.adminListCategories(query);
   }
 
   /**
@@ -279,17 +284,9 @@ export class VouchersController {
   @Roles(UserRole.ADMIN)
   async adminCreateCategory(
     @Req() req: any,
-    @Body('code') code: string,
-    @Body('nameVi') nameVi: string,
-    @Body('parentId') parentId?: string,
-    @Body('displayOrder') displayOrder?: number,
+    @Body() dto: CreateAdminCategoryDto,
   ) {
-    return this.vouchersService.adminCreateCategory(req.user.userId, {
-      code,
-      nameVi,
-      parentId,
-      displayOrder,
-    });
+    return this.vouchersService.adminCreateCategory(req.user.userId, dto);
   }
 
   /**
@@ -302,21 +299,18 @@ export class VouchersController {
   async adminUpdateCategory(
     @Req() req: any,
     @Param('id') categoryId: string,
-    @Body('nameVi') nameVi?: string,
-    @Body('parentId') parentId?: string,
-    @Body('displayOrder') displayOrder?: number,
-    @Body('isActive') isActive?: boolean,
+    @Body() dto: UpdateAdminCategoryDto,
   ) {
     return this.vouchersService.adminUpdateCategory(
       req.user.userId,
       categoryId,
-      { nameVi, parentId, displayOrder, isActive },
+      dto,
     );
   }
 
   /**
-   * Admin: Xóa danh mục voucher.
-   * DELETE /vouchers/admin/categories/:id
+   * Admin: Lưu trữ (ngừng hoạt động) danh mục voucher.
+   * DELETE /vouchers/admin/categories/:id (giữ route để tương thích client cũ)
    */
   @Delete('admin/categories/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)

@@ -12,6 +12,14 @@ export class UpdateCampaignDto {
   @IsOptional()
   description?: string;
 
+  @IsString({ message: 'Điều khoản sử dụng phải là chuỗi ký tự.' })
+  @IsOptional()
+  termsAndConditions?: string;
+
+  @IsString({ message: 'Đường dẫn ảnh phải là chuỗi ký tự.' })
+  @IsOptional()
+  thumbnailUrl?: string;
+
   @IsString({ message: 'Danh mục phải là chuỗi ký tự.' })
   @IsOptional()
   category?: string;

@@ -13,6 +13,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { AuditModule } from './audit/audit.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { ComplaintsModule } from './complaints/complaints.module';
+import { ContentModule } from './content/content.module';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 
@@ -37,6 +38,7 @@ import { APP_GUARD } from '@nestjs/core';
     AuditModule,
     ReviewsModule,
     ComplaintsModule,
+    ContentModule,
   ],
   controllers: [AppController],
   providers: [

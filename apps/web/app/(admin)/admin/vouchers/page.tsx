@@ -282,7 +282,7 @@ export default function AdminVouchersPage() {
       <div className="grid grid-cols-3 gap-3">
         {[
           { label: 'Chiến dịch tìm thấy', value: summary.total,         icon: <Ticket className="h-4 w-4 text-primary" /> },
-          { label: 'Tổng khối lượng',      value: summary.totalCapacity, icon: <Package className="h-4 w-4 text-primary" /> },
+          { label: 'Tổng số lượng phát hành',      value: summary.totalCapacity, icon: <Package className="h-4 w-4 text-primary" /> },
           { label: 'Tổng đã bán',          value: summary.totalSold,     icon: <CheckCircle className="h-4 w-4 text-primary" /> },
         ].map(stat => (
           <div key={stat.label} className="rounded-xl border border-border bg-card p-4 shadow-sm">

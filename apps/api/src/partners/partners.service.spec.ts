@@ -46,6 +46,59 @@ describe('PartnersService dashboard', () => {
     expect(result.usedVouchers).toBe(4);
     expect(result.partnerName).toBe('Cửa hàng A');
   });
+
+  it('returns every voucher campaign status in the admin dashboard', async () => {
+    const voucherCampaignCount = jest
+      .fn()
+      .mockResolvedValueOnce(65)
+      .mockResolvedValueOnce(35)
+      .mockResolvedValueOnce(6)
+      .mockResolvedValueOnce(5)
+      .mockResolvedValueOnce(5)
+      .mockResolvedValueOnce(5)
+      .mockResolvedValueOnce(4)
+      .mockResolvedValueOnce(5);
+    const prisma = {
+      partner: {
+        count: jest.fn().mockResolvedValue(3),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      voucherCampaign: { count: voucherCampaignCount },
+      order: {
+        count: jest.fn().mockResolvedValue(12),
+        aggregate: jest
+          .fn()
+          .mockResolvedValue({ _sum: { totalAmount: 900000 } }),
+      },
+      user: {
+        count: jest
+          .fn()
+          .mockResolvedValueOnce(20)
+          .mockResolvedValueOnce(2)
+          .mockResolvedValueOnce(4),
+      },
+    };
+    const service = new PartnersService(prisma as any, {} as any);
+
+    const result = await service.getAdminDashboard();
+
+    expect(result.totalCampaigns).toBe(65);
+    expect(result.campaignStats).toEqual({
+      approved: 35,
+      pending: 6,
+      draft: 5,
+      rejected: 5,
+      expired: 5,
+      paused: 4,
+      soldOut: 5,
+    });
+    expect(voucherCampaignCount).toHaveBeenCalledWith({
+      where: { status: 'PAUSED' },
+    });
+    expect(voucherCampaignCount).toHaveBeenCalledWith({
+      where: { status: 'SOLD_OUT' },
+    });
+  });
 });
 
 describe('PartnersService branches', () => {
