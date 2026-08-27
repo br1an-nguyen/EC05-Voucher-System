@@ -51,7 +51,7 @@ interface CheckoutOrder {
   orderCode: string;
   totalAmount: number;
   reservationExpiresAt: string;
-  selectedPaymentProvider: 'STRIPE' | 'PAYPAL' | 'VNPAY' | 'MOMO';
+  selectedPaymentProvider: 'STRIPE' | 'PAYPAL' | 'ZALOPAY' | 'MOMO';
   recipientNote?: string;
   orderItems?: CheckoutOrderItem[];
 }
@@ -81,7 +81,7 @@ function CheckoutPageContent() {
   
   // Checkout form state
   const [recipientNote, setRecipientNote] = useState('');
-  const [paymentProvider, setPaymentProvider] = useState<'STRIPE' | 'PAYPAL' | 'VNPAY' | 'MOMO'>('STRIPE');
+  const [paymentProvider, setPaymentProvider] = useState<'STRIPE' | 'PAYPAL' | 'ZALOPAY' | 'MOMO'>('STRIPE');
   const [isGift, setIsGift] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState('');
   
@@ -468,22 +468,22 @@ function CheckoutPageContent() {
                   <span className="text-[10px] text-muted mt-1">Ví điện tử quốc tế</span>
                 </label>
 
-                {/* VNPAY */}
+                {/* ZaloPay */}
                 <label className={`flex flex-col items-center justify-center p-4 border rounded-xl cursor-pointer hover:border-primary/50 transition-all text-center h-full ${
-                  paymentProvider === 'VNPAY'
+                  paymentProvider === 'ZALOPAY'
                     ? 'border-primary bg-primary/5 text-primary shadow-sm'
                     : 'border-border bg-card text-foreground'
                 }`}>
                   <input
                     type="radio"
                     name="paymentProvider"
-                    value="VNPAY"
-                    checked={paymentProvider === 'VNPAY'}
-                    onChange={() => setPaymentProvider('VNPAY')}
+                    value="ZALOPAY"
+                    checked={paymentProvider === 'ZALOPAY'}
+                    onChange={() => setPaymentProvider('ZALOPAY')}
                     className="sr-only"
                   />
-                  <span className="text-sm font-extrabold tracking-wider">VNPAY</span>
-                  <span className="text-[10px] text-muted mt-1">Thẻ ATM / QR Code</span>
+                  <span className="text-sm font-extrabold tracking-wider">ZaloPay</span>
+                  <span className="text-[10px] text-muted mt-1">Ví ZaloPay / QR Code</span>
                 </label>
 
                 {/* MOMO */}

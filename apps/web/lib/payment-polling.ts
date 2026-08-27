@@ -12,7 +12,7 @@ export interface PaymentPollingDecision {
 export const MAX_PAYMENT_STATUS_POLL_ATTEMPTS = 5;
 
 export function getReturnPaymentId(
-  provider: "stripe" | "momo" | "mock",
+  provider: "stripe" | "momo" | "zalopay" | "mock",
   searchParams: Pick<URLSearchParams, "get">,
 ): string | null {
   return searchParams.get(provider === "momo" ? "orderId" : "paymentId");
