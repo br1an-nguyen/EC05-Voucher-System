@@ -192,7 +192,7 @@ export default function PaymentReturnPage() {
 
   // Mô phỏng thanh toán thành công (Developer mode)
   const triggerMockSuccess = async () => {
-    const paymentId = searchParams.get("paymentId");
+    const paymentId = provider === "momo" ? searchParams.get("orderId") : searchParams.get("paymentId");
     if (!paymentId) return;
 
     setLoading(true);
