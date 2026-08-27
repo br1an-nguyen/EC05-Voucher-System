@@ -413,7 +413,7 @@ function HomePageContent() {
               <div className="flex items-center bg-slate-100 p-1 rounded-xl shrink-0 gap-1">
               <button
                 onClick={() => {
-                  const val = sortPrice === '' ? 'asc' : sortPrice === 'asc' ? 'desc' : '';
+                  const val = (sortPrice === '' ? 'asc' : sortPrice === 'asc' ? 'desc' : '') as 'asc' | 'desc' | '';
                   setSortPrice(val);
                   setSortDiscount(''); // clear other sort
                   const filters = { ...currentFilters(), sortPrice: val, sortDiscount: '' as 'asc' | 'desc' | '' };
@@ -431,7 +431,7 @@ function HomePageContent() {
               </button>
               <button
                 onClick={() => {
-                  const val = sortDiscount === '' ? 'desc' : sortDiscount === 'desc' ? 'asc' : '';
+                  const val = (sortDiscount === '' ? 'desc' : sortDiscount === 'desc' ? 'asc' : '') as 'asc' | 'desc' | '';
                   setSortDiscount(val);
                   setSortPrice(''); // clear other sort
                   const filters = { ...currentFilters(), sortPrice: '' as 'asc' | 'desc' | '', sortDiscount: val };
