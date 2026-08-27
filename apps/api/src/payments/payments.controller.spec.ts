@@ -35,6 +35,7 @@ describe('PaymentsController Stripe boundaries', () => {
       {} as any,
       stripe as any,
       {} as any,
+      {} as any,
       stripeWebhook as any,
       { isSimulated: () => true } as any,
     );

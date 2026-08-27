@@ -220,6 +220,17 @@ export class PaymentFinalizationService {
 
       // 7. Phát hành mã Voucher Code ngẫu nhiên bảo mật (độ dài 12 ký tự) (RB-05, RB-06)
       for (const item of order.orderItems) {
+        const refundDeadlineAt =
+          item.refundAllowedSnapshot && item.refundWindowHoursSnapshot
+            ? new Date(
+                now.getTime() + item.refundWindowHoursSnapshot * 60 * 60 * 1000,
+              )
+            : null;
+        await tx.orderItem.update({
+          where: { itemId: item.itemId },
+          data: { refundDeadlineAt },
+        });
+
         for (let i = 0; i < item.quantity; i++) {
           // Tạo mã ngẫu nhiên cryptographically secure bằng Node.js crypto
           const uniqueCode = crypto
@@ -233,7 +244,8 @@ export class PaymentFinalizationService {
               uniqueCode,
               customerId: targetCustomerId,
               status: VoucherCodeStatus.AVAILABLE,
-              issuedAt: new Date(),
+              issuedAt: now,
+              expiresAt: item.campaign.usageEndTime,
             },
           });
         }
@@ -247,7 +259,9 @@ export class PaymentFinalizationService {
 
     // Kích hoạt tác vụ gửi email ngầm bất đồng bộ sau khi transaction thành công thành công
     this.triggerGiftEmailNotification(resultOrder.orderId).catch((err) => {
-      this.logger.error(`Lỗi khi xử lý gửi email quà tặng ngầm cho đơn ${resultOrder.orderCode}: ${err.message}`);
+      this.logger.error(
+        `Lỗi khi xử lý gửi email quà tặng ngầm cho đơn ${resultOrder.orderCode}: ${err.message}`,
+      );
     });
 
     return resultOrder;

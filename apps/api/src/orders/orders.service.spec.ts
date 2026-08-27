@@ -14,6 +14,11 @@ describe('OrdersService checkout', () => {
       soldQuantity: 5,
       reservedStock: 2,
       salePrice: new Prisma.Decimal('19.99'),
+      refundAllowed: true,
+      refundWindowHours: 48,
+      refundPolicy: 'Hoàn tiền trong 48 giờ.',
+      cancellationPolicy: 'Không hủy voucher đã sử dụng.',
+      policyVersion: 3,
       ...campaignOverrides,
     };
     const item = { campaignId: campaign.campaignId, quantity: 2 };
@@ -61,6 +66,15 @@ describe('OrdersService checkout', () => {
     const itemData = tx.orderItem.create.mock.calls[0][0].data;
     expect(orderData.totalAmount.toString()).toBe('39.98');
     expect(itemData.unitPrice).toBe(campaign.salePrice);
+    expect(itemData).toEqual(
+      expect.objectContaining({
+        refundAllowedSnapshot: true,
+        refundWindowHoursSnapshot: 48,
+        refundPolicySnapshot: 'Hoàn tiền trong 48 giờ.',
+        cancellationPolicySnapshot: 'Không hủy voucher đã sử dụng.',
+        policyVersionSnapshot: 3,
+      }),
+    );
     expect(tx.cartItem.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ orderBy: { campaignId: 'asc' } }),
     );

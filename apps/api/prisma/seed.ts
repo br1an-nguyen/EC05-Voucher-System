@@ -20,6 +20,9 @@ async function main() {
   // Sử dụng TRUNCATE TABLE CASCADE để xóa sạch dữ liệu trong các bảng có khóa ngoại chéo
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE 
+      "Complaints",
+      "Content_Entries",
+      "Activity_Logs",
       "Audit_Logs",
       "Voucher_Usage_Log",
       "Voucher_Codes",
@@ -257,6 +260,11 @@ async function main() {
       reservedStock: 0,
       status: "APPROVED",
       isMultiUse: false,
+      refundAllowed: true,
+      refundWindowHours: 48,
+      refundPolicy: "Hoàn tiền toàn bộ trong vòng 48 giờ từ khi thanh toán nếu voucher chưa được sử dụng.",
+      cancellationPolicy: "Voucher đã sử dụng hoặc quá thời hạn hoàn tiền không thể hủy.",
+      policyVersion: 1,
     },
   });
 
@@ -285,6 +293,10 @@ async function main() {
       reservedStock: 2,
       status: "APPROVED",
       isMultiUse: false,
+      refundAllowed: false,
+      refundPolicy: "Voucher không áp dụng hoàn tiền sau khi thanh toán.",
+      cancellationPolicy: "Đơn chỉ có thể hủy trước khi thanh toán hoàn tất.",
+      policyVersion: 1,
     },
   });
 
@@ -418,6 +430,12 @@ async function main() {
       campaignId: campaign1.campaignId,
       quantity: 1,
       unitPrice: 199000,
+      refundAllowedSnapshot: true,
+      refundWindowHoursSnapshot: 48,
+      refundPolicySnapshot: "Hoàn tiền toàn bộ trong vòng 48 giờ từ khi thanh toán nếu voucher chưa được sử dụng.",
+      cancellationPolicySnapshot: "Voucher đã sử dụng hoặc quá thời hạn hoàn tiền không thể hủy.",
+      policyVersionSnapshot: 1,
+      refundDeadlineAt: new Date(oneMonthAgo.getTime() + 48 * 60 * 60 * 1000),
     },
   });
 
@@ -447,6 +465,7 @@ async function main() {
       customerId: customer1.userId,
       status: "AVAILABLE",
       issuedAt: oneMonthAgo,
+      expiresAt: twoMonthsHence,
     },
   });
 
@@ -471,6 +490,10 @@ async function main() {
       campaignId: campaign4.campaignId,
       quantity: 2,
       unitPrice: 100000,
+      refundAllowedSnapshot: false,
+      refundPolicySnapshot: "Voucher không áp dụng hoàn tiền sau khi thanh toán.",
+      cancellationPolicySnapshot: "Đơn chỉ có thể hủy trước khi thanh toán hoàn tất.",
+      policyVersionSnapshot: 1,
     },
   });
 
@@ -502,6 +525,7 @@ async function main() {
       customerId: customer2.userId,
       status: "USED",
       issuedAt: oneMonthAgo,
+      expiresAt: twoMonthsHence,
     },
   });
 
@@ -522,6 +546,7 @@ async function main() {
       customerId: customer2.userId,
       status: "AVAILABLE",
       issuedAt: oneMonthAgo,
+      expiresAt: twoMonthsHence,
     },
   });
 
@@ -547,6 +572,76 @@ async function main() {
       targetEntity: "Voucher_Campaigns",
       targetId: campaign1.campaignId,
       timestamp: oneMonthAgo,
+    },
+  });
+
+  // 8. Dữ liệu nền cho lịch sử hoạt động, nội dung và khiếu nại.
+  await prisma.activityLog.createMany({
+    data: [
+      {
+        actorUserId: admin.userId,
+        actorRoleSnapshot: "ADMIN",
+        category: "ADMIN",
+        actionType: "APPROVE_PARTNER",
+        targetEntity: "Partners",
+        targetId: partner1.partnerId,
+        metadata: { source: "seed" },
+        occurredAt: oneMonthAgo,
+      },
+      {
+        actorUserId: customer1.userId,
+        actorRoleSnapshot: "CUSTOMER",
+        category: "TRANSACTION",
+        actionType: "PAYMENT_SUCCEEDED",
+        targetEntity: "Orders",
+        targetId: order1.orderId,
+        metadata: { paymentProvider: "STRIPE" },
+        occurredAt: oneMonthAgo,
+      },
+    ],
+  });
+
+  await prisma.contentEntry.createMany({
+    data: [
+      {
+        type: "BANNER",
+        slug: "home-summer-vouchers",
+        title: "Ưu đãi voucher nổi bật",
+        summary: "Khám phá các voucher đang mở bán trên hệ thống.",
+        linkUrl: "/",
+        status: "PUBLISHED",
+        displayOrder: 1,
+        publishedAt: oneMonthAgo,
+        createdById: admin.userId,
+        updatedById: admin.userId,
+      },
+      {
+        type: "POLICY",
+        slug: "refund-policy",
+        title: "Chính sách hủy và hoàn tiền",
+        body: "Điều kiện hoàn tiền cụ thể được hiển thị và lưu tại thời điểm đặt mua voucher.",
+        status: "PUBLISHED",
+        displayOrder: 1,
+        publishedAt: oneMonthAgo,
+        createdById: admin.userId,
+        updatedById: admin.userId,
+      },
+    ],
+  });
+
+  await prisma.complaint.create({
+    data: {
+      customerId: customer1.userId,
+      orderId: order1.orderId,
+      campaignId: campaign1.campaignId,
+      type: "ORDER",
+      subject: "Cần hỗ trợ về điều kiện sử dụng",
+      description: "Khách hàng cần xác nhận lại chi nhánh áp dụng của voucher.",
+      status: "RESOLVED",
+      resolutionResponse: "Đã xác nhận voucher áp dụng tại hai chi nhánh ABC trong danh sách.",
+      resolvedById: admin.userId,
+      resolvedAt: oneWeekAgo,
+      createdAt: oneMonthAgo,
     },
   });
 

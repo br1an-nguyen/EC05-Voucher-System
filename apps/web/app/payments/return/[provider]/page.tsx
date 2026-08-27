@@ -11,6 +11,10 @@ import {
   VnPayReturnResponse,
 } from "../../../../lib/vnpay-return";
 import {
+  getReturnPaymentId,
+  resolvePaymentPollingDecision,
+} from "../../../../lib/payment-polling";
+import {
   CheckCircle,
   XCircle,
   Loader2,
@@ -72,25 +76,23 @@ export default function PaymentReturnPage() {
           const res = await apiRequest<PaymentStatusResponse>(
             `/payments/${paymentId}/status`,
           );
-          if (res.status === "SUCCEEDED") {
+          const decision = resolvePaymentPollingDecision(res.status, attempts);
+
+          if (!decision.done) return;
+
+          if (decision.state === "SUCCESS") {
             await fetchPaymentStatus(paymentId);
             setStatus("SUCCESS");
-            window.clearInterval(interval);
-            setLoading(false);
-          } else if (res.status === "FAILED") {
+          } else if (decision.state === "FAILED") {
             setStatus("FAILED");
             setErrorMsg(`Giao dịch ${providerName} bị từ chối hoặc thất bại.`);
-            window.clearInterval(interval);
-            setLoading(false);
-          } else if (res.status === "CANCELLED") {
+          } else if (decision.state === "CANCELLED") {
             setStatus("CANCELLED");
-            window.clearInterval(interval);
-            setLoading(false);
-          } else if (attempts >= 5) {
+          } else {
             setStatus("PENDING");
-            window.clearInterval(interval);
-            setLoading(false);
           }
+          window.clearInterval(interval);
+          setLoading(false);
         } catch {
           window.clearInterval(interval);
           setStatus("FAILED");
@@ -146,23 +148,19 @@ export default function PaymentReturnPage() {
           setLoading(false);
         }
       } else if (provider === "stripe") {
-        const paymentId = searchParams.get("paymentId");
+        const paymentId = getReturnPaymentId("stripe", searchParams);
         if (!paymentId) throw new Error("Không tìm thấy Payment ID.");
 
         // Stripe xử lý qua Webhook bất đồng bộ, chúng ta sẽ Polling trạng thái trong 6 giây
         pollPaymentStatus(paymentId, "Stripe");
-      } else if (provider === "mock") {
-        const paymentId = searchParams.get("paymentId");
-        if (!paymentId) throw new Error("Không tìm thấy Payment ID.");
-
       } else if (provider === "momo") {
-        const paymentId = searchParams.get("orderId");
+        const paymentId = getReturnPaymentId("momo", searchParams);
         if (!paymentId) throw new Error("Không tìm thấy Payment ID của MoMo.");
-        
+
         // MoMo xử lý IPN bất đồng bộ, chúng ta sẽ Polling trạng thái giống Stripe
         pollPaymentStatus(paymentId, "MoMo");
       } else if (provider === "mock") {
-        const paymentId = searchParams.get("paymentId");
+        const paymentId = getReturnPaymentId("mock", searchParams);
         if (!paymentId) throw new Error("Không tìm thấy Payment ID.");
         // Ở chế độ Mock: Hiển thị giao diện cho developer trigger thành công
         void fetchPaymentStatus(paymentId);

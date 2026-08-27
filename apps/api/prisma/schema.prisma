@@ -98,6 +98,47 @@ enum VoucherCodeStatus {
   USED
   EXPIRED
   CANCELLED
+  LOCKED
+}
+
+enum ActivityCategory {
+  AUTH
+  ACCOUNT
+  ADMIN
+  TRANSACTION
+  VOUCHER
+  CONTENT
+  SUPPORT
+  SYSTEM
+}
+
+enum ComplaintType {
+  VOUCHER
+  ORDER
+  PAYMENT
+  PARTNER
+  OTHER
+}
+
+enum ComplaintStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+  REJECTED
+  CLOSED
+}
+
+enum ContentType {
+  BANNER
+  ARTICLE
+  POPUP
+  POLICY
+}
+
+enum ContentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
 }
 
 model User {
@@ -125,6 +166,11 @@ model User {
   cartItems      CartItem[]
   reviews        VoucherReview[]
   authSessions   AuthSession[]
+  activityLogs   ActivityLog[]   @relation("ActivityActor")
+  complaints     Complaint[]     @relation("ComplaintCustomer")
+  resolvedCases  Complaint[]     @relation("ComplaintResolver")
+  contentCreated ContentEntry[]  @relation("ContentEntryCreatedBy")
+  contentUpdated ContentEntry[]  @relation("ContentEntryUpdatedBy")
 
   @@index([partnerId, branchId], map: "Users_partner_branch_idx")
   @@map("Users")
@@ -212,6 +258,11 @@ model VoucherCampaign {
   isMultiUse            Boolean                @default(false) @map("is_multi_use")
   maxUsesPerCode        Int?                   @map("max_uses_per_code")
   usageValidityDays     Int?                   @map("usage_validity_days")
+  refundAllowed         Boolean                @default(false) @map("refund_allowed")
+  refundWindowHours     Int?                   @map("refund_window_hours")
+  refundPolicy          String?                @map("refund_policy") @db.Text
+  cancellationPolicy    String?                @map("cancellation_policy") @db.Text
+  policyVersion         Int                    @default(1) @map("policy_version")
   thumbnailUrl          String?                @map("thumbnail_url") @db.Text
   sourceUrl             String?                @map("source_url") @db.Text
   externalSource        String?                @map("external_source") @db.VarChar(100)
@@ -229,6 +280,7 @@ model VoucherCampaign {
   inventoryReservations InventoryReservation[]
   cartItems             CartItem[]
   reviews               VoucherReview[]
+  complaints            Complaint[]
 
   @@unique([partnerId, campaignId])
   @@unique([externalSource, externalId])
@@ -338,6 +390,7 @@ model Order {
   orderItems            OrderItem[]
   inventoryReservations InventoryReservation[]
   paymentTransactions   PaymentTransaction[]
+  complaints            Complaint[]
 
   @@index([customerId, createdAt(sort: Desc)], map: "Orders_customer_created_at_idx")
   @@index([createdAt(sort: Desc)], map: "Orders_created_at_idx")
@@ -345,11 +398,17 @@ model Order {
 }
 
 model OrderItem {
-  itemId     String  @id @default(dbgenerated("gen_random_uuid()")) @map("item_id") @db.Uuid
-  orderId    String  @map("order_id") @db.Uuid
-  campaignId String  @map("campaign_id") @db.Uuid
-  quantity   Int     @map("quantity")
-  unitPrice  Decimal @map("unit_price") @db.Decimal(12, 2)
+  itemId                     String    @id @default(dbgenerated("gen_random_uuid()")) @map("item_id") @db.Uuid
+  orderId                    String    @map("order_id") @db.Uuid
+  campaignId                 String    @map("campaign_id") @db.Uuid
+  quantity                   Int       @map("quantity")
+  unitPrice                  Decimal   @map("unit_price") @db.Decimal(12, 2)
+  refundAllowedSnapshot      Boolean   @default(false) @map("refund_allowed_snapshot")
+  refundWindowHoursSnapshot  Int?      @map("refund_window_hours_snapshot")
+  refundPolicySnapshot       String?   @map("refund_policy_snapshot") @db.Text
+  cancellationPolicySnapshot String?   @map("cancellation_policy_snapshot") @db.Text
+  policyVersionSnapshot      Int       @default(1) @map("policy_version_snapshot")
+  refundDeadlineAt           DateTime? @map("refund_deadline_at") @db.Timestamptz
 
   // Relations
   order        Order           @relation(fields: [orderId], references: [orderId], onDelete: Cascade)
@@ -458,6 +517,8 @@ model VoucherCode {
   customerId String            @map("customer_id") @db.Uuid
   status     VoucherCodeStatus @default(AVAILABLE) @map("status")
   issuedAt   DateTime          @default(now()) @map("issued_at") @db.Timestamptz
+  expiresAt  DateTime          @map("expires_at") @db.Timestamptz
+  updatedAt  DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
   orderItem OrderItem         @relation(fields: [itemId], references: [itemId], onDelete: Restrict)
@@ -465,6 +526,7 @@ model VoucherCode {
   usageLogs VoucherUsageLog[]
 
   @@index([customerId, issuedAt(sort: Desc)], map: "Voucher_Codes_customer_issued_at_idx")
+  @@index([status, expiresAt], map: "Voucher_Codes_status_expires_at_idx")
   @@index([itemId], map: "Voucher_Codes_item_id_idx")
   @@map("Voucher_Codes")
 }
@@ -502,6 +564,54 @@ model AuditLog {
   @@map("Audit_Logs")
 }
 
+model ActivityLog {
+  activityId        String           @id @default(dbgenerated("gen_random_uuid()")) @map("activity_id") @db.Uuid
+  actorUserId       String?          @map("actor_user_id") @db.Uuid
+  actorRoleSnapshot UserRole?        @map("actor_role_snapshot")
+  category          ActivityCategory @map("category")
+  actionType        String           @map("action_type") @db.VarChar(100)
+  targetEntity      String           @map("target_entity") @db.VarChar(100)
+  targetId          String?          @map("target_id") @db.VarChar(100)
+  metadata          Json?            @map("metadata") @db.JsonB
+  ipAddress         String?          @map("ip_address") @db.VarChar(64)
+  userAgent         String?          @map("user_agent") @db.VarChar(512)
+  occurredAt        DateTime         @default(now()) @map("occurred_at") @db.Timestamptz
+
+  actor User? @relation("ActivityActor", fields: [actorUserId], references: [userId], onDelete: SetNull)
+
+  @@index([actorUserId, occurredAt(sort: Desc)], map: "Activity_Logs_actor_occurred_at_idx")
+  @@index([category, occurredAt(sort: Desc)], map: "Activity_Logs_category_occurred_at_idx")
+  @@index([targetEntity, targetId, occurredAt(sort: Desc)], map: "Activity_Logs_target_occurred_at_idx")
+  @@map("Activity_Logs")
+}
+
+model ContentEntry {
+  contentId    String        @id @default(dbgenerated("gen_random_uuid()")) @map("content_id") @db.Uuid
+  type         ContentType   @map("type")
+  slug         String        @unique @map("slug") @db.VarChar(150)
+  title        String        @map("title") @db.VarChar(255)
+  summary      String?       @map("summary") @db.Text
+  body         String?       @map("body") @db.Text
+  imageUrl     String?       @map("image_url") @db.Text
+  linkUrl      String?       @map("link_url") @db.Text
+  status       ContentStatus @default(DRAFT) @map("status")
+  displayOrder Int           @default(0) @map("display_order")
+  publishedAt  DateTime?     @map("published_at") @db.Timestamptz
+  startsAt     DateTime?     @map("starts_at") @db.Timestamptz
+  endsAt       DateTime?     @map("ends_at") @db.Timestamptz
+  createdById  String?       @map("created_by_id") @db.Uuid
+  updatedById  String?       @map("updated_by_id") @db.Uuid
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  createdBy User? @relation("ContentEntryCreatedBy", fields: [createdById], references: [userId], onDelete: SetNull)
+  updatedBy User? @relation("ContentEntryUpdatedBy", fields: [updatedById], references: [userId], onDelete: SetNull)
+
+  @@index([type, status, displayOrder], map: "Content_Entries_type_status_order_idx")
+  @@index([status, startsAt, endsAt], map: "Content_Entries_status_window_idx")
+  @@map("Content_Entries")
+}
+
 model CartItem {
   cartItemId String   @id @default(dbgenerated("gen_random_uuid()")) @map("cart_item_id") @db.Uuid
   customerId String   @map("customer_id") @db.Uuid
@@ -528,10 +638,40 @@ model VoucherReview {
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   // Relations
-  customer User            @relation(fields: [customerId], references: [userId], onDelete: Cascade)
-  campaign VoucherCampaign @relation(fields: [campaignId], references: [campaignId], onDelete: Cascade)
+  customer   User            @relation(fields: [customerId], references: [userId], onDelete: Cascade)
+  campaign   VoucherCampaign @relation(fields: [campaignId], references: [campaignId], onDelete: Cascade)
+  complaints Complaint[]
 
   @@unique([customerId, campaignId])
   @@index([campaignId, createdAt(sort: Desc)], map: "Voucher_Reviews_campaign_created_at_idx")
   @@map("Voucher_Reviews")
+}
+
+model Complaint {
+  complaintId        String          @id @default(dbgenerated("gen_random_uuid()")) @map("complaint_id") @db.Uuid
+  customerId         String          @map("customer_id") @db.Uuid
+  orderId            String?         @map("order_id") @db.Uuid
+  campaignId         String?         @map("campaign_id") @db.Uuid
+  reviewId           String?         @map("review_id") @db.Uuid
+  type               ComplaintType   @map("type")
+  subject            String          @map("subject") @db.VarChar(255)
+  description        String          @map("description") @db.Text
+  status             ComplaintStatus @default(OPEN) @map("status")
+  resolutionResponse String?         @map("resolution_response") @db.Text
+  resolvedById       String?         @map("resolved_by_id") @db.Uuid
+  resolvedAt         DateTime?       @map("resolved_at") @db.Timestamptz
+  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  customer   User             @relation("ComplaintCustomer", fields: [customerId], references: [userId], onDelete: Restrict)
+  resolvedBy User?            @relation("ComplaintResolver", fields: [resolvedById], references: [userId], onDelete: SetNull)
+  order      Order?           @relation(fields: [orderId], references: [orderId], onDelete: SetNull)
+  campaign   VoucherCampaign? @relation(fields: [campaignId], references: [campaignId], onDelete: SetNull)
+  review     VoucherReview?   @relation(fields: [reviewId], references: [reviewId], onDelete: SetNull)
+
+  @@index([customerId, createdAt(sort: Desc)], map: "Complaints_customer_created_at_idx")
+  @@index([status, createdAt(sort: Desc)], map: "Complaints_status_created_at_idx")
+  @@index([orderId], map: "Complaints_order_id_idx")
+  @@index([campaignId], map: "Complaints_campaign_id_idx")
+  @@map("Complaints")
 }

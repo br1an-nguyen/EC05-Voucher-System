@@ -46,6 +46,16 @@ export class OrdersService {
 
       let totalAmount = new Prisma.Decimal(0);
       const currentUnitPrices = new Map<string, Prisma.Decimal>();
+      const policySnapshots = new Map<
+        string,
+        {
+          refundAllowed: boolean;
+          refundWindowHours: number | null;
+          refundPolicy: string | null;
+          cancellationPolicy: string | null;
+          policyVersion: number;
+        }
+      >();
       const now = new Date();
 
       // Lock campaigns in a stable order to avoid deadlocks between checkouts.
@@ -89,6 +99,13 @@ export class OrdersService {
         }
 
         currentUnitPrices.set(item.campaignId, campaign.salePrice);
+        policySnapshots.set(item.campaignId, {
+          refundAllowed: campaign.refundAllowed,
+          refundWindowHours: campaign.refundWindowHours,
+          refundPolicy: campaign.refundPolicy,
+          cancellationPolicy: campaign.cancellationPolicy,
+          policyVersion: campaign.policyVersion,
+        });
         totalAmount = totalAmount.add(campaign.salePrice.mul(item.quantity));
       }
 
@@ -126,6 +143,12 @@ export class OrdersService {
             'Không thể xác định giá voucher hiện tại.',
           );
         }
+        const policySnapshot = policySnapshots.get(item.campaignId);
+        if (!policySnapshot) {
+          throw new BadRequestException(
+            'Không thể xác định chính sách voucher hiện tại.',
+          );
+        }
 
         await tx.orderItem.create({
           data: {
@@ -133,6 +156,11 @@ export class OrdersService {
             campaignId: item.campaignId,
             quantity: item.quantity,
             unitPrice,
+            refundAllowedSnapshot: policySnapshot.refundAllowed,
+            refundWindowHoursSnapshot: policySnapshot.refundWindowHours,
+            refundPolicySnapshot: policySnapshot.refundPolicy,
+            cancellationPolicySnapshot: policySnapshot.cancellationPolicy,
+            policyVersionSnapshot: policySnapshot.policyVersion,
           },
         });
 

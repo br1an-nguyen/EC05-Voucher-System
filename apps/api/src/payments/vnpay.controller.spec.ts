@@ -48,6 +48,7 @@ describe('PaymentsController VNPAY boundaries', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
     return { controller, finalization, payment, payments, vnpay };
   }
