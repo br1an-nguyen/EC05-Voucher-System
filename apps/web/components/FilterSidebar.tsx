@@ -191,7 +191,6 @@ export default function FilterSidebar({
               key={disc}
               onClick={() => {
                 onMinDiscountChange(disc.toString());
-                setTimeout(onFilter, 50); // auto apply
               }}
               className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${
                 minDiscount === disc.toString()
@@ -206,7 +205,6 @@ export default function FilterSidebar({
             <button
               onClick={() => {
                 onMinDiscountChange('');
-                setTimeout(onFilter, 50);
               }}
               className="px-2 py-1 text-[10px] text-slate-400 hover:text-slate-600 underline"
             >

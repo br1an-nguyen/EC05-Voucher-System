@@ -998,8 +998,8 @@ export class VouchersService {
     if (minDiscount !== undefined) {
       processedCampaigns = processedCampaigns.filter((c) => {
         const discountPct =
-          ((Number(c.originalPrice) - Number(c.salePrice)) /
-            Number(c.originalPrice)) *
+          ((Number(c.originalPrice.toString()) - Number(c.salePrice.toString())) /
+            Number(c.originalPrice.toString())) *
           100;
         return discountPct >= minDiscount;
       });
@@ -1009,12 +1009,12 @@ export class VouchersService {
     if (sortDiscount) {
       processedCampaigns.sort((a, b) => {
         const aDisc =
-          ((Number(a.originalPrice) - Number(a.salePrice)) /
-            Number(a.originalPrice)) *
+          ((Number(a.originalPrice.toString()) - Number(a.salePrice.toString())) /
+            Number(a.originalPrice.toString())) *
           100;
         const bDisc =
-          ((Number(b.originalPrice) - Number(b.salePrice)) /
-            Number(b.originalPrice)) *
+          ((Number(b.originalPrice.toString()) - Number(b.salePrice.toString())) /
+            Number(b.originalPrice.toString())) *
           100;
         return sortDiscount === 'desc' ? bDisc - aDisc : aDisc - bDisc;
       });

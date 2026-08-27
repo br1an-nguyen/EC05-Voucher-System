@@ -320,7 +320,14 @@ function HomePageContent() {
               setTimeout(scrollToProducts, 50);
             }}
             minDiscount={minDiscount}
-            onMinDiscountChange={(d) => setMinDiscount(d)}
+            onMinDiscountChange={(d) => {
+              setMinDiscount(d);
+              setPage(1);
+              const filters = { ...currentFilters(), minDiscount: d, page: 1 };
+              updateBrowserFilters(filters);
+              void fetchCatalog(filters);
+              setTimeout(scrollToProducts, 50);
+            }}
             maxPrice={maxPrice}
             setMaxPrice={setMaxPrice}
             onFilter={handleSidebarFilter}
@@ -390,7 +397,14 @@ function HomePageContent() {
                           setTimeout(scrollToProducts, 50);
                         }}
                         minDiscount={minDiscount}
-                        onMinDiscountChange={(d) => setMinDiscount(d)}
+                        onMinDiscountChange={(d) => {
+                          setMinDiscount(d);
+                          setPage(1);
+                          const filters = { ...currentFilters(), minDiscount: d, page: 1 };
+                          updateBrowserFilters(filters);
+                          void fetchCatalog(filters);
+                          setTimeout(scrollToProducts, 50);
+                        }}
                         maxPrice={maxPrice}
                         setMaxPrice={setMaxPrice}
                         onFilter={handleSidebarFilter}
