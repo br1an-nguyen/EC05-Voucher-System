@@ -36,7 +36,7 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
     { name: 'Chi nhánh cửa hàng', href: '/partner/branches', icon: MapPin, roles: ['PARTNER'] },
     { name: 'Danh sách Voucher', href: '/partner/vouchers', icon: Ticket, roles: ['PARTNER'] },
     { name: 'Quản lý Nhân viên', href: '/partner/staff', icon: User, roles: ['PARTNER'] },
-    { name: 'Quét/Xác thực mã', href: '/partner/redeem', icon: CheckSquare, roles: ['PARTNER_STAFF'] },
+    { name: 'Quét/Xác thực mã', href: '/partner/redeem', icon: CheckSquare, roles: ['PARTNER', 'PARTNER_STAFF'] },
   ];
 
   const navigation = allNavigation.filter((item) => item.roles.includes(user?.role || ''));
