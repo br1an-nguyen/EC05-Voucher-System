@@ -590,6 +590,8 @@ model ActivityLog {
   activityId        String           @id @default(dbgenerated("gen_random_uuid()")) @map("activity_id") @db.Uuid
   actorUserId       String?          @map("actor_user_id") @db.Uuid
   actorRoleSnapshot UserRole?        @map("actor_role_snapshot")
+  actorNameSnapshot String?          @map("actor_name_snapshot") @db.VarChar(255)
+  actorEmailSnapshot String?         @map("actor_email_snapshot") @db.VarChar(255)
   category          ActivityCategory @map("category")
   actionType        String           @map("action_type") @db.VarChar(100)
   targetEntity      String           @map("target_entity") @db.VarChar(100)
@@ -603,6 +605,7 @@ model ActivityLog {
 
   @@index([actorUserId, occurredAt(sort: Desc)], map: "Activity_Logs_actor_occurred_at_idx")
   @@index([category, occurredAt(sort: Desc)], map: "Activity_Logs_category_occurred_at_idx")
+  @@index([actionType, occurredAt(sort: Desc)], map: "Activity_Logs_action_occurred_at_idx")
   @@index([targetEntity, targetId, occurredAt(sort: Desc)], map: "Activity_Logs_target_occurred_at_idx")
   @@map("Activity_Logs")
 }

@@ -46,7 +46,101 @@ describe('VouchersService redemption scope', () => {
   });
 });
 
+describe('VouchersService admin category safeguards', () => {
+  it('rejects a parent change that creates a hierarchy cycle', async () => {
+    const tx = {
+      voucherCategory: {
+        findUnique: jest.fn(({ where }: any) => {
+          if (where.categoryId === 'category-a')
+            return Promise.resolve({
+              categoryId: 'category-a',
+              parentId: null,
+            });
+          if (where.categoryId === 'category-b')
+            return Promise.resolve({ parentId: 'category-a' });
+          return Promise.resolve(null);
+        }),
+        update: jest.fn(),
+      },
+    };
+    const prisma = { $transaction: jest.fn((callback: any) => callback(tx)) };
+    const service = new VouchersService(prisma as any, {} as any);
+
+    await expect(
+      service.adminUpdateCategory('admin', 'category-a', {
+        parentId: 'category-b',
+      }),
+    ).rejects.toThrow('vòng lặp');
+    expect(tx.voucherCategory.update).not.toHaveBeenCalled();
+  });
+
+  it('archives a category and its direct children without deleting records', async () => {
+    const category = { categoryId: 'category-a', isActive: true };
+    const tx = {
+      voucherCategory: {
+        findUnique: jest.fn().mockResolvedValue(category),
+        update: jest.fn().mockResolvedValue({ ...category, isActive: false }),
+        updateMany: jest.fn().mockResolvedValue({ count: 2 }),
+      },
+    };
+    const prisma = { $transaction: jest.fn((callback: any) => callback(tx)) };
+    const audit = { logActivity: jest.fn().mockResolvedValue(undefined) };
+    const service = new VouchersService(prisma as any, audit as any);
+
+    await service.adminDeleteCategory('admin', 'category-a');
+    expect(tx.voucherCategory.update).toHaveBeenCalledWith({
+      where: { categoryId: 'category-a' },
+      data: { isActive: false },
+    });
+    expect(tx.voucherCategory.updateMany).toHaveBeenCalledWith({
+      where: { parentId: 'category-a' },
+      data: { isActive: false },
+    });
+    expect(audit.logActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ actionType: 'ARCHIVE_CATEGORY' }),
+      tx,
+    );
+  });
+});
+
 describe('VouchersService public province filters', () => {
+  it('defaults the public catalog to approved campaigns currently on sale', async () => {
+    const prisma = {
+      voucherCampaign: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const service = new VouchersService(prisma as any, {} as any);
+
+    await service.findPublicCatalog({});
+
+    expect(prisma.voucherCampaign.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: VoucherStatus.APPROVED,
+          saleStartTime: { lte: expect.any(Date) },
+          saleEndTime: { gte: expect.any(Date) },
+        }),
+      }),
+    );
+  });
+
+  it('returns only campaigns that have not started when UPCOMING is requested', async () => {
+    const prisma = {
+      voucherCampaign: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const service = new VouchersService(prisma as any, {} as any);
+
+    await service.findPublicCatalog({ validityStatus: 'UPCOMING' });
+
+    expect(prisma.voucherCampaign.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: VoucherStatus.APPROVED,
+          saleStartTime: { gt: expect.any(Date) },
+        }),
+      }),
+    );
+  });
+
   it('filters campaigns by a branch province code', async () => {
     const prisma = {
       voucherCampaign: { findMany: jest.fn().mockResolvedValue([]) },

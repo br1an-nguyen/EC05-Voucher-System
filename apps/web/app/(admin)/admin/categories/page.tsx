@@ -1,22 +1,19 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { apiRequest } from '../../../../lib/api';
 import { getErrorMessage } from '../../../../lib/errors';
 import { 
   FolderTree, 
   Plus, 
   Edit3, 
-  Trash2, 
+  Archive,
   AlertCircle, 
   CheckCircle,
   Eye,
   EyeOff,
   Tag,
   ChevronRight,
-  ListOrdered,
-  Layers,
-  RefreshCw,
   X,
   Search
 } from 'lucide-react';
@@ -40,6 +37,7 @@ interface Category {
   isActive: boolean;
   campaignCount?: number;
 }
+interface CategoryResponse { items: Category[]; total: number; page: number; limit: number; totalPages: number; }
 
 export default function AdminCategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -62,21 +60,23 @@ export default function AdminCategoriesPage() {
   // Delete action state
   const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
 
-  const loadCategories = async () => {
+  const loadCategories = useCallback(async () => {
     try {
-      // Gọi endpoint lấy categories công khai nhưng do là Admin ta muốn lấy tất cả
-      const data = await apiRequest<Category[]>('/vouchers/admin/categories');
-      setCategories(data);
+      const params = new URLSearchParams({ page: '1', limit: '100' });
+      if (searchTerm.trim()) params.set('keyword', searchTerm.trim());
+      const data = await apiRequest<CategoryResponse>(`/vouchers/admin/categories?${params}`);
+      setCategories(data.items);
     } catch (error: unknown) {
       setErrorMsg(getErrorMessage(error, 'Không thể tải danh sách danh mục.'));
     } finally {
       setLoading(false);
     }
-  };
+  }, [searchTerm]);
 
   useEffect(() => {
-    loadCategories();
-  }, []);
+    const timeout = window.setTimeout(() => { void loadCategories(); }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [loadCategories]);
 
   const openCreateModal = () => {
     setIsEditing(false);
@@ -105,8 +105,7 @@ export default function AdminCategoriesPage() {
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    const bodyData = {
-      code: formCode.trim(),
+    const commonData = {
       nameVi: formNameVi.trim(),
       parentId: formParentId || null,
       displayOrder: parseInt(formDisplayOrder, 10) || 0,
@@ -117,18 +116,23 @@ export default function AdminCategoriesPage() {
       if (isEditing && selectedCategoryId) {
         await apiRequest<void>(`/vouchers/admin/categories/${selectedCategoryId}`, {
           method: 'PATCH',
-          body: JSON.stringify(bodyData),
+          body: JSON.stringify(commonData),
         });
         setSuccessMsg('Đã cập nhật danh mục thành công!');
       } else {
         await apiRequest<void>('/vouchers/admin/categories', {
           method: 'POST',
-          body: JSON.stringify(bodyData),
+          body: JSON.stringify({
+            code: formCode.trim(),
+            nameVi: commonData.nameVi,
+            parentId: commonData.parentId,
+            displayOrder: commonData.displayOrder,
+          }),
         });
         setSuccessMsg('Đã tạo danh mục mới thành công!');
       }
       setShowFormModal(false);
-      loadCategories();
+      void loadCategories();
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (error: unknown) {
       setErrorMsg(getErrorMessage(error, 'Không thể lưu danh mục. Vui lòng kiểm tra lại.'));
@@ -142,19 +146,15 @@ export default function AdminCategoriesPage() {
       await apiRequest<void>(`/vouchers/admin/categories/${categoryId}`, {
         method: 'DELETE',
       });
-      setSuccessMsg('Đã xóa danh mục thành công!');
-      loadCategories();
+      setSuccessMsg('Đã ngừng hoạt động danh mục thành công!');
+      void loadCategories();
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (error: unknown) {
       setErrorMsg(getErrorMessage(error, 'Không thể xóa danh mục này.'));
     }
   };
 
-  // Lọc theo từ khóa tìm kiếm
-  const filteredCategories = categories.filter(c => 
-    c.nameVi.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    c.code.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredCategories = categories;
 
   // Sắp xếp danh mục cha lên trước, sau đó là danh mục con thụt lề
   const rootCategories = searchTerm 
@@ -287,9 +287,9 @@ export default function AdminCategoriesPage() {
                             <button
                               onClick={() => setCategoryToDelete(root)}
                               className="p-1 rounded text-rose-500 hover:bg-rose-50 transition-colors border border-transparent"
-                              title="Xóa danh mục"
+                              title="Ngừng hoạt động danh mục"
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Archive className="h-4 w-4" />
                             </button>
                           </div>
                         </td>
@@ -335,9 +335,9 @@ export default function AdminCategoriesPage() {
                               <button
                                 onClick={() => setCategoryToDelete(child)}
                                 className="p-1 rounded text-rose-500 hover:bg-rose-50 transition-colors border border-transparent"
-                                title="Xóa danh mục"
+                                title="Ngừng hoạt động danh mục"
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <Archive className="h-4 w-4" />
                               </button>
                             </div>
                           </td>
@@ -486,11 +486,10 @@ export default function AdminCategoriesPage() {
             <AlertDialogHeader>
               <AlertDialogTitle className="flex items-center gap-2">
                 <AlertCircle className="h-5 w-5 text-red-500" />
-                Xác nhận xóa danh mục?
+                Xác nhận ngừng hoạt động?
               </AlertDialogTitle>
               <AlertDialogDescription>
-                Bạn có chắc chắn muốn xóa danh mục <strong>&quot;{categoryToDelete.nameVi}&quot;</strong>? 
-                Thao tác này sẽ xóa vĩnh viễn danh mục khỏi hệ thống và không thể phục hồi.
+                Danh mục <strong>&quot;{categoryToDelete.nameVi}&quot;</strong> và các danh mục con trực tiếp sẽ được ẩn. Dữ liệu và liên kết voucher vẫn được giữ lại.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -504,7 +503,7 @@ export default function AdminCategoriesPage() {
                 }}
                 className="bg-red-600 hover:bg-red-700 text-white"
               >
-                Xác nhận xóa
+                Ngừng hoạt động
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

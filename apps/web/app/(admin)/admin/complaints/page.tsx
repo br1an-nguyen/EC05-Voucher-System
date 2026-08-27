@@ -1,390 +1,486 @@
-'use client';
+"use client";
 
-import React, { useEffect, useState } from 'react';
-import { apiRequest } from '../../../../lib/api';
-import { getErrorMessage } from '../../../../lib/errors';
+import React, { useCallback, useEffect, useState } from "react";
 import {
-  MessageSquareWarning,
-  Search,
-  CheckCircle,
-  XCircle,
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
   Clock,
-  Send,
-  User,
-  AlertCircle
-} from 'lucide-react';
+  MessageSquareWarning,
+  Save,
+  Search,
+  UserCheck,
+  X,
+} from "lucide-react";
+import toast from "react-hot-toast";
+import ComplaintThread from "../../../../components/complaints/ComplaintThread";
+import { useAuth } from "../../../../context/AuthContext";
+import { apiRequest } from "../../../../lib/api";
+import { getErrorMessage } from "../../../../lib/errors";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '../../../../components/ui/dialog';
-import toast from 'react-hot-toast';
+  Complaint,
+  ComplaintPriority,
+  ComplaintStatus,
+  PagedComplaints,
+  complaintPriority,
+  complaintStatus,
+  complaintTypes,
+} from "../../../../lib/complaints";
 
-interface UserInfo {
-  email: string;
-  fullName: string;
-  phone: string;
-}
-
-interface CampaignInfo {
-  title: string;
-  partner?: { companyName: string };
-}
-
-interface OrderInfo {
-  orderCode: string;
-  totalAmount: number;
-}
-
-interface Complaint {
-  complaintId: string;
-  type: string;
-  subject: string;
-  description: string;
-  status: 'OPEN' | 'IN_REVIEW' | 'RESOLVED' | 'REJECTED' | 'CLOSED';
-  resolutionResponse: string | null;
-  resolvedAt: string | null;
-  createdAt: string;
-  customer?: UserInfo;
-  resolvedBy?: UserInfo;
-  campaign?: CampaignInfo;
-  order?: OrderInfo;
-}
-
-const statusMap = {
-  OPEN: { label: 'Đang mở', color: 'bg-amber-100 text-amber-700' },
-  IN_REVIEW: { label: 'Đang xử lý', color: 'bg-blue-100 text-blue-700' },
-  RESOLVED: { label: 'Đã giải quyết', color: 'bg-green-100 text-green-700' },
-  REJECTED: { label: 'Từ chối', color: 'bg-red-100 text-red-700' },
-  CLOSED: { label: 'Đã đóng', color: 'bg-slate-100 text-slate-700' },
-};
-
-const typeMap: Record<string, string> = {
-  VOUCHER: 'Voucher',
-  ORDER: 'Đơn hàng',
-  PAYMENT: 'Thanh toán',
-  PARTNER: 'Đối tác',
-  OTHER: 'Khác',
+const transitions: Record<ComplaintStatus, ComplaintStatus[]> = {
+  OPEN: ["IN_REVIEW", "REJECTED"],
+  IN_REVIEW: ["WAITING_PARTNER", "WAITING_CUSTOMER", "RESOLVED", "REJECTED"],
+  WAITING_PARTNER: ["IN_REVIEW", "WAITING_CUSTOMER", "RESOLVED", "REJECTED"],
+  WAITING_CUSTOMER: ["IN_REVIEW", "WAITING_PARTNER", "RESOLVED", "REJECTED"],
+  RESOLVED: ["CLOSED", "IN_REVIEW"],
+  REJECTED: ["CLOSED", "IN_REVIEW"],
+  CLOSED: [],
 };
 
 export default function AdminComplaintsPage() {
-  const [complaints, setComplaints] = useState<Complaint[]>([]);
+  const { user } = useAuth();
+  const [result, setResult] = useState<PagedComplaints>({
+    items: [],
+    total: 0,
+    page: 1,
+    limit: 20,
+    totalPages: 0,
+  });
+  const [page, setPage] = useState(1);
+  const [status, setStatus] = useState("");
+  const [priority, setPriority] = useState("");
+  const [keyword, setKeyword] = useState("");
+  const [overdue, setOverdue] = useState(false);
   const [loading, setLoading] = useState(true);
-  
-  const [filterText, setFilterText] = useState('');
-  const [activeStatus, setActiveStatus] = useState<string>('ALL');
-  
-  const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null);
-  const [replyText, setReplyText] = useState('');
-  const [replyStatus, setReplyStatus] = useState<string>('RESOLVED');
-  const [submitting, setSubmitting] = useState(false);
-
-  const fetchComplaints = async () => {
+  const [error, setError] = useState("");
+  const [detail, setDetail] = useState<Complaint | null>(null);
+  const [nextStatus, setNextStatus] = useState<ComplaintStatus>("IN_REVIEW");
+  const [nextPriority, setNextPriority] = useState<ComplaintPriority>("NORMAL");
+  const [message, setMessage] = useState("");
+  const [internal, setInternal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const load = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
-      const data = await apiRequest<Complaint[]>('/complaints/admin/list');
-      setComplaints(data);
-    } catch (error: unknown) {
-      toast.error(getErrorMessage(error, 'Không thể tải danh sách khiếu nại.'));
+      const params = new URLSearchParams({ page: String(page), limit: "20" });
+      if (status) params.set("status", status);
+      if (priority) params.set("priority", priority);
+      if (keyword.trim()) params.set("keyword", keyword.trim());
+      if (overdue) params.set("overdue", "true");
+      setResult(
+        await apiRequest<PagedComplaints>(`/complaints/admin/list?${params}`),
+      );
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, "Không thể tải hàng đợi khiếu nại."));
     } finally {
       setLoading(false);
     }
-  };
-
+  }, [keyword, overdue, page, priority, status]);
   useEffect(() => {
-    void fetchComplaints();
-  }, []);
-
-  const handleOpenDetail = async (id: string) => {
+    queueMicrotask(() => {
+      void load();
+    });
+  }, [load]);
+  const openDetail = async (id: string) => {
     try {
-      const detail = await apiRequest<Complaint>(`/complaints/admin/${id}`);
-      setSelectedComplaint(detail);
-      setReplyText(detail.resolutionResponse || '');
-      setReplyStatus(detail.status === 'OPEN' ? 'IN_REVIEW' : detail.status);
-    } catch (error) {
-      toast.error('Không thể tải chi tiết khiếu nại');
+      const item = await apiRequest<Complaint>(`/complaints/admin/${id}`);
+      setDetail(item);
+      setNextStatus(transitions[item.status][0] ?? item.status);
+      setNextPriority(item.priority);
+      setMessage("");
+      setInternal(false);
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, "Không thể tải chi tiết."));
     }
   };
-
-  const handleReplySubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedComplaint) return;
-    if (!replyText.trim()) {
-      toast.error('Vui lòng nhập nội dung phản hồi.');
-      return;
-    }
-    
-    setSubmitting(true);
+  const reloadDetail = async () => {
+    if (!detail) return;
+    const item = await apiRequest<Complaint>(
+      `/complaints/admin/${detail.complaintId}`,
+    );
+    setDetail(item);
+    setNextStatus(transitions[item.status][0] ?? item.status);
+    setNextPriority(item.priority);
+    await load();
+  };
+  const manage = async (payload: Record<string, unknown>) => {
+    if (!detail) return;
+    setSaving(true);
     try {
-      await apiRequest(`/complaints/admin/${selectedComplaint.complaintId}/reply`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          status: replyStatus,
-          resolutionResponse: replyText,
-        }),
+      await apiRequest(`/complaints/admin/${detail.complaintId}/manage`, {
+        method: "PATCH",
+        body: JSON.stringify({ expectedVersion: detail.version, ...payload }),
       });
-      
-      toast.success('Gửi phản hồi thành công!');
-      setSelectedComplaint(null);
-      fetchComplaints();
-    } catch (error) {
-      toast.error(getErrorMessage(error, 'Không thể gửi phản hồi.'));
+      toast.success("Đã cập nhật khiếu nại.");
+      setMessage("");
+      await reloadDetail();
+    } catch (e: unknown) {
+      toast.error(
+        getErrorMessage(e, "Không thể cập nhật; dữ liệu có thể vừa thay đổi."),
+      );
+      try {
+        await reloadDetail();
+      } catch {}
     } finally {
-      setSubmitting(false);
+      setSaving(false);
     }
   };
-
-  const filtered = complaints.filter(c => {
-    if (activeStatus !== 'ALL' && c.status !== activeStatus) return false;
-    if (filterText) {
-      const term = filterText.toLowerCase();
-      return c.subject.toLowerCase().includes(term) || 
-             (c.customer?.fullName || '').toLowerCase().includes(term) ||
-             (c.customer?.email || '').toLowerCase().includes(term);
-    }
-    return true;
-  });
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    void manage({
+      status: nextStatus,
+      priority: nextPriority,
+      message: message || undefined,
+      visibility: internal ? "ADMIN_ONLY" : "ALL_PARTIES",
+    });
+  };
+  const overdueAt = (item: Complaint) =>
+    item.status === "WAITING_PARTNER"
+      ? item.partnerDueAt
+      : item.status === "WAITING_CUSTOMER"
+        ? item.customerDueAt
+        : null;
 
   return (
     <div className="space-y-6">
-      
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-foreground flex items-center gap-2">
-            <MessageSquareWarning className="h-6 w-6 text-primary" />
-            Xử lý Khiếu nại
-          </h1>
-          <p className="text-sm text-muted mt-1">
-            Quản lý, theo dõi và phản hồi các yêu cầu hỗ trợ từ khách hàng.
-          </p>
-        </div>
+      <div className="border-b pb-4">
+        <h1 className="flex items-center gap-2 text-2xl font-extrabold">
+          <MessageSquareWarning className="h-6 w-6 text-primary" /> Hàng đợi
+          khiếu nại
+        </h1>
+        <p className="mt-1 text-xs text-muted">
+          Điều phối hội thoại giữa khách hàng, đối tác và quản trị viên.
+        </p>
       </div>
-
-      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-        
-        {/* Filters */}
-        <div className="p-4 border-b border-border bg-muted/20 flex flex-col sm:flex-row gap-4 justify-between items-center">
-          <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-2 sm:pb-0 scrollbar-hide">
-            <button
-              onClick={() => setActiveStatus('ALL')}
-              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors whitespace-nowrap ${
-                activeStatus === 'ALL' ? 'bg-foreground text-background' : 'bg-background border border-border text-foreground hover:bg-muted/50'
-              }`}
-            >
-              Tất cả
-            </button>
-            {['OPEN', 'IN_REVIEW', 'RESOLVED', 'REJECTED'].map(status => (
-              <button
-                key={status}
-                onClick={() => setActiveStatus(status)}
-                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors whitespace-nowrap ${
-                  activeStatus === status ? 'bg-foreground text-background' : 'bg-background border border-border text-foreground hover:bg-muted/50'
-                }`}
-              >
-                {statusMap[status as keyof typeof statusMap].label}
-              </button>
-            ))}
-          </div>
-
-          <div className="relative w-full sm:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
-            <input 
-              type="text" 
-              placeholder="Tìm theo tiêu đề, tên KH..." 
-              value={filterText}
-              onChange={(e) => setFilterText(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-            />
-          </div>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          setPage(1);
+          void load();
+        }}
+        className="grid gap-3 rounded-xl border bg-card p-4 md:grid-cols-5"
+      >
+        <label className="relative md:col-span-2">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted" />
+          <input
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            placeholder="Chủ đề, khách hàng, mã đơn..."
+            className="w-full rounded-lg border bg-background py-2 pl-9 pr-3 text-sm"
+          />
+        </label>
+        <select
+          value={status}
+          onChange={(e) => {
+            setStatus(e.target.value);
+            setPage(1);
+          }}
+          className="rounded-lg border bg-background px-3 text-sm"
+        >
+          <option value="">Tất cả trạng thái</option>
+          {Object.entries(complaintStatus).map(([v, c]) => (
+            <option key={v} value={v}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={priority}
+          onChange={(e) => {
+            setPriority(e.target.value);
+            setPage(1);
+          }}
+          className="rounded-lg border bg-background px-3 text-sm"
+        >
+          <option value="">Tất cả ưu tiên</option>
+          {Object.entries(complaintPriority).map(([v, l]) => (
+            <option key={v} value={v}>
+              {l}
+            </option>
+          ))}
+        </select>
+        <label className="flex items-center gap-2 rounded-lg border bg-background px-3 text-xs font-semibold">
+          <input
+            type="checkbox"
+            checked={overdue}
+            onChange={(e) => {
+              setOverdue(e.target.checked);
+              setPage(1);
+            }}
+          />{" "}
+          Chỉ quá hạn
+        </label>
+      </form>
+      {error && (
+        <div className="flex gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <AlertCircle className="h-5 w-5" />
+          {error}
         </div>
-
-        {/* Table */}
+      )}
+      <div className="overflow-hidden rounded-xl border bg-card">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-foreground">
-            <thead className="bg-muted/30 text-xs uppercase font-bold text-muted border-b border-border">
+          <table className="w-full min-w-[940px] text-left text-xs">
+            <thead className="border-b bg-secondary/40 uppercase">
               <tr>
-                <th className="px-6 py-4">Khách hàng</th>
-                <th className="px-6 py-4">Chủ đề</th>
-                <th className="px-6 py-4">Loại</th>
-                <th className="px-6 py-4">Trạng thái</th>
-                <th className="px-6 py-4">Thời gian</th>
-                <th className="px-6 py-4 text-right">Thao tác</th>
+                <th className="p-4">Khách hàng</th>
+                <th className="p-4">Vấn đề</th>
+                <th className="p-4">Đối tác</th>
+                <th className="p-4">Ưu tiên</th>
+                <th className="p-4">Trạng thái</th>
+                <th className="p-4">Phụ trách/SLA</th>
+                <th className="p-4 text-right">Thao tác</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody className="divide-y">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-muted">
-                    <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-primary mx-auto"></div>
+                  <td colSpan={7} className="p-10 text-center text-muted">
+                    Đang tải...
                   </td>
                 </tr>
-              ) : filtered.length === 0 ? (
+              ) : result.items.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-muted">
-                    Không tìm thấy khiếu nại nào.
+                  <td colSpan={7} className="p-10 text-center text-muted">
+                    Không có khiếu nại phù hợp.
                   </td>
                 </tr>
               ) : (
-                filtered.map((item) => (
-                  <tr key={item.complaintId} className="hover:bg-muted/10 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="font-semibold">{item.customer?.fullName}</div>
-                      <div className="text-[10px] text-muted">{item.customer?.email}</div>
-                    </td>
-                    <td className="px-6 py-4 max-w-xs">
-                      <div className="font-medium truncate" title={item.subject}>{item.subject}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-[10px] bg-secondary px-2 py-1 rounded font-semibold text-muted-foreground">
-                        {typeMap[item.type] || item.type}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider ${statusMap[item.status].color}`}>
-                        {statusMap[item.status].label}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-xs text-muted whitespace-nowrap">
-                      {new Date(item.createdAt).toLocaleDateString('vi-VN')}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button
-                        onClick={() => handleOpenDetail(item.complaintId)}
-                        className="text-primary hover:text-primary-hover font-bold text-xs bg-primary/10 hover:bg-primary/20 px-3 py-1.5 rounded-md transition-colors"
-                      >
-                        Xử lý
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                result.items.map((item) => {
+                  const due = overdueAt(item);
+                  const late = due && new Date(due) < new Date();
+                  return (
+                    <tr
+                      key={item.complaintId}
+                      className="hover:bg-secondary/20"
+                    >
+                      <td className="p-4">
+                        <div className="font-bold">
+                          {item.customer?.fullName || "Khách hàng"}
+                        </div>
+                        <div className="text-[10px] text-muted">
+                          {item.customer?.email}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="max-w-[240px] truncate font-semibold">
+                          {item.subject}
+                        </div>
+                        <div className="text-[10px] text-muted">
+                          {complaintTypes[item.type]} ·{" "}
+                          {item.order?.orderCode || "Không có đơn"}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        {item.partner?.companyName || "Hệ thống"}
+                      </td>
+                      <td className="p-4">
+                        {complaintPriority[item.priority]}
+                      </td>
+                      <td className="p-4">
+                        <span
+                          className={`rounded-full px-2 py-1 font-bold ${complaintStatus[item.status].className}`}
+                        >
+                          {complaintStatus[item.status].label}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <div>{item.assignedAdmin?.fullName || "Chưa nhận"}</div>
+                        {due && (
+                          <div
+                            className={`mt-1 flex items-center gap-1 text-[10px] ${late ? "font-bold text-red-600" : "text-muted"}`}
+                          >
+                            <Clock className="h-3 w-3" />
+                            {new Date(due).toLocaleString("vi-VN")}
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-4 text-right">
+                        <button
+                          onClick={() => void openDetail(item.complaintId)}
+                          className="rounded-lg border px-3 py-1.5 font-bold hover:bg-secondary"
+                        >
+                          Xử lý
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
+        <div className="flex justify-between border-t p-3 text-xs text-muted">
+          <span>{result.total} khiếu nại</span>
+          <div className="flex gap-2">
+            <button
+              disabled={page <= 1}
+              onClick={() => setPage((v) => v - 1)}
+              className="rounded border p-1 disabled:opacity-40"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span>
+              Trang {result.page}/{Math.max(result.totalPages, 1)}
+            </span>
+            <button
+              disabled={page >= result.totalPages}
+              onClick={() => setPage((v) => v + 1)}
+              className="rounded border p-1 disabled:opacity-40"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
       </div>
-
-      {/* DETAIL & REPLY MODAL */}
-      <Dialog open={Boolean(selectedComplaint)} onOpenChange={(open) => !open && setSelectedComplaint(null)}>
-        {selectedComplaint && (
-          <DialogContent className="max-w-2xl bg-card border-border rounded-2xl overflow-hidden p-0 gap-0">
-            <DialogHeader className="p-6 border-b border-border bg-muted/10">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${statusMap[selectedComplaint.status].color}`}>
-                      {statusMap[selectedComplaint.status].label}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(selectedComplaint.createdAt).toLocaleString('vi-VN')}
-                    </span>
-                  </div>
-                  <DialogTitle className="text-xl font-extrabold text-foreground">
-                    {selectedComplaint.subject}
-                  </DialogTitle>
+      {detail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-background">
+            <div className="flex justify-between border-b bg-card p-5">
+              <div>
+                <div className="flex gap-2">
+                  <span
+                    className={`rounded-full px-2 py-1 text-[10px] font-bold ${complaintStatus[detail.status].className}`}
+                  >
+                    {complaintStatus[detail.status].label}
+                  </span>
+                  <span className="rounded bg-secondary px-2 py-1 text-[10px] font-bold">
+                    v{detail.version}
+                  </span>
                 </div>
+                <h2 className="mt-2 text-xl font-extrabold">
+                  {detail.subject}
+                </h2>
+                <p className="text-xs text-muted">
+                  {detail.customer?.fullName} ·{" "}
+                  {detail.partner?.companyName || "Hệ thống"} ·{" "}
+                  {detail.order?.orderCode}
+                </p>
               </div>
-            </DialogHeader>
-            
-            <div className="flex flex-col md:flex-row h-[60vh] max-h-[600px]">
-              
-              {/* Left Column: Complaint Details */}
-              <div className="w-full md:w-1/2 p-6 overflow-y-auto border-r border-border space-y-6">
-                
-                <div className="space-y-2">
-                  <h4 className="text-[10px] font-bold text-muted uppercase tracking-wider flex items-center gap-1.5">
-                    <User className="h-3.5 w-3.5" /> Khách hàng
-                  </h4>
-                  <div className="bg-secondary/30 rounded-lg p-3 text-sm">
-                    <p className="font-bold">{selectedComplaint.customer?.fullName}</p>
-                    <p className="text-xs text-muted">{selectedComplaint.customer?.email}</p>
-                    <p className="text-xs text-muted">{selectedComplaint.customer?.phone}</p>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <h4 className="text-[10px] font-bold text-muted uppercase tracking-wider flex items-center gap-1.5">
-                    <AlertCircle className="h-3.5 w-3.5" /> Chi tiết vấn đề
-                  </h4>
-                  <div className="bg-background border border-border rounded-lg p-3 text-sm text-foreground whitespace-pre-wrap leading-relaxed shadow-inner">
-                    {selectedComplaint.description}
-                  </div>
-                </div>
-
-                {/* Liên kết liên quan */}
-                {(selectedComplaint.order || selectedComplaint.campaign) && (
-                  <div className="space-y-2 pt-2 border-t border-border">
-                    <h4 className="text-[10px] font-bold text-muted uppercase tracking-wider">Thông tin liên quan</h4>
-                    <ul className="text-xs space-y-1">
-                      {selectedComplaint.order && (
-                        <li><strong>Đơn hàng:</strong> <span className="font-mono text-primary">{selectedComplaint.order.orderCode}</span> ({selectedComplaint.order.totalAmount.toLocaleString()}đ)</li>
-                      )}
-                      {selectedComplaint.campaign && (
-                        <li><strong>Chiến dịch:</strong> {selectedComplaint.campaign.title} <span className="text-muted">({selectedComplaint.campaign.partner?.companyName})</span></li>
-                      )}
-                    </ul>
-                  </div>
-                )}
-                
-              </div>
-
-              {/* Right Column: Admin Reply Form */}
-              <div className="w-full md:w-1/2 p-6 flex flex-col bg-muted/5">
-                <h4 className="text-sm font-bold text-foreground flex items-center gap-2 mb-4">
-                  <Send className="h-4 w-4 text-primary" /> Phản hồi khách hàng
-                </h4>
-
-                <form onSubmit={handleReplySubmit} className="flex-1 flex flex-col space-y-4">
-                  
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-muted">Trạng thái mới</label>
-                    <select
-                      value={replyStatus}
-                      onChange={(e) => setReplyStatus(e.target.value)}
-                      className="w-full p-2.5 bg-background border border-border rounded-lg text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-primary"
-                    >
-                      <option value="IN_REVIEW">Đang xử lý (In Review)</option>
-                      <option value="RESOLVED">Đã giải quyết (Resolved)</option>
-                      <option value="REJECTED">Từ chối (Rejected)</option>
-                      <option value="CLOSED">Đóng (Closed)</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1.5 flex-1 flex flex-col">
-                    <label className="text-xs font-bold text-muted">Nội dung phản hồi</label>
-                    <textarea
-                      required
-                      value={replyText}
-                      onChange={(e) => setReplyText(e.target.value)}
-                      placeholder="Nhập nội dung giải quyết hoặc phản hồi cho khách hàng..."
-                      className="w-full p-3 flex-1 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none"
-                    />
-                  </div>
-
-                  <div className="pt-4 border-t border-border flex justify-end gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedComplaint(null)}
-                      className="px-4 py-2 rounded-lg text-sm font-bold text-muted-foreground hover:bg-muted/50 transition-colors"
-                    >
-                      Hủy
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={submitting}
-                      className="px-5 py-2 rounded-lg bg-primary hover:bg-primary-hover text-white text-sm font-bold shadow disabled:opacity-50 transition-all flex items-center gap-2"
-                    >
-                      {submitting ? 'Đang lưu...' : 'Lưu phản hồi'}
-                    </button>
-                  </div>
-                  
-                </form>
-
-              </div>
+              <button onClick={() => setDetail(null)}>
+                <X className="h-5 w-5" />
+              </button>
             </div>
-          </DialogContent>
-        )}
-      </Dialog>
+            <div className="grid flex-1 overflow-hidden lg:grid-cols-[1fr_380px]">
+              <div className="overflow-auto p-5">
+                <div className="mb-5 rounded-xl border bg-card p-4 text-sm whitespace-pre-wrap">
+                  {detail.description}
+                </div>
+                <ComplaintThread complaint={detail} showInternal />
+                <div className="mt-6 border-t pt-4">
+                  <h3 className="mb-3 text-xs font-bold uppercase text-muted">
+                    Timeline trạng thái
+                  </h3>
+                  <div className="space-y-2">
+                    {detail.events?.map((event) => (
+                      <div
+                        key={event.eventId}
+                        className="flex justify-between rounded-lg bg-secondary/30 p-2 text-xs"
+                      >
+                        <span>
+                          {event.eventType}: {event.fromStatus || "—"} →{" "}
+                          {event.toStatus || "—"}
+                        </span>
+                        <span className="text-muted">
+                          {new Date(event.createdAt).toLocaleString("vi-VN")}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <form
+                onSubmit={submit}
+                className="overflow-auto border-l bg-card p-5"
+              >
+                <div className="mb-5 rounded-xl bg-secondary/30 p-3 text-xs">
+                  <div>
+                    <strong>Admin phụ trách:</strong>{" "}
+                    {detail.assignedAdmin?.fullName || "Chưa có"}
+                  </div>
+                  <div className="mt-1">
+                    <strong>Ưu tiên:</strong>{" "}
+                    {complaintPriority[detail.priority]}
+                  </div>
+                </div>
+                {!detail.assignedAdmin && user && (
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() =>
+                      void manage({ assignedAdminId: user.userId })
+                    }
+                    className="mb-5 flex w-full items-center justify-center gap-2 rounded-lg border border-primary px-3 py-2 text-sm font-bold text-primary"
+                  >
+                    <UserCheck className="h-4 w-4" /> Nhận xử lý
+                  </button>
+                )}
+                <label className="block text-xs font-bold">
+                  Trạng thái
+                  <select
+                    value={nextStatus}
+                    onChange={(e) =>
+                      setNextStatus(e.target.value as ComplaintStatus)
+                    }
+                    disabled={detail.status === "CLOSED"}
+                    className="mt-1 w-full rounded-lg border bg-background p-2.5 text-sm"
+                  >
+                    <option value={detail.status}>
+                      Giữ nguyên — {complaintStatus[detail.status].label}
+                    </option>
+                    {transitions[detail.status].map((value) => (
+                      <option key={value} value={value}>
+                        {complaintStatus[value].label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="mt-4 block text-xs font-bold">
+                  Mức ưu tiên
+                  <select
+                    value={nextPriority}
+                    onChange={(e) =>
+                      setNextPriority(e.target.value as ComplaintPriority)
+                    }
+                    className="mt-1 w-full rounded-lg border bg-background p-2.5 text-sm"
+                  >
+                    {Object.entries(complaintPriority).map(([v, l]) => (
+                      <option key={v} value={v}>
+                        {l}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="mt-4 block text-xs font-bold">
+                  Nội dung phản hồi / ghi chú
+                  <textarea
+                    rows={8}
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    className="mt-1 w-full rounded-lg border bg-background p-3 text-sm"
+                    placeholder="Nhập nội dung gửi các bên hoặc ghi chú nội bộ..."
+                  />
+                </label>
+                <label className="mt-3 flex items-center gap-2 text-xs font-semibold">
+                  <input
+                    type="checkbox"
+                    checked={internal}
+                    onChange={(e) => setInternal(e.target.checked)}
+                  />{" "}
+                  Chỉ Admin được xem
+                </label>
+                <button
+                  disabled={saving || detail.status === "CLOSED"}
+                  className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40"
+                >
+                  <Save className="h-4 w-4" />{" "}
+                  {saving ? "Đang lưu..." : "Lưu cập nhật"}
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

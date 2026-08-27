@@ -46,9 +46,49 @@ interface AdminDashboardSummary {
     draft: number;
     rejected: number;
     expired: number;
+    paused: number;
+    soldOut: number;
   };
   partnerPerformance?: PartnerPerformance[];
 }
+
+const CAMPAIGN_STATUS_DISPLAY: Array<{
+  key: keyof AdminDashboardSummary['campaignStats'];
+  label: string;
+  colorClass: string;
+}> = [
+  {
+    key: 'approved',
+    label: 'Đang hoạt động (Approved)',
+    colorClass: 'bg-emerald-500',
+  },
+  {
+    key: 'pending',
+    label: 'Đang chờ phê duyệt (Pending)',
+    colorClass: 'bg-yellow-500',
+  },
+  { key: 'draft', label: 'Bản nháp (Draft)', colorClass: 'bg-blue-400' },
+  {
+    key: 'rejected',
+    label: 'Đã từ chối (Rejected)',
+    colorClass: 'bg-rose-500',
+  },
+  {
+    key: 'paused',
+    label: 'Đang tạm dừng (Paused)',
+    colorClass: 'bg-orange-400',
+  },
+  {
+    key: 'expired',
+    label: 'Đã hết hạn (Expired)',
+    colorClass: 'bg-slate-400',
+  },
+  {
+    key: 'soldOut',
+    label: 'Đã hết hàng (Sold out)',
+    colorClass: 'bg-violet-500',
+  },
+];
 
 export default function AdminDashboard() {
   const { user } = useAuth();
@@ -84,6 +124,8 @@ export default function AdminDashboard() {
             draft: 0,
             rejected: 0,
             expired: 0,
+            paused: 0,
+            soldOut: 0,
           },
           partnerPerformance: []
         });
@@ -324,74 +366,29 @@ export default function AdminDashboard() {
             Trạng thái các chương trình Voucher ({summary?.totalCampaigns})
           </h3>
           <div className="space-y-4">
-            
-            {/* Approved */}
-            <div>
-              <div className="flex justify-between text-xs font-semibold mb-1">
-                <span className="text-foreground flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  Đang hoạt động (Approved)
-                </span>
-                <span className="text-muted">{summary?.campaignStats.approved} ({getPercent(summary?.campaignStats.approved ?? 0, summary?.totalCampaigns ?? 0)})</span>
-              </div>
-              <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-emerald-500 rounded-full transition-all duration-500" 
-                  style={{ width: getPercent(summary?.campaignStats.approved ?? 0, summary?.totalCampaigns ?? 0) }}
-                />
-              </div>
-            </div>
-
-            {/* Pending */}
-            <div>
-              <div className="flex justify-between text-xs font-semibold mb-1">
-                <span className="text-foreground flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-yellow-500" />
-                  Đang chờ phê duyệt (Pending)
-                </span>
-                <span className="text-muted">{summary?.campaignStats.pending} ({getPercent(summary?.campaignStats.pending ?? 0, summary?.totalCampaigns ?? 0)})</span>
-              </div>
-              <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-yellow-500 rounded-full transition-all duration-500" 
-                  style={{ width: getPercent(summary?.campaignStats.pending ?? 0, summary?.totalCampaigns ?? 0) }}
-                />
-              </div>
-            </div>
-
-            {/* Rejected */}
-            <div>
-              <div className="flex justify-between text-xs font-semibold mb-1">
-                <span className="text-foreground flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-rose-500" />
-                  Đã từ chối (Rejected)
-                </span>
-                <span className="text-muted">{summary?.campaignStats.rejected} ({getPercent(summary?.campaignStats.rejected ?? 0, summary?.totalCampaigns ?? 0)})</span>
-              </div>
-              <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-rose-500 rounded-full transition-all duration-500" 
-                  style={{ width: getPercent(summary?.campaignStats.rejected ?? 0, summary?.totalCampaigns ?? 0) }}
-                />
-              </div>
-            </div>
-
-            {/* Expired */}
-            <div>
-              <div className="flex justify-between text-xs font-semibold mb-1">
-                <span className="text-foreground flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-slate-400" />
-                  Đã hết hạn sử dụng (Expired)
-                </span>
-                <span className="text-muted">{summary?.campaignStats.expired} ({getPercent(summary?.campaignStats.expired ?? 0, summary?.totalCampaigns ?? 0)})</span>
-              </div>
-              <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-slate-400 rounded-full transition-all duration-500" 
-                  style={{ width: getPercent(summary?.campaignStats.expired ?? 0, summary?.totalCampaigns ?? 0) }}
-                />
-              </div>
-            </div>
+            {CAMPAIGN_STATUS_DISPLAY.map(({ key, label, colorClass }) => {
+              const value = summary?.campaignStats[key] ?? 0;
+              const percent = getPercent(value, summary?.totalCampaigns ?? 0);
+              return (
+                <div key={key}>
+                  <div className="flex justify-between text-xs font-semibold mb-1">
+                    <span className="text-foreground flex items-center gap-1.5">
+                      <span className={`h-2 w-2 rounded-full ${colorClass}`} />
+                      {label}
+                    </span>
+                    <span className="text-muted">
+                      {value} ({percent})
+                    </span>
+                  </div>
+                  <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${colorClass}`}
+                      style={{ width: percent }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
 
           </div>
         </div>

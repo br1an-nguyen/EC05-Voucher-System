@@ -17,6 +17,11 @@ import {
 } from '@prisma/client';
 import { PublicCatalogQueryDto } from './dto/public-catalog-query.dto';
 import { PartnerVoucherCodesQueryDto } from './dto/partner-voucher-codes-query.dto';
+import {
+  AdminCategoryQueryDto,
+  CreateAdminCategoryDto,
+  UpdateAdminCategoryDto,
+} from './dto/admin-category.dto';
 import { AuditService } from '../audit/audit.service';
 import { VIETNAM_PROVINCES } from '../common/constants/vietnam-provinces';
 
@@ -661,6 +666,8 @@ export class VouchersService {
     const activeCampaignWhere: Prisma.CampaignCategoryWhereInput = {
       campaign: {
         status: VoucherStatus.APPROVED,
+        saleStartTime: { lte: now },
+        saleEndTime: { gte: now },
       },
     };
     const categories = await this.prisma.voucherCategory.findMany({
@@ -744,6 +751,8 @@ export class VouchersService {
         campaigns: {
           some: {
             status: VoucherStatus.APPROVED,
+            saleStartTime: { lte: now },
+            saleEndTime: { gte: now },
           },
         },
       },
@@ -766,6 +775,8 @@ export class VouchersService {
         branch: { provinceCode: { not: null } },
         campaign: {
           status: VoucherStatus.APPROVED,
+          saleStartTime: { lte: now },
+          saleEndTime: { gte: now },
         },
       },
       select: {
@@ -824,14 +835,12 @@ export class VouchersService {
       status: VoucherStatus.APPROVED,
     };
 
-    if (validityStatus === 'AVAILABLE') {
-      whereClause.saleStartTime = { lte: now };
-      whereClause.saleEndTime = { gte: now };
-    } else if (validityStatus === 'UPCOMING') {
+    if (validityStatus === 'UPCOMING') {
       whereClause.saleStartTime = { gt: now };
     } else {
-      // Mặc định: bỏ lọc saleEndTime để hiện thị dữ liệu mẫu cũ (seed) ở local
-      // whereClause.saleEndTime = { gte: now };
+      // Catalog mặc định chỉ hiển thị voucher đang mở bán.
+      whereClause.saleStartTime = { lte: now };
+      whereClause.saleEndTime = { gte: now };
     }
 
     if (partnerId) {
@@ -871,9 +880,9 @@ export class VouchersService {
       if (
         [
           // Đồ ăn & Uống
-          'đồ ăn', 'ăn uống', 'đồ uống', 'nước uống', 'thức uống', 'giải khát', 'nước', 'trà', 'cà phê', 'sinh tố', 'nước ép', 
+          'đồ ăn', 'ăn uống', 'đồ uống', 'nước uống', 'thức uống', 'giải khát', 'nước', 'trà', 'cà phê', 'sinh tố', 'nước ép',
           'ẩm thực', 'nhà hàng', 'quán ăn', 'cafe', 'trà sữa', 'buffet', 'lẩu', 'nướng', 'bbq', 'đồ nướng',
-          'bánh', 'bánh ngọt', 'pizza', 'hải sản', 'gà rán', 'hamburger', 'burger', 'tráng miệng', 'kem', 
+          'bánh', 'bánh ngọt', 'pizza', 'hải sản', 'gà rán', 'hamburger', 'burger', 'tráng miệng', 'kem',
           'sushi', 'sashimi', 'cua', 'ốc', 'phở', 'bún', 'cơm', 'trái cây', 'hoa quả'
         ].some((w) => lowerKeyword.includes(w))
       ) {
@@ -893,7 +902,7 @@ export class VouchersService {
         [
           // Mua sắm & Bán lẻ
           'mua sắm', 'quần áo', 'giày dép', 'thời trang', 'siêu thị', 'thực phẩm',
-          'túi xách', 'mỹ phẩm', 'đồng hồ', 'trang sức', 'cửa hàng', 'tạp hóa', 'bách hóa', 
+          'túi xách', 'mỹ phẩm', 'đồng hồ', 'trang sức', 'cửa hàng', 'tạp hóa', 'bách hóa',
           'đồ gia dụng', 'điện máy', 'phụ kiện', 'balo', 'ví', 'quà tặng'
         ].some((w) => lowerKeyword.includes(w))
       ) {
@@ -903,7 +912,7 @@ export class VouchersService {
         [
           // Giải trí & Du lịch
           'giải trí', 'xem phim', 'vui chơi', 'du lịch', 'khách sạn', 'vé', 'công viên',
-          'khu vui chơi', 'vé máy bay', 'tour', 'resort', 'homestay', 'trò chơi', 'game', 
+          'khu vui chơi', 'vé máy bay', 'tour', 'resort', 'homestay', 'trò chơi', 'game',
           'rạp chiếu phim', 'bể bơi', 'thủy cung', 'bảo tàng', 'nghỉ dưỡng'
         ].some((w) => lowerKeyword.includes(w))
       ) {
@@ -912,7 +921,7 @@ export class VouchersService {
       if (
         [
           // Viễn thông & Số
-          'điện thoại', 'viễn thông', 'thẻ cào', 'data', '4g', '5g', 'nạp tiền', 'cước', 
+          'điện thoại', 'viễn thông', 'thẻ cào', 'data', '4g', '5g', 'nạp tiền', 'cước',
           'internet', 'phần mềm', 'ứng dụng', 'bản quyền', 'nhạc số'
         ].some((w) => lowerKeyword.includes(w))
       ) {
@@ -921,7 +930,7 @@ export class VouchersService {
       if (
         [
           // Dịch vụ đời sống
-          'giặt ủi', 'giặt là', 'dịch vụ', 'dọn dẹp', 'vệ sinh', 'sửa chữa', 'bảo dưỡng', 
+          'giặt ủi', 'giặt là', 'dịch vụ', 'dọn dẹp', 'vệ sinh', 'sửa chữa', 'bảo dưỡng',
           'chụp ảnh', 'studio', 'thú cưng', 'chó mèo', 'thú y', 'chăm sóc'
         ].some((w) => lowerKeyword.includes(w))
       ) {
@@ -930,7 +939,7 @@ export class VouchersService {
       if (
         [
           // Di chuyển
-          'xe', 'di chuyển', 'taxi', 'xe công nghệ', 'xe ôm', 'giao hàng', 
+          'xe', 'di chuyển', 'taxi', 'xe công nghệ', 'xe ôm', 'giao hàng',
           'vận chuyển', 'xe khách', 'thuê xe', 'đặt xe'
         ].some((w) => lowerKeyword.includes(w))
       ) {
@@ -1473,37 +1482,51 @@ export class VouchersService {
     return result;
   }
 
-  async adminListCategories() {
-    const categories = await this.prisma.voucherCategory.findMany({
-      orderBy: [{ displayOrder: 'asc' }, { nameVi: 'asc' }],
-      include: {
-        _count: {
-          select: { campaignCategories: true },
+  async adminListCategories(query: AdminCategoryQueryDto) {
+    const where: Prisma.VoucherCategoryWhereInput = {
+      isActive: query.isActive,
+      OR: query.keyword
+        ? [
+            { code: { contains: query.keyword, mode: 'insensitive' } },
+            { nameVi: { contains: query.keyword, mode: 'insensitive' } },
+          ]
+        : undefined,
+    };
+    const [categories, total] = await this.prisma.$transaction([
+      this.prisma.voucherCategory.findMany({
+        where,
+        orderBy: [{ displayOrder: 'asc' }, { nameVi: 'asc' }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+        include: {
+          parent: { select: { nameVi: true } },
+          _count: {
+            select: { campaignCategories: true },
+          },
         },
-      },
-    });
+      }),
+      this.prisma.voucherCategory.count({ where }),
+    ]);
 
-    return categories.map((cat) => ({
-      ...cat,
-      campaignCount: cat._count.campaignCategories,
-    }));
+    return {
+      items: categories.map((cat) => ({
+        ...cat,
+        campaignCount: cat._count.campaignCategories,
+      })),
+      total,
+      page: query.page,
+      limit: query.limit,
+      totalPages: Math.ceil(total / query.limit),
+    };
   }
 
   /**
    * Admin: Tạo danh mục voucher mới (BR-ADM-05).
    */
-  async adminCreateCategory(
-    adminId: string,
-    data: {
-      code: string;
-      nameVi: string;
-      parentId?: string;
-      displayOrder?: number;
-    },
-  ) {
+  async adminCreateCategory(adminId: string, data: CreateAdminCategoryDto) {
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.voucherCategory.findUnique({
-        where: { code: data.code },
+        where: { code: data.code.trim().toUpperCase() },
       });
       if (existing) {
         throw new BadRequestException(
@@ -1511,21 +1534,34 @@ export class VouchersService {
         );
       }
 
+      if (data.parentId) {
+        const parent = await tx.voucherCategory.findUnique({
+          where: { categoryId: data.parentId },
+        });
+        if (!parent)
+          throw new BadRequestException('Danh mục cha không tồn tại.');
+      }
+
       const created = await tx.voucherCategory.create({
         data: {
-          code: data.code,
-          nameVi: data.nameVi,
+          code: data.code.trim().toUpperCase(),
+          nameVi: data.nameVi.trim(),
           parentId: data.parentId || null,
           displayOrder: data.displayOrder ?? 0,
           isActive: true,
         },
       });
 
-      await this.auditService.logAction(
-        adminId,
-        'CREATE_CATEGORY',
-        'VoucherCategory',
-        created.categoryId,
+      await this.auditService.logActivity(
+        {
+          actorUserId: adminId,
+          actorRoleSnapshot: UserRole.ADMIN,
+          category: ActivityCategory.CONTENT,
+          actionType: 'CREATE_CATEGORY',
+          targetEntity: 'VoucherCategory',
+          targetId: created.categoryId,
+          metadata: { after: created },
+        },
         tx,
       );
       return created;
@@ -1538,12 +1574,7 @@ export class VouchersService {
   async adminUpdateCategory(
     adminId: string,
     categoryId: string,
-    data: {
-      nameVi?: string;
-      parentId?: string;
-      displayOrder?: number;
-      isActive?: boolean;
-    },
+    data: UpdateAdminCategoryDto,
   ) {
     return this.prisma.$transaction(async (tx) => {
       const category = await tx.voucherCategory.findUnique({
@@ -1553,10 +1584,36 @@ export class VouchersService {
         throw new NotFoundException('Không tìm thấy danh mục yêu cầu.');
       }
 
+      if (data.parentId === categoryId) {
+        throw new BadRequestException(
+          'Danh mục không thể là cha của chính nó.',
+        );
+      }
+      if (data.parentId) {
+        let cursor: string | null = data.parentId;
+        const visited = new Set<string>();
+        while (cursor) {
+          if (cursor === categoryId || visited.has(cursor)) {
+            throw new BadRequestException(
+              'Quan hệ danh mục tạo thành vòng lặp không hợp lệ.',
+            );
+          }
+          visited.add(cursor);
+          const ancestor: { parentId: string | null } | null =
+            await tx.voucherCategory.findUnique({
+              where: { categoryId: cursor },
+              select: { parentId: true },
+            });
+          if (!ancestor)
+            throw new BadRequestException('Danh mục cha không tồn tại.');
+          cursor = ancestor.parentId;
+        }
+      }
+
       const updated = await tx.voucherCategory.update({
         where: { categoryId },
         data: {
-          nameVi: data.nameVi,
+          nameVi: data.nameVi?.trim(),
           parentId:
             data.parentId !== undefined ? data.parentId || null : undefined,
           displayOrder: data.displayOrder,
@@ -1564,11 +1621,16 @@ export class VouchersService {
         },
       });
 
-      await this.auditService.logAction(
-        adminId,
-        'UPDATE_CATEGORY',
-        'VoucherCategory',
-        categoryId,
+      await this.auditService.logActivity(
+        {
+          actorUserId: adminId,
+          actorRoleSnapshot: UserRole.ADMIN,
+          category: ActivityCategory.CONTENT,
+          actionType: 'UPDATE_CATEGORY',
+          targetEntity: 'VoucherCategory',
+          targetId: categoryId,
+          metadata: { before: category, after: updated },
+        },
         tx,
       );
       return updated;
@@ -1576,40 +1638,37 @@ export class VouchersService {
   }
 
   /**
-   * Admin: Xóa danh mục voucher (BR-ADM-05).
+   * Admin: Lưu trữ danh mục voucher, không xóa dữ liệu (BR-ADM-05).
    */
   async adminDeleteCategory(adminId: string, categoryId: string) {
     return this.prisma.$transaction(async (tx) => {
-      const campaignCount = await tx.campaignCategory.count({
+      const category = await tx.voucherCategory.findUnique({
         where: { categoryId },
       });
-      if (campaignCount > 0) {
-        throw new BadRequestException(
-          'Không thể xóa danh mục này vì đang có chiến dịch voucher liên kết.',
-        );
-      }
-
-      const childrenCount = await tx.voucherCategory.count({
+      if (!category)
+        throw new NotFoundException('Không tìm thấy danh mục yêu cầu.');
+      const archived = await tx.voucherCategory.update({
+        where: { categoryId },
+        data: { isActive: false },
+      });
+      await tx.voucherCategory.updateMany({
         where: { parentId: categoryId },
-      });
-      if (childrenCount > 0) {
-        throw new BadRequestException(
-          'Không thể xóa danh mục này vì có danh mục con đang trực thuộc.',
-        );
-      }
-
-      const deleted = await tx.voucherCategory.delete({
-        where: { categoryId },
+        data: { isActive: false },
       });
 
-      await this.auditService.logAction(
-        adminId,
-        'DELETE_CATEGORY',
-        'VoucherCategory',
-        categoryId,
+      await this.auditService.logActivity(
+        {
+          actorUserId: adminId,
+          actorRoleSnapshot: UserRole.ADMIN,
+          category: ActivityCategory.CONTENT,
+          actionType: 'ARCHIVE_CATEGORY',
+          targetEntity: 'VoucherCategory',
+          targetId: categoryId,
+          metadata: { before: category, after: archived },
+        },
         tx,
       );
-      return deleted;
+      return archived;
     });
   }
 
