@@ -68,7 +68,7 @@ SET "closed_at" = COALESCE("resolved_at", "updated_at")
 WHERE "status" = 'CLOSED';
 
 ALTER TABLE "public"."Complaints"
-  DROP CONSTRAINT "Complaints_resolution_state_check",
+  DROP CONSTRAINT IF EXISTS "Complaints_resolution_state_check",
   ADD CONSTRAINT "Complaints_resolution_state_check"
     CHECK (
       (
