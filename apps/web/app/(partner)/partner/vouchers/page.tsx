@@ -6,8 +6,7 @@ import { getErrorMessage } from '../../../../lib/errors';
 import Link from 'next/link';
 import {
   Ticket, Plus, Send, AlertCircle, CheckCircle,
-  Clock3, Calendar, MapPin, Search, Filter,
-  ChevronRight, Building, Package, PlayCircle
+  Search, ChevronRight, Package, PlayCircle, Eye, Edit3, PauseCircle
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -53,6 +52,7 @@ interface VoucherCampaign {
   usageEndTime: string;
   campaignBranches: CampaignBranch[];
   campaignCategories: CampaignCategory[];
+  issuedCodeCount: number;
   usedCount: number;
   revenue: number;
 }
@@ -93,6 +93,11 @@ export default function PartnerVouchersPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [campaignToSubmit, setCampaignToSubmit] = useState<VoucherCampaign | null>(null);
+  const [statusAction, setStatusAction] = useState<{
+    campaign: VoucherCampaign;
+    targetStatus: 'APPROVED' | 'PAUSED';
+  } | null>(null);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -126,6 +131,31 @@ export default function PartnerVouchersPage() {
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (error: unknown) {
       setErrorMsg(getErrorMessage(error, 'Gửi yêu cầu phê duyệt thất bại.'));
+    }
+  };
+
+  const handleStatusAction = async () => {
+    if (!statusAction) return;
+    setUpdatingStatus(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      await apiRequest<void>(`/vouchers/partner/${statusAction.campaign.campaignId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: statusAction.targetStatus }),
+      });
+      setSuccessMsg(
+        statusAction.targetStatus === 'PAUSED'
+          ? `Đã ngừng bán "${statusAction.campaign.title}".`
+          : `Đã mở bán lại "${statusAction.campaign.title}".`,
+      );
+      setStatusAction(null);
+      await loadCampaigns();
+      setTimeout(() => setSuccessMsg(null), 3000);
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Không thể cập nhật trạng thái bán voucher.'));
+    } finally {
+      setUpdatingStatus(false);
     }
   };
 
@@ -236,8 +266,8 @@ export default function PartnerVouchersPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { label: 'Chiến dịch', value: stats.total, icon: <Ticket className="h-4 w-4 text-primary" /> },
-          { label: 'Số lượng phát hành', value: stats.totalCapacity, icon: <Package className="h-4 w-4 text-primary" /> },
-          { label: 'Số lượng bán ra', value: stats.totalSold, icon: <CheckCircle className="h-4 w-4 text-primary" /> },
+          { label: 'Tổng sức chứa', value: stats.totalCapacity, icon: <Package className="h-4 w-4 text-primary" /> },
+          { label: 'Đang bán thực tế', value: stats.totalSold, icon: <CheckCircle className="h-4 w-4 text-primary" /> },
           { label: 'Tổng doanh thu tạm tính', value: `${stats.totalRevenue.toLocaleString('vi-VN')} đ`, icon: <PlayCircle className="h-4 w-4 text-primary" /> },
         ].map(stat => (
           <div key={stat.label} className="rounded-xl border border-border bg-card p-4 shadow-sm">
@@ -325,6 +355,9 @@ export default function PartnerVouchersPage() {
                         {campaign.reservedStock > 0 && (
                           <div className="text-[10px] text-yellow-600 mt-0.5">({campaign.reservedStock} tạm giữ)</div>
                         )}
+                        <div className="mt-0.5 text-[10px] text-muted">
+                          {campaign.issuedCodeCount} mã đã phát hành
+                        </div>
                       </td>
 
                       {/* Quét/Sử dụng */}
@@ -358,17 +391,46 @@ export default function PartnerVouchersPage() {
 
                       {/* Thao tác */}
                       <td className="p-4 text-right whitespace-nowrap">
-                        {(campaign.status === 'DRAFT' || campaign.status === 'REJECTED') ? (
-                          <button
-                            onClick={() => setCampaignToSubmit(campaign)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold bg-primary text-white hover:bg-primary-hover rounded-md transition-colors shadow-sm"
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Link
+                            href={`/partner/vouchers/${campaign.campaignId}`}
+                            className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-[11px] font-bold text-foreground transition hover:bg-secondary"
                           >
-                            <Send className="h-3 w-3" />
-                            Gửi duyệt
-                          </button>
-                        ) : (
-                          <span className="text-muted text-[10px] italic">Không hỗ trợ</span>
-                        )}
+                            <Eye className="h-3 w-3" /> Xem
+                          </Link>
+                          {(campaign.status === 'DRAFT' || campaign.status === 'REJECTED') && (
+                            <>
+                              <Link
+                                href={`/partner/vouchers/${campaign.campaignId}/edit`}
+                                className="inline-flex items-center gap-1 rounded-md border border-blue-300 px-2.5 py-1.5 text-[11px] font-bold text-blue-700 transition hover:bg-blue-50"
+                              >
+                                <Edit3 className="h-3 w-3" /> Sửa
+                              </Link>
+                              <button
+                                onClick={() => setCampaignToSubmit(campaign)}
+                                className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1.5 text-[11px] font-bold text-white shadow-sm transition-colors hover:bg-primary-hover"
+                              >
+                                <Send className="h-3 w-3" /> Gửi duyệt
+                              </button>
+                            </>
+                          )}
+                          {campaign.status === 'APPROVED' && (
+                            <button
+                              onClick={() => setStatusAction({ campaign, targetStatus: 'PAUSED' })}
+                              className="inline-flex items-center gap-1 rounded-md border border-orange-300 px-2.5 py-1.5 text-[11px] font-bold text-orange-700 transition hover:bg-orange-50"
+                            >
+                              <PauseCircle className="h-3 w-3" /> Ngừng bán
+                            </button>
+                          )}
+                          {campaign.status === 'PAUSED' && (
+                            <button
+                              onClick={() => setStatusAction({ campaign, targetStatus: 'APPROVED' })}
+                              className="inline-flex items-center gap-1 rounded-md border border-green-300 px-2.5 py-1.5 text-[11px] font-bold text-green-700 transition hover:bg-green-50"
+                            >
+                              <PlayCircle className="h-3 w-3" /> Mở bán lại
+                            </button>
+                          )}
+                        </div>
                       </td>
 
                     </tr>
@@ -404,6 +466,40 @@ export default function PartnerVouchersPage() {
                 onClick={() => void handleSubmitForApproval(campaignToSubmit.campaignId)}
               >
                 Gửi yêu cầu phê duyệt
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        )}
+      </AlertDialog>
+
+      <AlertDialog
+        open={Boolean(statusAction)}
+        onOpenChange={(open) => {
+          if (!open && !updatingStatus) setStatusAction(null);
+        }}
+      >
+        {statusAction && (
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {statusAction.targetStatus === 'PAUSED' ? 'Ngừng bán' : 'Mở bán lại'} &quot;{statusAction.campaign.title}&quot;?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {statusAction.targetStatus === 'PAUSED'
+                  ? 'Chiến dịch sẽ bị ẩn khỏi nơi mua voucher mới. Các mã đã bán vẫn có thể được sử dụng.'
+                  : 'Chiến dịch sẽ hiển thị trở lại nếu còn thời gian bán và còn số lượng.'}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={updatingStatus}>Hủy bỏ</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={updatingStatus}
+                onClick={(event) => {
+                  event.preventDefault();
+                  void handleStatusAction();
+                }}
+              >
+                {updatingStatus ? 'Đang xử lý...' : 'Xác nhận'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

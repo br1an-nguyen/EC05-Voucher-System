@@ -13,8 +13,10 @@ import {
   PartnerApprovalStatus,
   UserRole,
   ActivityCategory,
+  VoucherCodeStatus,
 } from '@prisma/client';
 import { PublicCatalogQueryDto } from './dto/public-catalog-query.dto';
+import { PartnerVoucherCodesQueryDto } from './dto/partner-voucher-codes-query.dto';
 import { AuditService } from '../audit/audit.service';
 import { VIETNAM_PROVINCES } from '../common/constants/vietnam-provinces';
 
@@ -349,12 +351,15 @@ export class VouchersService {
           select: {
             quantity: true,
             unitPrice: true,
+            _count: {
+              select: { voucherCodes: true },
+            },
             voucherCodes: {
               where: {
-                status: 'USED',
+                status: { in: ['USED', 'CANCELLED'] },
               },
               select: {
-                codeId: true,
+                status: true,
               },
             },
           },
@@ -365,9 +370,28 @@ export class VouchersService {
 
     return campaigns.map((campaign) => {
       const usedCount = campaign.orderItems.reduce(
-        (sum, item) => sum + item.voucherCodes.length,
+        (sum, item) =>
+          sum +
+          item.voucherCodes.filter((code) => code.status === 'USED').length,
         0,
       );
+
+      const issuedCodeCount = campaign.orderItems.reduce(
+        (sum, item) => sum + item._count.voucherCodes,
+        0,
+      );
+
+      const cancelledCodeCount = campaign.orderItems.reduce(
+        (sum, item) =>
+          sum +
+          item.voucherCodes.filter((code) => code.status === 'CANCELLED')
+            .length,
+        0,
+      );
+
+      // Voucher code là nguồn sự thật. CANCELLED đã hoàn lại tồn kho nên không
+      // còn được tính là đang bán, nhưng vẫn thuộc lịch sử phát hành.
+      const soldQuantity = issuedCodeCount - cancelledCodeCount;
 
       const revenue = campaign.orderItems.reduce(
         (sum, item) => sum + Number(item.unitPrice) * item.quantity,
@@ -375,11 +399,221 @@ export class VouchersService {
       );
 
       const { orderItems, ...base } = campaign;
+      void orderItems;
       return {
         ...base,
+        soldQuantity,
+        issuedCodeCount,
         usedCount,
         revenue,
       };
+    });
+  }
+
+  /**
+   * Chi tiết chiến dịch trong phạm vi đối tác, kèm thống kê từng trạng thái mã.
+   */
+  async getPartnerCampaignDetail(partnerId: string, campaignId: string) {
+    const campaign = await this.prisma.voucherCampaign.findFirst({
+      where: { campaignId, partnerId },
+      include: {
+        campaignBranches: { include: { branch: true } },
+        campaignCategories: {
+          include: { category: { include: { parent: true } } },
+          orderBy: { isPrimary: 'desc' },
+        },
+        campaignBrands: {
+          include: { brand: true },
+          orderBy: { isPrimary: 'desc' },
+        },
+      },
+    });
+
+    if (!campaign) {
+      throw new NotFoundException(
+        'Chiến dịch voucher không tồn tại hoặc bạn không có quyền sở hữu.',
+      );
+    }
+
+    const statusGroups = await this.prisma.voucherCode.groupBy({
+      by: ['status'],
+      where: { orderItem: { campaignId } },
+      _count: { _all: true },
+    });
+    const codeStats = Object.values(VoucherCodeStatus).reduce(
+      (stats, status) => ({ ...stats, [status]: 0 }),
+      {} as Record<VoucherCodeStatus, number>,
+    );
+    for (const group of statusGroups) {
+      codeStats[group.status] = group._count._all;
+    }
+
+    const issuedCodeCount = statusGroups.reduce(
+      (sum, group) => sum + group._count._all,
+      0,
+    );
+
+    return {
+      ...this.mapCatalogPresentation(campaign),
+      soldQuantity: issuedCodeCount - codeStats.CANCELLED,
+      codeStats,
+      issuedCodeCount,
+    };
+  }
+
+  /**
+   * Danh sách phân trang các mã đã phát hành của một chiến dịch thuộc đối tác.
+   */
+  async getPartnerVoucherCodes(
+    partnerId: string,
+    campaignId: string,
+    query: PartnerVoucherCodesQueryDto,
+  ) {
+    const campaign = await this.prisma.voucherCampaign.findFirst({
+      where: { campaignId, partnerId },
+      select: { campaignId: true },
+    });
+    if (!campaign) {
+      throw new NotFoundException(
+        'Chiến dịch voucher không tồn tại hoặc bạn không có quyền sở hữu.',
+      );
+    }
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const keyword = query.keyword?.trim();
+    const where: Prisma.VoucherCodeWhereInput = {
+      orderItem: { campaignId },
+      ...(query.status ? { status: query.status } : {}),
+      ...(keyword
+        ? {
+            OR: [
+              { uniqueCode: { contains: keyword, mode: 'insensitive' } },
+              {
+                orderItem: {
+                  order: {
+                    orderCode: { contains: keyword, mode: 'insensitive' },
+                  },
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+
+    const [total, codes] = await this.prisma.$transaction([
+      this.prisma.voucherCode.count({ where }),
+      this.prisma.voucherCode.findMany({
+        where,
+        select: {
+          codeId: true,
+          uniqueCode: true,
+          status: true,
+          issuedAt: true,
+          expiresAt: true,
+          customer: { select: { fullName: true } },
+          orderItem: { select: { order: { select: { orderCode: true } } } },
+          _count: { select: { usageLogs: true } },
+          usageLogs: {
+            select: {
+              usageId: true,
+              usedAt: true,
+              branch: { select: { branchId: true, name: true } },
+            },
+            orderBy: { usedAt: 'desc' },
+            take: 1,
+          },
+        },
+        orderBy: { issuedAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
+
+    return {
+      items: codes.map(({ usageLogs, _count, ...code }) => ({
+        ...code,
+        usageCount: _count.usageLogs,
+        lastUsage: usageLogs[0] ?? null,
+      })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /**
+   * Đối tác chỉ được ngừng bán APPROVED -> PAUSED hoặc mở lại PAUSED -> APPROVED.
+   */
+  async updatePartnerCampaignStatus(
+    partnerId: string,
+    campaignId: string,
+    targetStatus: VoucherStatus,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const campaign = await tx.voucherCampaign.findFirst({
+        where: { campaignId, partnerId },
+      });
+      if (!campaign) {
+        throw new NotFoundException(
+          'Chiến dịch voucher không tồn tại hoặc bạn không có quyền sở hữu.',
+        );
+      }
+
+      const isPause =
+        campaign.status === VoucherStatus.APPROVED &&
+        targetStatus === VoucherStatus.PAUSED;
+      const isReactivate =
+        campaign.status === VoucherStatus.PAUSED &&
+        targetStatus === VoucherStatus.APPROVED;
+      if (!isPause && !isReactivate) {
+        throw new BadRequestException(
+          'Trạng thái chiến dịch đã thay đổi hoặc thao tác không hợp lệ.',
+        );
+      }
+
+      if (isReactivate) {
+        if (campaign.saleEndTime <= new Date()) {
+          throw new BadRequestException(
+            'Không thể mở bán lại chiến dịch đã hết thời gian bán.',
+          );
+        }
+        if (campaign.soldQuantity >= campaign.capacity) {
+          throw new BadRequestException(
+            'Không thể mở bán lại chiến dịch đã bán hết số lượng.',
+          );
+        }
+      }
+
+      const transition = await tx.voucherCampaign.updateMany({
+        where: { campaignId, partnerId, status: campaign.status },
+        data: { status: targetStatus },
+      });
+      if (transition.count !== 1) {
+        throw new BadRequestException(
+          'Trạng thái chiến dịch đã thay đổi. Vui lòng thử lại.',
+        );
+      }
+
+      const updated = await tx.voucherCampaign.findUniqueOrThrow({
+        where: { campaignId },
+      });
+      await this.auditService.logActivity(
+        {
+          actorUserId: partnerId,
+          actorRoleSnapshot: UserRole.PARTNER,
+          category: ActivityCategory.VOUCHER,
+          actionType: isPause ? 'PAUSE_CAMPAIGN' : 'REACTIVATE_CAMPAIGN',
+          targetEntity: 'VoucherCampaign',
+          targetId: campaignId,
+          metadata: { fromStatus: campaign.status, toStatus: targetStatus },
+        },
+        tx,
+      );
+      return updated;
     });
   }
 

@@ -19,6 +19,8 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole, VoucherStatus } from '@prisma/client';
 import { RedeemVoucherDto } from './dto/redeem-voucher.dto';
 import { PublicCatalogQueryDto } from './dto/public-catalog-query.dto';
+import { PartnerVoucherCodesQueryDto } from './dto/partner-voucher-codes-query.dto';
+import { UpdatePartnerCampaignStatusDto } from './dto/update-partner-campaign-status.dto';
 
 /**
  * Controller tiếp nhận REST API phục vụ việc khởi tạo, chỉnh sửa và phê duyệt các chiến dịch voucher.
@@ -139,6 +141,61 @@ export class VouchersController {
   @Roles(UserRole.PARTNER)
   async getPartnerCampaigns(@Req() req: any) {
     return this.vouchersService.getPartnerCampaigns(req.user.userId);
+  }
+
+  /**
+   * Lấy chi tiết một chiến dịch thuộc quyền sở hữu của đối tác đăng nhập.
+   * GET /vouchers/partner/:id
+   */
+  @Get('partner/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PARTNER)
+  async getPartnerCampaignDetail(
+    @Req() req: any,
+    @Param('id') campaignId: string,
+  ) {
+    return this.vouchersService.getPartnerCampaignDetail(
+      req.user.userId,
+      campaignId,
+    );
+  }
+
+  /**
+   * Lấy danh sách từng voucher code đã phát hành của một chiến dịch.
+   * GET /vouchers/partner/:id/codes
+   */
+  @Get('partner/:id/codes')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PARTNER)
+  async getPartnerVoucherCodes(
+    @Req() req: any,
+    @Param('id') campaignId: string,
+    @Query() query: PartnerVoucherCodesQueryDto,
+  ) {
+    return this.vouchersService.getPartnerVoucherCodes(
+      req.user.userId,
+      campaignId,
+      query,
+    );
+  }
+
+  /**
+   * Đối tác ngừng bán hoặc mở bán lại chiến dịch của mình.
+   * PATCH /vouchers/partner/:id/status
+   */
+  @Patch('partner/:id/status')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PARTNER)
+  async updatePartnerCampaignStatus(
+    @Req() req: any,
+    @Param('id') campaignId: string,
+    @Body() dto: UpdatePartnerCampaignStatusDto,
+  ) {
+    return this.vouchersService.updatePartnerCampaignStatus(
+      req.user.userId,
+      campaignId,
+      dto.status,
+    );
   }
 
   /**
