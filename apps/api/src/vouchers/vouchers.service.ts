@@ -427,8 +427,6 @@ export class VouchersService {
     const activeCampaignWhere: Prisma.CampaignCategoryWhereInput = {
       campaign: {
         status: VoucherStatus.APPROVED,
-        saleStartTime: { lte: now },
-        saleEndTime: { gte: now },
       },
     };
     const categories = await this.prisma.voucherCategory.findMany({
@@ -512,8 +510,6 @@ export class VouchersService {
         campaigns: {
           some: {
             status: VoucherStatus.APPROVED,
-            saleStartTime: { lte: now },
-            saleEndTime: { gte: now },
           },
         },
       },
@@ -536,8 +532,6 @@ export class VouchersService {
         branch: { provinceCode: { not: null } },
         campaign: {
           status: VoucherStatus.APPROVED,
-          saleStartTime: { lte: now },
-          saleEndTime: { gte: now },
         },
       },
       select: {
@@ -602,8 +596,8 @@ export class VouchersService {
     } else if (validityStatus === 'UPCOMING') {
       whereClause.saleStartTime = { gt: now };
     } else {
-      // Mặc định trả về cả AVAILABLE và UPCOMING nếu không có tuỳ chọn
-      whereClause.saleEndTime = { gte: now };
+      // Mặc định: bỏ lọc saleEndTime để hiện thị dữ liệu mẫu cũ (seed) ở local
+      // whereClause.saleEndTime = { gte: now };
     }
 
     if (partnerId) {
@@ -761,8 +755,8 @@ export class VouchersService {
     if (minDiscount !== undefined) {
       processedCampaigns = processedCampaigns.filter((c) => {
         const discountPct =
-          ((Number(c.originalPrice) - Number(c.salePrice)) /
-            Number(c.originalPrice)) *
+          ((Number(c.originalPrice.toString()) - Number(c.salePrice.toString())) /
+            Number(c.originalPrice.toString())) *
           100;
         return discountPct >= minDiscount;
       });
@@ -772,12 +766,12 @@ export class VouchersService {
     if (sortDiscount) {
       processedCampaigns.sort((a, b) => {
         const aDisc =
-          ((Number(a.originalPrice) - Number(a.salePrice)) /
-            Number(a.originalPrice)) *
+          ((Number(a.originalPrice.toString()) - Number(a.salePrice.toString())) /
+            Number(a.originalPrice.toString())) *
           100;
         const bDisc =
-          ((Number(b.originalPrice) - Number(b.salePrice)) /
-            Number(b.originalPrice)) *
+          ((Number(b.originalPrice.toString()) - Number(b.salePrice.toString())) /
+            Number(b.originalPrice.toString())) *
           100;
         return sortDiscount === 'desc' ? bDisc - aDisc : aDisc - bDisc;
       });
