@@ -14,6 +14,12 @@ for (const envPath of possiblePaths) {
     continue;
   }
 
-  config({ path: envPath, override: false, quiet: true });
-  break;
+  // Load the root file first, then let apps/api/.env override it. This keeps
+  // service-specific credentials (such as payment keys) usable when the app is
+  // launched from the repository root.
+  config({
+    path: envPath,
+    override: envPath.endsWith(path.join('apps', 'api', '.env')),
+    quiet: true,
+  });
 }

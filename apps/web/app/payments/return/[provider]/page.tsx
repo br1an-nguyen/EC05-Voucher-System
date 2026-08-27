@@ -6,11 +6,6 @@ import { apiRequest } from "../../../../lib/api";
 import { getErrorMessage } from "../../../../lib/errors";
 import Link from "next/link";
 import {
-  classifyVnPayReturnError,
-  VnPayDisplayState,
-  VnPayReturnResponse,
-} from "../../../../lib/vnpay-return";
-import {
   getReturnPaymentId,
   resolvePaymentPollingDecision,
 } from "../../../../lib/payment-polling";
@@ -37,15 +32,22 @@ interface PayPalCaptureResponse {
   message?: string;
 }
 
+type PaymentDisplayState =
+  | "SUCCESS"
+  | "FAILED"
+  | "CANCELLED"
+  | "PENDING"
+  | "NOT_FOUND";
+
 export default function PaymentReturnPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const provider = params.provider as string; // 'stripe', 'paypal', 'vnpay', 'mock'
+  const provider = params.provider as string; // 'stripe', 'paypal', 'zalopay', 'mock'
 
   const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState<VnPayDisplayState>("PENDING");
+  const [status, setStatus] = useState<PaymentDisplayState>("PENDING");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [orderInfo, setOrderInfo] = useState<PaymentStatusResponse | null>(
     null,
@@ -132,21 +134,13 @@ export default function PaymentReturnPage() {
           setErrorMsg(res.message || "Thanh toán PayPal không thành công.");
         }
         setLoading(false);
-      } else if (provider === "vnpay") {
-        const res = await apiRequest<VnPayReturnResponse>(
-          `/payments/vnpay/return${window.location.search}`,
-        );
-        setStatus(res.state);
-        setErrorMsg(res.message || null);
+      } else if (provider === "zalopay") {
+        const paymentId = searchParams.get("paymentId");
+        if (!paymentId) throw new Error("Không tìm thấy Payment ID của ZaloPay.");
 
-        if (res.paymentId) {
-          await fetchPaymentStatus(res.paymentId);
-        }
-        if (res.state === "PENDING" && res.paymentId) {
-          pollPaymentStatus(res.paymentId, "VNPAY");
-        } else {
-          setLoading(false);
-        }
+        // ZaloPay finalizes the order from its server-to-server callback only.
+        // The redirect page is authenticated and polls that resulting state.
+        pollPaymentStatus(paymentId, "ZaloPay");
       } else if (provider === "stripe") {
         const paymentId = getReturnPaymentId("stripe", searchParams);
         if (!paymentId) throw new Error("Không tìm thấy Payment ID.");
@@ -174,7 +168,9 @@ export default function PaymentReturnPage() {
         "Đã xảy ra lỗi khi kiểm tra giao dịch.",
       );
       setStatus(
-        provider === "vnpay" ? classifyVnPayReturnError(message) : "FAILED",
+        message.toLocaleLowerCase("vi").includes("không tìm thấy")
+          ? "NOT_FOUND"
+          : "FAILED",
       );
       setErrorMsg(message);
       setLoading(false);

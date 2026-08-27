@@ -7,7 +7,7 @@ export class CheckoutDto {
   @MaxLength(500, { message: 'Ghi chú không được vượt quá 500 ký tự.' })
   recipientNote?: string;
 
-  @IsEnum(PaymentProviderType, { message: 'Cổng thanh toán không hợp lệ (STRIPE, PAYPAL, VNPAY, MOMO).' })
+  @IsEnum(PaymentProviderType, { message: 'Cổng thanh toán không hợp lệ (STRIPE, PAYPAL, ZALOPAY, MOMO).' })
   paymentProvider: PaymentProviderType;
 
   @IsOptional()

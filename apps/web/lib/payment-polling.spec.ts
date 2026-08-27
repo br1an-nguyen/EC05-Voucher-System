@@ -15,10 +15,11 @@ describe("payment return polling", () => {
     );
   });
 
-  it("uses paymentId for Stripe and mock returns", () => {
+  it("uses paymentId for Stripe, ZaloPay, and mock returns", () => {
     const params = new URLSearchParams("paymentId=payment-1");
 
     expect(getReturnPaymentId("stripe", params)).toBe("payment-1");
+    expect(getReturnPaymentId("zalopay", params)).toBe("payment-1");
     expect(getReturnPaymentId("mock", params)).toBe("payment-1");
   });
 

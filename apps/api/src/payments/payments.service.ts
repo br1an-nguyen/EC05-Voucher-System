@@ -22,7 +22,7 @@ export class PaymentsService {
    * Khởi tạo giao dịch thanh toán mới cho đơn hàng (Payment Attempt).
    * @param customerId ID khách hàng thực hiện thanh toán
    * @param orderId ID đơn hàng cần thanh toán
-   * @param provider Loại cổng thanh toán (STRIPE, PAYPAL, VNPAY)
+   * @param provider Loại cổng thanh toán (STRIPE, PAYPAL, ZALOPAY, MOMO)
    */
   async createPaymentAttempt(
     customerId: string,
@@ -212,11 +212,11 @@ export class PaymentsService {
     });
   }
 
-  async bindVnPayReference(paymentId: string, transactionReference: string) {
+  async bindZaloPayReference(paymentId: string, transactionReference: string) {
     const activated = await this.prisma.paymentTransaction.updateMany({
       where: {
         paymentId,
-        provider: PaymentProviderType.VNPAY,
+        provider: PaymentProviderType.ZALOPAY,
         providerOrderId: null,
         status: PaymentTransactionStatus.CREATED,
       },
@@ -228,12 +228,12 @@ export class PaymentsService {
 
     if (activated.count !== 1) {
       throw new ConflictException(
-        'Payment attempt đã bị thay thế trước khi URL VNPAY được tạo.',
+        'Payment attempt đã bị thay thế trước khi URL ZaloPay được tạo.',
       );
     }
   }
 
-  async markVnPayFailed(
+  async markZaloPayFailed(
     paymentId: string,
     responseCode: string,
     providerTransactionId?: string,
@@ -241,7 +241,7 @@ export class PaymentsService {
     await this.prisma.paymentTransaction.updateMany({
       where: {
         paymentId,
-        provider: PaymentProviderType.VNPAY,
+        provider: PaymentProviderType.ZALOPAY,
         status: {
           in: [
             PaymentTransactionStatus.CREATED,
@@ -255,11 +255,11 @@ export class PaymentsService {
             ? PaymentTransactionStatus.CANCELLED
             : PaymentTransactionStatus.FAILED,
         providerTransactionId: providerTransactionId || undefined,
-        failureCode: `VNPAY_${responseCode || 'UNKNOWN'}`,
+        failureCode: `ZALOPAY_${responseCode || 'UNKNOWN'}`,
         failureMessage:
           responseCode === '24'
-            ? 'Khách hàng hủy giao dịch tại VNPAY.'
-            : 'VNPAY xác nhận giao dịch không thành công.',
+            ? 'Khách hàng hủy giao dịch tại ZaloPay.'
+            : 'ZaloPay xác nhận giao dịch không thành công.',
       },
     });
   }

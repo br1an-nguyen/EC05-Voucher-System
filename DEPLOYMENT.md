@@ -48,9 +48,11 @@ Cả **Railway** và **Render** đều hỗ trợ build từ Dockerfile hoặc c
    | `STRIPE_WEBHOOK_SECRET` | `whsec_...` | Khóa webhook Stripe để verify chữ ký |
    | `PAYPAL_CLIENT_ID` | `Client_ID_Sandbox` | Client ID từ PayPal Developer Portal |
    | `PAYPAL_CLIENT_SECRET` | `Secret_Sandbox` | Secret Key từ PayPal Developer Portal |
-   | `VNPAY_TMN_CODE` | `VNPAY_TMN_CODE` | Mã định danh terminal do VNPay cấp |
-   | `VNPAY_HASH_SECRET` | `VNPAY_HASH_SECRET` | Chuỗi bảo mật mã hóa HMAC-SHA512 VNPay |
-   | `VNPAY_URL` | `https://sandbox.vnpayment.vn/paymentv2/vpcpay.html` | Cổng thanh toán Sandbox của VNPay |
+   | `ZALOPAY_APP_ID` | `553` | App ID Sandbox của ZaloPay |
+   | `ZALOPAY_KEY1` | `...` | Khóa ký yêu cầu tạo đơn (Key1) |
+   | `ZALOPAY_KEY2` | `...` | Khóa xác minh callback (Key2) |
+   | `ZALOPAY_CALLBACK_URL` | `https://api.example.com/payments/zalopay/callback` | Callback HTTPS công khai để ZaloPay xác nhận thanh toán |
+   | `ZALOPAY_REDIRECT_URL` | `https://web.example.com/payments/return/zalopay` | Trang web hiển thị trạng thái sau khi khách quay lại |
    | `FRONTEND_URL` | `https://vouchernow.vercel.app` | URL domain của trang Next.js Frontend |
 
 ---

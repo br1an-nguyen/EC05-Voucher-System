@@ -43,7 +43,7 @@ describe('PaymentsService ownership', () => {
       service.createPaymentAttempt(
         'other-customer',
         'order-1',
-        PaymentProviderType.VNPAY,
+        PaymentProviderType.ZALOPAY,
       ),
     ).rejects.toThrow(NotFoundException);
     expect(prisma.$transaction).not.toHaveBeenCalled();
@@ -76,7 +76,7 @@ describe('PaymentsService ownership', () => {
       service.createPaymentAttempt(
         'owner-1',
         order.orderId,
-        PaymentProviderType.VNPAY,
+        PaymentProviderType.ZALOPAY,
       ),
     ).rejects.toThrow(BadRequestException);
   });
