@@ -111,7 +111,10 @@ describe('PaymentFinalizationService', () => {
       transactionStatus: PaymentTransactionStatus.EXPIRED,
       expired: true,
     });
-    const service = new PaymentFinalizationService(prisma as any, mockEmailService as any);
+    const service = new PaymentFinalizationService(
+      prisma as any,
+      mockEmailService as any,
+    );
 
     await expect(
       service.finalizePayment(paymentId, 'PROVIDER-LATE'),
@@ -126,7 +129,10 @@ describe('PaymentFinalizationService', () => {
     const { prisma, tx } = createContext({
       omitReservation: true,
     });
-    const service = new PaymentFinalizationService(prisma as any, mockEmailService as any);
+    const service = new PaymentFinalizationService(
+      prisma as any,
+      mockEmailService as any,
+    );
 
     await expect(
       service.finalizePayment(paymentId, 'PROVIDER-MISSING-RESERVATION'),
@@ -138,7 +144,10 @@ describe('PaymentFinalizationService', () => {
 
   it('commits active reservations and issues vouchers for a valid payment', async () => {
     const { prisma, tx } = createContext();
-    const service = new PaymentFinalizationService(prisma as any, mockEmailService as any);
+    const service = new PaymentFinalizationService(
+      prisma as any,
+      mockEmailService as any,
+    );
 
     await service.finalizePayment(paymentId, 'PROVIDER-SUCCESS');
 
@@ -162,9 +171,30 @@ describe('PaymentFinalizationService', () => {
     expect(tx.voucherCode.create).toHaveBeenCalledTimes(2);
   });
 
+  it('does not issue voucher codes again after a successful callback replay', async () => {
+    const { prisma, tx } = createContext({
+      orderStatus: OrderStatus.CONFIRMED,
+      paymentStatus: PaymentStatus.PAID,
+      transactionStatus: PaymentTransactionStatus.SUCCEEDED,
+    });
+    const service = new PaymentFinalizationService(
+      prisma as any,
+      mockEmailService as any,
+    );
+
+    await service.finalizePayment(paymentId, 'PROVIDER-SUCCESS');
+
+    expect(tx.paymentTransaction.update).not.toHaveBeenCalled();
+    expect(tx.voucherCampaign.updateMany).not.toHaveBeenCalled();
+    expect(tx.voucherCode.create).not.toHaveBeenCalled();
+  });
+
   it('preserves the PayPal USD settlement contract from main', async () => {
     const { prisma, tx } = createContext();
-    const service = new PaymentFinalizationService(prisma as any, mockEmailService as any);
+    const service = new PaymentFinalizationService(
+      prisma as any,
+      mockEmailService as any,
+    );
 
     await service.finalizePayment(paymentId, 'PAYPAL-CAPTURE-1', {
       settledAmountMinor: 400n,
