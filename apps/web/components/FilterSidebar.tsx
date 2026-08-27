@@ -80,6 +80,8 @@ export default function FilterSidebar({
   ];
 
   const [expandedCategories, setExpandedCategories] = React.useState<Record<string, boolean>>({});
+  const [isPartnerOpen, setIsPartnerOpen] = React.useState(false);
+  const [isStatusOpen, setIsStatusOpen] = React.useState(false);
 
   const toggleCategory = (code: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -146,20 +148,45 @@ export default function FilterSidebar({
           Đối tác cung cấp
         </label>
         <div className="relative">
-          <select
-            id="partner-filter"
-            value={partnerId}
-            onChange={(event) => onPartnerChange(event.target.value)}
-            className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 pr-8 text-xs font-semibold text-slate-700 outline-none transition-all focus:border-primary/50 focus:bg-white"
+          <button
+            onClick={() => setIsPartnerOpen(!isPartnerOpen)}
+            className="w-full flex items-center justify-between appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 text-xs font-semibold text-slate-700 outline-none transition-all focus:border-primary/50 focus:bg-white"
           >
-            <option value="">Tất cả đối tác</option>
-            {partners.map((option) => (
-              <option key={option.partnerId} value={option.partnerId}>
-                {option.companyName}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <span className="truncate">
+              {partnerId === ''
+                ? 'Tất cả đối tác'
+                : partners.find((p) => p.partnerId === partnerId)?.companyName || 'Tất cả đối tác'}
+            </span>
+            <ChevronDown className="h-4 w-4 text-slate-400 shrink-0 ml-2" />
+          </button>
+
+          {isPartnerOpen && (
+            <div className="absolute z-50 w-full mt-1 bg-white border border-slate-300 rounded shadow-md max-h-[160px] overflow-y-auto py-1 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent text-sm">
+              <button
+                onClick={() => { onPartnerChange(''); setIsPartnerOpen(false); }}
+                className={`w-full text-left px-3 py-1.5 transition-none ${
+                  partnerId === ''
+                    ? 'bg-slate-500 text-white'
+                    : 'bg-white text-slate-800 hover:bg-slate-500 hover:text-white'
+                }`}
+              >
+                Tất cả đối tác
+              </button>
+              {partners.map((option) => (
+                <button
+                  key={option.partnerId}
+                  onClick={() => { onPartnerChange(option.partnerId); setIsPartnerOpen(false); }}
+                  className={`w-full text-left px-3 py-1.5 transition-none truncate ${
+                    partnerId === option.partnerId
+                      ? 'bg-slate-500 text-white'
+                      : 'bg-white text-slate-800 hover:bg-slate-500 hover:text-white'
+                  }`}
+                >
+                  {option.companyName}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -169,16 +196,50 @@ export default function FilterSidebar({
           Trạng thái hiệu lực
         </label>
         <div className="relative">
-          <select
-            id="status-filter"
-            value={validityStatus}
-            onChange={(event) => onValidityChange(event.target.value)}
-            className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 pr-8 text-xs font-semibold text-slate-700 outline-none transition-all focus:border-primary/50 focus:bg-white"
+          <button
+            onClick={() => setIsStatusOpen(!isStatusOpen)}
+            className="w-full flex items-center justify-between appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 text-xs font-semibold text-slate-700 outline-none transition-all focus:border-primary/50 focus:bg-white"
           >
-            <option value="AVAILABLE">Đang mở bán</option>
-            <option value="UPCOMING">Sắp mở bán</option>
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <span className="truncate">
+              {validityStatus === 'AVAILABLE' ? 'Đang mở bán' : validityStatus === 'UPCOMING' ? 'Sắp mở bán' : 'Tất cả trạng thái'}
+            </span>
+            <ChevronDown className="h-4 w-4 text-slate-400 shrink-0 ml-2" />
+          </button>
+
+          {isStatusOpen && (
+            <div className="absolute z-50 w-full mt-1 bg-white border border-slate-300 rounded shadow-md max-h-[160px] overflow-y-auto py-1 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent text-sm">
+              <button
+                onClick={() => { onValidityChange(''); setIsStatusOpen(false); }}
+                className={`w-full text-left px-3 py-1.5 transition-none ${
+                  validityStatus === ''
+                    ? 'bg-slate-500 text-white'
+                    : 'bg-white text-slate-800 hover:bg-slate-500 hover:text-white'
+                }`}
+              >
+                Tất cả trạng thái
+              </button>
+              <button
+                onClick={() => { onValidityChange('AVAILABLE'); setIsStatusOpen(false); }}
+                className={`w-full text-left px-3 py-1.5 transition-none ${
+                  validityStatus === 'AVAILABLE'
+                    ? 'bg-slate-500 text-white'
+                    : 'bg-white text-slate-800 hover:bg-slate-500 hover:text-white'
+                }`}
+              >
+                Đang mở bán
+              </button>
+              <button
+                onClick={() => { onValidityChange('UPCOMING'); setIsStatusOpen(false); }}
+                className={`w-full text-left px-3 py-1.5 transition-none ${
+                  validityStatus === 'UPCOMING'
+                    ? 'bg-slate-500 text-white'
+                    : 'bg-white text-slate-800 hover:bg-slate-500 hover:text-white'
+                }`}
+              >
+                Sắp mở bán
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
