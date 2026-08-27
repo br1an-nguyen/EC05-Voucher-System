@@ -427,7 +427,7 @@ function HomePageContent() {
                 }`}
               >
                 <ArrowUpNarrowWide className="h-4 w-4" />
-                <span className="hidden sm:inline">Giá tăng</span>
+                <span className="whitespace-nowrap">Giá tăng</span>
               </button>
               <button
                 onClick={() => {
@@ -445,7 +445,7 @@ function HomePageContent() {
                 }`}
               >
                 <ArrowDownWideNarrow className="h-4 w-4" />
-                <span className="hidden sm:inline">Giá giảm</span>
+                <span className="whitespace-nowrap">Giá giảm</span>
               </button>
               <button
                 onClick={() => {
@@ -463,7 +463,7 @@ function HomePageContent() {
                 }`}
               >
                 <ArrowDownWideNarrow className="h-4 w-4" />
-                <span className="hidden sm:inline">% Giảm</span>
+                <span className="whitespace-nowrap">% Giảm</span>
               </button>
             </div>
             </div>
