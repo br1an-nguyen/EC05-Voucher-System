@@ -13,7 +13,7 @@ const registerSchema = z.object({
   role: z.enum(['CUSTOMER', 'PARTNER']),
   email: z.string().email('Email không đúng định dạng.').or(z.literal('')),
   phone: z.string().min(10, 'Số điện thoại phải từ 10 ký tự trở lên.').or(z.literal('')),
-  password: z.string().min(6, 'Mật khẩu phải chứa ít nhất 6 ký tự.'),
+  password: z.string().min(6, 'Mật khẩu phải chứa ít nhất 8 ký tự.'),
   confirmPassword: z.string().min(1, 'Vui lòng xác nhận lại mật khẩu.'),
   fullName: z.string().min(1, 'Họ tên không được để trống.'),
   companyName: z.string().optional(),
@@ -77,7 +77,7 @@ export default function RegisterPage() {
 
   const onSubmit = async (data: RegisterSchemaType) => {
     setErrorMsg(null);
-    
+
     // Chuẩn bị payload gửi lên API
     const payload = {
       role: data.role,
@@ -100,7 +100,7 @@ export default function RegisterPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-12 sm:px-6 lg:px-8 font-sans">
       <div className="w-full max-w-lg space-y-8 rounded-2xl bg-card p-8 border border-border shadow-xl">
-        
+
         {/* LOGO & TIÊU ĐỀ */}
         <div className="text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-white shadow shadow-primary/20">
@@ -119,11 +119,10 @@ export default function RegisterPage() {
           <button
             type="button"
             onClick={() => handleRoleChange('CUSTOMER')}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-md py-2.5 text-sm font-semibold transition-all duration-200 ${
-              role === 'CUSTOMER'
+            className={`flex flex-1 items-center justify-center gap-2 rounded-md py-2.5 text-sm font-semibold transition-all duration-200 ${role === 'CUSTOMER'
                 ? 'bg-primary text-white shadow'
                 : 'text-muted hover:text-foreground'
-            }`}
+              }`}
           >
             <User className="h-4 w-4" />
             Khách hàng
@@ -131,11 +130,10 @@ export default function RegisterPage() {
           <button
             type="button"
             onClick={() => handleRoleChange('PARTNER')}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-md py-2.5 text-sm font-semibold transition-all duration-200 ${
-              role === 'PARTNER'
+            className={`flex flex-1 items-center justify-center gap-2 rounded-md py-2.5 text-sm font-semibold transition-all duration-200 ${role === 'PARTNER'
                 ? 'bg-primary text-white shadow'
                 : 'text-muted hover:text-foreground'
-            }`}
+              }`}
           >
             <Briefcase className="h-4 w-4" />
             Đối tác doanh nghiệp
@@ -153,7 +151,7 @@ export default function RegisterPage() {
         {/* FORM ĐĂNG KÝ */}
         <form className="mt-6 space-y-5" onSubmit={handleSubmit(onSubmit)}>
           <div className="space-y-4">
-            
+
             {/* HỌ VÀ TÊN */}
             <div>
               <label className="block text-xs font-semibold text-foreground mb-1.5">
@@ -287,7 +285,7 @@ export default function RegisterPage() {
             {role === 'PARTNER' && (
               <div className="space-y-4 border-t border-border/80 pt-4 mt-2">
                 <h3 className="text-sm font-semibold text-primary">Thông tin Doanh nghiệp</h3>
-                
+
                 {/* TÊN CÔNG TY */}
                 <div>
                   <label className="block text-xs font-semibold text-foreground mb-1.5">

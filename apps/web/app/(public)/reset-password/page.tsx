@@ -11,7 +11,7 @@ import { apiRequest } from '../../../lib/api';
 import { getErrorMessage } from '../../../lib/errors';
 
 const resetPasswordSchema = z.object({
-  newPassword: z.string().min(6, 'Mật khẩu mới phải chứa ít nhất 6 ký tự.'),
+  newPassword: z.string().min(6, 'Mật khẩu mới phải chứa ít nhất 8 ký tự.'),
   confirmPassword: z.string().min(1, 'Vui lòng xác nhận lại mật khẩu.'),
 }).refine((data) => data.newPassword === data.confirmPassword, {
   message: 'Mật khẩu xác nhận không khớp.',

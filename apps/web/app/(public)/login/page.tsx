@@ -12,7 +12,7 @@ import { getErrorMessage } from '../../../lib/errors';
 
 const loginSchema = z.object({
   identifier: z.string().min(1, 'Vui lòng nhập Email hoặc Số điện thoại.'),
-  password: z.string().min(6, 'Mật khẩu phải chứa ít nhất 6 ký tự.'),
+  password: z.string().min(6, 'Mật khẩu phải chứa ít nhất 8 ký tự.'),
 });
 
 type LoginSchemaType = z.infer<typeof loginSchema>;
@@ -35,7 +35,7 @@ function LoginForm() {
   const onSubmit = async (data: LoginSchemaType) => {
     setErrorMsg(null);
     const isEmail = data.identifier.includes('@');
-    
+
     const payload = {
       [isEmail ? 'email' : 'phone']: data.identifier,
       password: data.password,
@@ -52,7 +52,7 @@ function LoginForm() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-12 sm:px-6 lg:px-8 font-sans">
       <div className="w-full max-w-md space-y-8 rounded-2xl bg-card p-8 border border-border shadow-xl">
-        
+
         {/* LOGO & TIÊU ĐỀ */}
         <div className="text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-white shadow shadow-primary/20">
@@ -90,7 +90,7 @@ function LoginForm() {
         {/* FORM ĐĂNG NHẬP */}
         <form className="mt-8 space-y-6" onSubmit={handleSubmit(onSubmit)}>
           <div className="space-y-4">
-            
+
             {/* EMAIL / SỐ ĐIỆN THOẠI */}
             <div>
               <label className="block text-xs font-semibold text-foreground mb-1.5">

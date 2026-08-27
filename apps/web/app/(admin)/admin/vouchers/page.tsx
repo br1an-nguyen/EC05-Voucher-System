@@ -64,24 +64,24 @@ interface VoucherCampaign {
 }
 
 const STATUS_CONFIG: Record<VoucherStatus, { label: string; badgeClass: string }> = {
-  DRAFT:            { label: 'Bản nháp',        badgeClass: 'bg-slate-100 text-slate-700' },
-  PENDING_APPROVAL: { label: 'Chờ duyệt',       badgeClass: 'bg-yellow-100 text-yellow-800' },
-  APPROVED:         { label: 'Hoạt động',        badgeClass: 'bg-green-100 text-green-700' },
-  REJECTED:         { label: 'Đã từ chối',       badgeClass: 'bg-red-100 text-red-700' },
-  PAUSED:           { label: 'Tạm dừng',         badgeClass: 'bg-orange-100 text-orange-700' },
-  EXPIRED:          { label: 'Hết hạn',          badgeClass: 'bg-slate-100 text-slate-500' },
-  SOLD_OUT:         { label: 'Hết hàng',         badgeClass: 'bg-purple-100 text-purple-700' },
+  DRAFT: { label: 'Bản nháp', badgeClass: 'bg-slate-100 text-slate-700' },
+  PENDING_APPROVAL: { label: 'Chờ duyệt', badgeClass: 'bg-yellow-100 text-yellow-800' },
+  APPROVED: { label: 'Hoạt động', badgeClass: 'bg-green-100 text-green-700' },
+  REJECTED: { label: 'Đã từ chối', badgeClass: 'bg-red-100 text-red-700' },
+  PAUSED: { label: 'Tạm dừng', badgeClass: 'bg-orange-100 text-orange-700' },
+  EXPIRED: { label: 'Hết hạn', badgeClass: 'bg-slate-100 text-slate-500' },
+  SOLD_OUT: { label: 'Hết hàng', badgeClass: 'bg-purple-100 text-purple-700' },
 };
 
 const STATUS_FILTERS = [
-  { value: '',                label: 'Tất cả' },
-  { value: 'PENDING_APPROVAL',label: 'Chờ duyệt' },
-  { value: 'APPROVED',        label: 'Hoạt động' },
-  { value: 'PAUSED',          label: 'Tạm dừng' },
-  { value: 'REJECTED',        label: 'Đã từ chối' },
-  { value: 'EXPIRED',         label: 'Hết hạn' },
-  { value: 'SOLD_OUT',        label: 'Hết hàng' },
-  { value: 'DRAFT',           label: 'Bản nháp' },
+  { value: '', label: 'Tất cả' },
+  { value: 'PENDING_APPROVAL', label: 'Chờ duyệt' },
+  { value: 'APPROVED', label: 'Hoạt động' },
+  { value: 'PAUSED', label: 'Tạm dừng' },
+  { value: 'REJECTED', label: 'Đã từ chối' },
+  { value: 'EXPIRED', label: 'Hết hạn' },
+  { value: 'SOLD_OUT', label: 'Hết hàng' },
+  { value: 'DRAFT', label: 'Bản nháp' },
 ];
 
 type ActionType = 'approve' | 'reject' | 'pause' | 'reactivate' | 'expire';
@@ -191,16 +191,16 @@ export default function AdminVouchersPage() {
     const s = campaign.status;
     const actions: { type: ActionType; targetStatus: VoucherStatus; label: string; icon: React.ReactNode; btnClass: string }[] = [];
     if (s === 'PENDING_APPROVAL') {
-      actions.push({ type: 'approve', targetStatus: 'APPROVED',  label: 'Duyệt',     icon: <Check className="h-3.5 w-3.5" />,      btnClass: 'bg-green-600 hover:bg-green-700 text-white' });
-      actions.push({ type: 'reject',  targetStatus: 'REJECTED',  label: 'Từ chối',   icon: <X className="h-3.5 w-3.5" />,          btnClass: 'bg-red-600 hover:bg-red-700 text-white' });
+      actions.push({ type: 'approve', targetStatus: 'APPROVED', label: 'Duyệt', icon: <Check className="h-3.5 w-3.5" />, btnClass: 'bg-green-600 hover:bg-green-700 text-white' });
+      actions.push({ type: 'reject', targetStatus: 'REJECTED', label: 'Từ chối', icon: <X className="h-3.5 w-3.5" />, btnClass: 'bg-red-600 hover:bg-red-700 text-white' });
     }
     if (s === 'APPROVED') {
-      actions.push({ type: 'pause',   targetStatus: 'PAUSED',    label: 'Tạm dừng',  icon: <PauseCircle className="h-3.5 w-3.5" />, btnClass: 'border border-orange-300 text-orange-700 hover:bg-orange-50' });
-      actions.push({ type: 'expire',  targetStatus: 'EXPIRED',   label: 'Hết hạn',   icon: <Archive className="h-3.5 w-3.5" />,    btnClass: 'border border-slate-300 text-slate-600 hover:bg-slate-50' });
+      actions.push({ type: 'pause', targetStatus: 'PAUSED', label: 'Tạm dừng', icon: <PauseCircle className="h-3.5 w-3.5" />, btnClass: 'border border-orange-300 text-orange-700 hover:bg-orange-50' });
+      actions.push({ type: 'expire', targetStatus: 'EXPIRED', label: 'Hết hạn', icon: <Archive className="h-3.5 w-3.5" />, btnClass: 'border border-slate-300 text-slate-600 hover:bg-slate-50' });
     }
     if (s === 'PAUSED') {
       actions.push({ type: 'reactivate', targetStatus: 'APPROVED', label: 'Kích hoạt', icon: <PlayCircle className="h-3.5 w-3.5" />, btnClass: 'bg-green-600 hover:bg-green-700 text-white' });
-      actions.push({ type: 'expire',     targetStatus: 'EXPIRED',  label: 'Hết hạn',   icon: <Archive className="h-3.5 w-3.5" />,   btnClass: 'border border-slate-300 text-slate-600 hover:bg-slate-50' });
+      actions.push({ type: 'expire', targetStatus: 'EXPIRED', label: 'Hết hạn', icon: <Archive className="h-3.5 w-3.5" />, btnClass: 'border border-slate-300 text-slate-600 hover:bg-slate-50' });
     }
     if (s === 'REJECTED') {
       actions.push({ type: 'approve', targetStatus: 'APPROVED', label: 'Duyệt lại', icon: <Check className="h-3.5 w-3.5" />, btnClass: 'border border-green-300 text-green-700 hover:bg-green-50' });
@@ -267,11 +267,10 @@ export default function AdminVouchersPage() {
           <button
             key={f.value}
             onClick={() => { setFilterStatus(f.value); setKeyword(''); }}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
-              filterStatus === f.value
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${filterStatus === f.value
                 ? 'bg-primary text-primary-foreground shadow-sm'
                 : 'bg-secondary text-foreground hover:bg-secondary/80'
-            }`}
+              }`}
           >
             {f.label}
           </button>
@@ -281,9 +280,9 @@ export default function AdminVouchersPage() {
       {/* THỐNG KÊ NHANH */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: 'Chiến dịch tìm thấy', value: summary.total,         icon: <Ticket className="h-4 w-4 text-primary" /> },
-          { label: 'Tổng số lượng phát hành',      value: summary.totalCapacity, icon: <Package className="h-4 w-4 text-primary" /> },
-          { label: 'Tổng đã bán',          value: summary.totalSold,     icon: <CheckCircle className="h-4 w-4 text-primary" /> },
+          { label: 'Chiến dịch tìm thấy', value: summary.total, icon: <Ticket className="h-4 w-4 text-primary" /> },
+          { label: 'Số lượng voucher phát hành', value: summary.totalCapacity, icon: <Package className="h-4 w-4 text-primary" /> },
+          { label: 'Tổng đã bán', value: summary.totalSold, icon: <CheckCircle className="h-4 w-4 text-primary" /> },
         ].map(stat => (
           <div key={stat.label} className="rounded-xl border border-border bg-card p-4 shadow-sm">
             <div className="flex items-center justify-between">
@@ -341,11 +340,10 @@ export default function AdminVouchersPage() {
                             {campaign.campaignCategories.slice(0, 2).map(cc => (
                               <span
                                 key={cc.category.code}
-                                className={`inline-block text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${
-                                  cc.isPrimary
+                                className={`inline-block text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${cc.isPrimary
                                     ? 'text-primary bg-primary/5'
                                     : 'text-muted bg-secondary/50'
-                                }`}
+                                  }`}
                               >
                                 {cc.category.nameVi}
                               </span>
