@@ -31,6 +31,11 @@ import { PaypalAdapter } from './adapters/paypal.adapter';
 import { PaypalCaptureDto } from './dto/paypal-capture.dto';
 import { StripeWebhookService } from './stripe-webhook.service';
 import { StripeConfigService } from './stripe.config';
+import type { Request } from 'express';
+
+type AuthenticatedRequest = Request & {
+  user: { userId: string; role: UserRole };
+};
 
 export class CreatePaymentAttemptDto {
   @IsEnum(PaymentProviderType, {
@@ -63,7 +68,7 @@ export class PaymentsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CUSTOMER)
   async createPaymentAttempt(
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
     @Param('orderId') orderId: string,
     @Body() dto: CreatePaymentAttemptDto,
   ) {
@@ -78,7 +83,12 @@ export class PaymentsController {
     if (payment.provider === PaymentProviderType.VNPAY) {
       const res = await this.vnPayAdapter.createPayment(
         payment,
-        (payment as any).order.orderCode,
+        payment.order.orderCode,
+        req.ip || req.socket?.remoteAddress,
+      );
+      await this.paymentsService.bindVnPayReference(
+        payment.paymentId,
+        res.providerOrderId,
       );
       paymentUrl = res.paymentUrl;
     } else if (payment.provider === PaymentProviderType.STRIPE) {
@@ -86,7 +96,7 @@ export class PaymentsController {
       try {
         res = await this.stripeAdapter.createPayment(
           payment,
-          (payment as any).order.orderCode,
+          payment.order.orderCode,
         );
       } catch (error: unknown) {
         await this.paymentsService.failStripeSessionCreation(
@@ -114,7 +124,7 @@ export class PaymentsController {
     } else if (payment.provider === PaymentProviderType.PAYPAL) {
       const res = await this.paypalAdapter.createPayment(
         payment,
-        (payment as any).order.orderCode,
+        payment.order.orderCode,
       );
       paymentUrl = res.paymentUrl;
       if (res.providerOrderId) {
@@ -189,62 +199,141 @@ export class PaymentsController {
   }
 
   /**
+   * Xác minh Return URL để hiển thị. Endpoint này tuyệt đối không hoàn tất đơn.
+   * GET /payments/vnpay/return
+   */
+  @Get('vnpay/return')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER, UserRole.ADMIN)
+  async verifyVnPayReturn(@Req() req: AuthenticatedRequest) {
+    const result = await this.vnPayAdapter.verifyAndParseNotification(
+      req.query,
+    );
+    if (!result.signatureValid || !result.transactionReference) {
+      return {
+        state: 'FAILED',
+        message: 'Chữ ký phản hồi VNPAY không hợp lệ.',
+      };
+    }
+
+    const payment = await this.paymentsService.getPaymentDetailsForActor(
+      result.transactionReference,
+      req.user,
+    );
+    if (
+      payment.provider !== PaymentProviderType.VNPAY ||
+      payment.providerOrderId !== result.transactionReference
+    ) {
+      throw new BadRequestException('Giao dịch không thuộc cổng VNPAY.');
+    }
+    if (
+      result.amountMinor !== payment.requestAmountMinor * 100n ||
+      result.currency !== payment.requestCurrency
+    ) {
+      return {
+        state: 'FAILED',
+        paymentId: payment.paymentId,
+        orderId: payment.orderId,
+        message: 'Số tiền hoặc loại tiền phản hồi từ VNPAY không hợp lệ.',
+      };
+    }
+
+    let state: 'SUCCESS' | 'FAILED' | 'CANCELLED' | 'PENDING' = 'PENDING';
+    if (payment.status === PaymentTransactionStatus.SUCCEEDED) {
+      state = 'SUCCESS';
+    } else if (
+      payment.status === PaymentTransactionStatus.CANCELLED ||
+      result.responseCode === '24'
+    ) {
+      state = 'CANCELLED';
+    } else if (payment.status === PaymentTransactionStatus.FAILED) {
+      state = 'FAILED';
+    } else if (
+      result.status === 'FAILED' &&
+      (result.responseCode !== '00' || result.transactionStatus !== '00')
+    ) {
+      state = 'FAILED';
+    }
+
+    return {
+      state,
+      paymentId: payment.paymentId,
+      orderId: payment.orderId,
+      paymentStatus: payment.status,
+      message:
+        state === 'PENDING' ? 'Đang chờ VNPAY gửi xác nhận IPN.' : undefined,
+    };
+  }
+
+  /**
    * VNPay IPN (Instant Payment Notification) Callback.
    * Cổng thanh toán gọi API này ẩn dưới nền để đồng bộ trạng thái thanh toán.
    * GET /payments/vnpay/ipn
    */
   @Get('vnpay/ipn')
-  async handleVnPayIpn(@Req() req: any) {
-    const query = req.query;
+  async handleVnPayIpn(@Req() req: Request) {
     try {
-      const result = await this.vnPayAdapter.verifyAndParseNotification(query);
-      const paymentId = query.vnp_TxnRef;
-
-      // 1. Kiểm tra tính hợp lệ của chữ ký checksum
-      if (
-        result.status === 'FAILED' &&
-        result.providerTransactionId === 'MOCK-VNP-TX'
-      ) {
+      const result = await this.vnPayAdapter.verifyAndParseNotification(
+        req.query,
+      );
+      if (!result.signatureValid) {
         return { RspCode: '97', Message: 'Invalid signature' };
       }
-
-      // 2. Tìm chi tiết giao dịch thanh toán
-      let payment;
-      try {
-        payment = await this.paymentsService.getPaymentDetails(paymentId);
-      } catch (err) {
+      const paymentId = result.transactionReference;
+      if (!paymentId) {
         return { RspCode: '01', Message: 'Order not found' };
       }
 
-      // 3. Kiểm tra số tiền khớp với đơn hàng
-      const expectedAmount = Number(payment.baseAmount);
-      if (result.amountPaid !== expectedAmount) {
+      let payment;
+      try {
+        payment = await this.paymentsService.getPaymentDetails(paymentId);
+      } catch {
+        return { RspCode: '01', Message: 'Order not found' };
+      }
+
+      if (
+        payment.provider !== PaymentProviderType.VNPAY ||
+        payment.providerOrderId !== paymentId
+      ) {
+        return { RspCode: '01', Message: 'Order not found' };
+      }
+
+      if (
+        result.amountMinor !== payment.requestAmountMinor * 100n ||
+        result.currency !== payment.requestCurrency ||
+        result.currency !== 'VND'
+      ) {
         return { RspCode: '04', Message: 'Invalid amount' };
       }
 
-      // 4. Kiểm tra xem giao dịch đã được ghi nhận thành công từ trước chưa
-      if (payment.status === 'SUCCEEDED') {
+      if (
+        payment.status === PaymentTransactionStatus.SUCCEEDED ||
+        payment.status === PaymentTransactionStatus.FAILED ||
+        payment.status === PaymentTransactionStatus.CANCELLED
+      ) {
         return { RspCode: '02', Message: 'Order already confirmed' };
       }
 
-      // 5. Xác nhận trạng thái thanh toán từ VNPay (ResponseCode 00 = Thành công)
-      if (query.vnp_ResponseCode === '00') {
+      if (
+        result.responseCode === '00' &&
+        result.transactionStatus === '00' &&
+        result.providerTransactionId
+      ) {
         await this.paymentFinalizationService.finalizePayment(
           paymentId,
           result.providerTransactionId,
         );
         return { RspCode: '00', Message: 'Confirm Success' };
-      } else {
-        // Cập nhật trạng thái giao dịch thanh toán cục bộ thành FAILED
-        await this.paymentsService.createPaymentAttempt(
-          payment.order.customerId,
-          payment.orderId,
-          PaymentProviderType.VNPAY,
-        );
-        return { RspCode: '00', Message: 'Confirm Success' };
       }
-    } catch (err: any) {
-      return { RspCode: '99', Message: err.message || 'Unknown error' };
+
+      await this.paymentsService.markVnPayFailed(
+        paymentId,
+        result.responseCode || result.transactionStatus || 'UNKNOWN',
+        result.providerTransactionId,
+      );
+      return { RspCode: '00', Message: 'Confirm Success' };
+    } catch {
+      return { RspCode: '99', Message: 'Unknown error' };
     }
   }
 

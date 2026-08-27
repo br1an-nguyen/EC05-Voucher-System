@@ -1,24 +1,29 @@
-'use client';
+"use client";
 
-import React, { useCallback, useEffect, useState, useRef } from 'react';
-import { useParams, useSearchParams, useRouter } from 'next/navigation';
-import { apiRequest } from '../../../../lib/api';
-import { getErrorMessage } from '../../../../lib/errors';
-import Link from 'next/link';
-import { 
-  CheckCircle, 
-  XCircle, 
-  Loader2, 
-  Home, 
-  Ticket, 
+import React, { useCallback, useEffect, useState, useRef } from "react";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
+import { apiRequest } from "../../../../lib/api";
+import { getErrorMessage } from "../../../../lib/errors";
+import Link from "next/link";
+import {
+  classifyVnPayReturnError,
+  VnPayDisplayState,
+  VnPayReturnResponse,
+} from "../../../../lib/vnpay-return";
+import {
+  CheckCircle,
+  XCircle,
+  Loader2,
+  Home,
+  Ticket,
   AlertTriangle,
   Play,
-  FileText
-} from 'lucide-react';
+  FileText,
+} from "lucide-react";
 
 interface PaymentStatusResponse {
   orderId: string;
-  status: 'PENDING' | 'SUCCEEDED' | 'FAILED';
+  status: "CREATED" | "PENDING" | "SUCCEEDED" | "FAILED" | "CANCELLED";
   isGift?: boolean;
   recipientEmail?: string;
 }
@@ -28,135 +33,146 @@ interface PayPalCaptureResponse {
   message?: string;
 }
 
-interface VnPayResponse {
-  RspCode: string;
-  Message: string;
-}
-
 export default function PaymentReturnPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
 
   const provider = params.provider as string; // 'stripe', 'paypal', 'vnpay', 'mock'
-  
+
   const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState<'SUCCESS' | 'FAILED' | 'PENDING'>('PENDING');
+  const [status, setStatus] = useState<VnPayDisplayState>("PENDING");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [orderInfo, setOrderInfo] = useState<PaymentStatusResponse | null>(null);
-  
+  const [orderInfo, setOrderInfo] = useState<PaymentStatusResponse | null>(
+    null,
+  );
+
   // Ref để tránh chạy React StrictMode call API 2 lần
   const initiated = useRef(false);
 
   const fetchPaymentStatus = useCallback(async (paymentId: string) => {
     try {
-      const paymentDetails = await apiRequest<PaymentStatusResponse>(`/payments/${paymentId}/status`);
+      const paymentDetails = await apiRequest<PaymentStatusResponse>(
+        `/payments/${paymentId}/status`,
+      );
       setOrderInfo(paymentDetails);
       return paymentDetails;
     } catch (error: unknown) {
-      console.error('Không thể lấy chi tiết trạng thái đơn:', error);
+      console.error("Không thể lấy chi tiết trạng thái đơn:", error);
       return null;
     }
   }, []);
 
-  const pollStripeStatus = useCallback((paymentId: string) => {
-    let attempts = 0;
-    const interval = window.setInterval(async () => {
-      attempts++;
-      try {
-        const res = await apiRequest<PaymentStatusResponse>(`/payments/${paymentId}/status`);
-        if (res.status === 'SUCCEEDED') {
-          await fetchPaymentStatus(paymentId);
-          setStatus('SUCCESS');
+  const pollPaymentStatus = useCallback(
+    (paymentId: string, providerName: string) => {
+      let attempts = 0;
+      const interval = window.setInterval(async () => {
+        attempts++;
+        try {
+          const res = await apiRequest<PaymentStatusResponse>(
+            `/payments/${paymentId}/status`,
+          );
+          if (res.status === "SUCCEEDED") {
+            await fetchPaymentStatus(paymentId);
+            setStatus("SUCCESS");
+            window.clearInterval(interval);
+            setLoading(false);
+          } else if (res.status === "FAILED") {
+            setStatus("FAILED");
+            setErrorMsg(`Giao dịch ${providerName} bị từ chối hoặc thất bại.`);
+            window.clearInterval(interval);
+            setLoading(false);
+          } else if (res.status === "CANCELLED") {
+            setStatus("CANCELLED");
+            window.clearInterval(interval);
+            setLoading(false);
+          } else if (attempts >= 5) {
+            setStatus("PENDING");
+            window.clearInterval(interval);
+            setLoading(false);
+          }
+        } catch {
           window.clearInterval(interval);
-          setLoading(false);
-        } else if (res.status === 'FAILED') {
-          setStatus('FAILED');
-          setErrorMsg('Giao dịch Stripe bị từ chối hoặc thất bại.');
-          window.clearInterval(interval);
-          setLoading(false);
-        } else if (attempts >= 5) {
-          setStatus('PENDING');
-          window.clearInterval(interval);
+          setStatus("FAILED");
           setLoading(false);
         }
-      } catch {
-        window.clearInterval(interval);
-        setStatus('FAILED');
-        setLoading(false);
-      }
-    }, 2000);
-  }, [fetchPaymentStatus]);
+      }, 2000);
+    },
+    [fetchPaymentStatus],
+  );
 
   const handlePaymentVerification = useCallback(async () => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      if (provider === 'paypal') {
-        const paymentId = searchParams.get('paymentId');
-        const paypalOrderId = searchParams.get('token'); // PayPal Order ID đại diện cho token
+      if (provider === "paypal") {
+        const paymentId = searchParams.get("paymentId");
+        const paypalOrderId = searchParams.get("token"); // PayPal Order ID đại diện cho token
 
         if (!paymentId || !paypalOrderId) {
-          throw new Error('Thiếu tham số định danh thanh toán PayPal.');
+          throw new Error("Thiếu tham số định danh thanh toán PayPal.");
         }
 
         // Gọi API Capture PayPal của backend
-        const res = await apiRequest<PayPalCaptureResponse>('/payments/paypal/capture', {
-          method: 'POST',
-          body: JSON.stringify({ paypalOrderId, paymentId }),
-        });
+        const res = await apiRequest<PayPalCaptureResponse>(
+          "/payments/paypal/capture",
+          {
+            method: "POST",
+            body: JSON.stringify({ paypalOrderId, paymentId }),
+          },
+        );
 
         if (res.success) {
           await fetchPaymentStatus(paymentId);
-          setStatus('SUCCESS');
+          setStatus("SUCCESS");
         } else {
-          setStatus('FAILED');
-          setErrorMsg(res.message || 'Thanh toán PayPal không thành công.');
+          setStatus("FAILED");
+          setErrorMsg(res.message || "Thanh toán PayPal không thành công.");
         }
         setLoading(false);
+      } else if (provider === "vnpay") {
+        const res = await apiRequest<VnPayReturnResponse>(
+          `/payments/vnpay/return${window.location.search}`,
+        );
+        setStatus(res.state);
+        setErrorMsg(res.message || null);
 
-      } else if (provider === 'vnpay') {
-        // Thu thập toàn bộ query parameters gửi từ VNPay về
-        const queryString = window.location.search;
-        
-        // Gọi API kiểm tra IPN chữ ký của backend trực tiếp ở foreground
-        const res = await apiRequest<VnPayResponse>(`/payments/vnpay/ipn${queryString}`);
-        
-        if (res.RspCode === '00' || res.RspCode === '02') {
-          const paymentId = searchParams.get('vnp_TxnRef');
-          if (paymentId) {
-            await fetchPaymentStatus(paymentId);
-          }
-          setStatus('SUCCESS');
-        } else {
-          setStatus('FAILED');
-          setErrorMsg(`VNPay phản hồi lỗi Code: ${res.RspCode}. Chi tiết: ${res.Message}`);
+        if (res.paymentId) {
+          await fetchPaymentStatus(res.paymentId);
         }
-        setLoading(false);
+        if (res.state === "PENDING" && res.paymentId) {
+          pollPaymentStatus(res.paymentId, "VNPAY");
+        } else {
+          setLoading(false);
+        }
+      } else if (provider === "stripe") {
+        const paymentId = searchParams.get("paymentId");
+        if (!paymentId) throw new Error("Không tìm thấy Payment ID.");
 
-      } else if (provider === 'stripe') {
-        const paymentId = searchParams.get('paymentId');
-        if (!paymentId) throw new Error('Không tìm thấy Payment ID.');
-        
         // Stripe xử lý qua Webhook bất đồng bộ, chúng ta sẽ Polling trạng thái trong 6 giây
-        pollStripeStatus(paymentId);
+        pollPaymentStatus(paymentId, "Stripe");
+      } else if (provider === "mock") {
+        const paymentId = searchParams.get("paymentId");
+        if (!paymentId) throw new Error("Không tìm thấy Payment ID.");
 
-      } else if (provider === 'mock') {
-        const paymentId = searchParams.get('paymentId');
-        if (!paymentId) throw new Error('Không tìm thấy Payment ID.');
-        
         // Ở chế độ Mock: Hiển thị giao diện cho developer trigger thành công
         void fetchPaymentStatus(paymentId);
         setLoading(false);
       } else {
-        throw new Error('Cổng thanh toán không được hỗ trợ.');
+        throw new Error("Cổng thanh toán không được hỗ trợ.");
       }
     } catch (error: unknown) {
-      setStatus('FAILED');
-      setErrorMsg(getErrorMessage(error, 'Đã xảy ra lỗi khi kiểm tra giao dịch.'));
+      const message = getErrorMessage(
+        error,
+        "Đã xảy ra lỗi khi kiểm tra giao dịch.",
+      );
+      setStatus(
+        provider === "vnpay" ? classifyVnPayReturnError(message) : "FAILED",
+      );
+      setErrorMsg(message);
       setLoading(false);
     }
-  }, [provider, searchParams, pollStripeStatus, fetchPaymentStatus]);
+  }, [provider, searchParams, pollPaymentStatus, fetchPaymentStatus]);
 
   useEffect(() => {
     if (initiated.current) return;
@@ -169,18 +185,18 @@ export default function PaymentReturnPage() {
 
   // Mô phỏng thanh toán thành công (Developer mode)
   const triggerMockSuccess = async () => {
-    const paymentId = searchParams.get('paymentId');
+    const paymentId = searchParams.get("paymentId");
     if (!paymentId) return;
 
     setLoading(true);
     try {
       await apiRequest<void>(`/payments/${paymentId}/mock-success`, {
-        method: 'POST',
+        method: "POST",
       });
       await fetchPaymentStatus(paymentId);
-      setStatus('SUCCESS');
+      setStatus("SUCCESS");
     } catch (error: unknown) {
-      setErrorMsg(getErrorMessage(error, 'Không thể mô phỏng thành công.'));
+      setErrorMsg(getErrorMessage(error, "Không thể mô phỏng thành công."));
     } finally {
       setLoading(false);
     }
@@ -190,13 +206,15 @@ export default function PaymentReturnPage() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background space-y-4">
         <Loader2 className="h-10 w-10 text-primary animate-spin" />
-        <p className="text-sm font-semibold text-muted">Đang xác thực giao dịch với cổng thanh toán...</p>
+        <p className="text-sm font-semibold text-muted">
+          Đang xác thực giao dịch với cổng thanh toán...
+        </p>
       </div>
     );
   }
 
   // MÀN HÌNH CHẾ ĐỘ MOCK (CHƯA THANH TOÁN THẬT)
-  if (provider === 'mock' && status === 'PENDING') {
+  if (provider === "mock" && status === "PENDING") {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-card border border-yellow-200 rounded-2xl p-8 text-center space-y-6 shadow-xl">
@@ -205,9 +223,12 @@ export default function PaymentReturnPage() {
           </div>
 
           <div className="space-y-2">
-            <h2 className="text-xl font-black text-foreground">Trang mô phỏng thanh toán</h2>
+            <h2 className="text-xl font-black text-foreground">
+              Trang mô phỏng thanh toán
+            </h2>
             <p className="text-xs text-muted leading-relaxed">
-              Bạn đang ở môi trường phát triển (Sandbox). Hãy nhấn nút dưới đây để giả lập kết quả phản hồi thành công từ ngân hàng.
+              Bạn đang ở môi trường phát triển (Sandbox). Hãy nhấn nút dưới đây
+              để giả lập kết quả phản hồi thành công từ ngân hàng.
             </p>
           </div>
 
@@ -219,7 +240,7 @@ export default function PaymentReturnPage() {
               <Play className="h-4 w-4 fill-white" />
               Mô phỏng Thanh toán Thành công
             </button>
-            
+
             <Link
               href="/cart"
               className="w-full inline-flex items-center justify-center rounded-xl border border-border hover:bg-slate-50 text-foreground py-2.5 text-xs font-bold transition-colors"
@@ -235,32 +256,39 @@ export default function PaymentReturnPage() {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-card border border-border rounded-2xl p-8 text-center space-y-6 shadow-xl">
-        
-        {status === 'SUCCESS' ? (
+        {status === "SUCCESS" ? (
           <>
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-green-600">
               <CheckCircle className="h-8 w-8" />
             </div>
 
             <div className="space-y-1">
-              <h2 className="text-xl font-extrabold text-foreground">Thanh toán thành công!</h2>
-              <p className="text-xs text-muted">Cảm ơn bạn đã tin tưởng dịch vụ của VoucherNow.</p>
+              <h2 className="text-xl font-extrabold text-foreground">
+                Thanh toán thành công!
+              </h2>
+              <p className="text-xs text-muted">
+                Cảm ơn bạn đã tin tưởng dịch vụ của VoucherNow.
+              </p>
             </div>
 
             {orderInfo && (
               <div className="bg-secondary/40 border border-border rounded-xl p-4 text-xs text-left space-y-2">
                 <div className="flex justify-between">
                   <span className="text-muted">Đơn hàng:</span>
-                  <span className="font-bold text-foreground">#{orderInfo.orderId.substring(0, 8).toUpperCase()}</span>
+                  <span className="font-bold text-foreground">
+                    #{orderInfo.orderId.substring(0, 8).toUpperCase()}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted">Phương thức:</span>
-                  <span className="font-bold text-foreground">{provider.toUpperCase()}</span>
+                  <span className="font-bold text-foreground">
+                    {provider.toUpperCase()}
+                  </span>
                 </div>
-                 <p className="text-[10px] text-primary font-bold text-center mt-2 pt-2 border-t border-border/60">
+                <p className="text-[10px] text-primary font-bold text-center mt-2 pt-2 border-t border-border/60">
                   {orderInfo.isGift
                     ? `Mã voucher đã được gửi tới email quà tặng: ${orderInfo.recipientEmail}`
-                    : 'Mã voucher đã được phát hành và gửi vào ví của bạn.'}
+                    : "Mã voucher đã được phát hành và gửi vào ví của bạn."}
                 </p>
               </div>
             )}
@@ -269,7 +297,7 @@ export default function PaymentReturnPage() {
               {orderInfo?.isGift ? (
                 <button
                   onClick={() => {
-                    router.push('/customer/orders');
+                    router.push("/customer/orders");
                   }}
                   className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary hover:bg-primary-hover text-white py-3 text-sm font-bold transition-colors"
                 >
@@ -279,7 +307,7 @@ export default function PaymentReturnPage() {
               ) : (
                 <button
                   onClick={() => {
-                    router.push('/customer/vouchers');
+                    router.push("/customer/vouchers");
                   }}
                   className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary hover:bg-primary-hover text-white py-3 text-sm font-bold transition-colors"
                 >
@@ -297,15 +325,20 @@ export default function PaymentReturnPage() {
               </Link>
             </div>
           </>
-        ) : status === 'PENDING' ? (
+        ) : status === "PENDING" ? (
           <>
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-yellow-100 text-yellow-600">
               <Loader2 className="h-8 w-8 animate-spin" />
             </div>
 
             <div className="space-y-1">
-              <h2 className="text-xl font-extrabold text-foreground">Thanh toán đang xử lý...</h2>
-              <p className="text-xs text-muted">Hệ thống đang chờ cập nhật xác nhận cuối cùng từ cổng thanh toán.</p>
+              <h2 className="text-xl font-extrabold text-foreground">
+                Thanh toán đang xử lý...
+              </h2>
+              <p className="text-xs text-muted">
+                Hệ thống đang chờ cập nhật xác nhận cuối cùng từ cổng thanh
+                toán.
+              </p>
             </div>
 
             <div className="space-y-3 pt-4">
@@ -317,6 +350,50 @@ export default function PaymentReturnPage() {
               </Link>
             </div>
           </>
+        ) : status === "CANCELLED" ? (
+          <>
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-slate-600">
+              <XCircle className="h-8 w-8" />
+            </div>
+
+            <div className="space-y-1">
+              <h2 className="text-xl font-extrabold text-foreground">
+                Bạn đã hủy thanh toán
+              </h2>
+              <p className="text-xs text-muted">
+                Đơn hàng chưa được thanh toán và chưa phát hành voucher.
+              </p>
+            </div>
+
+            <Link
+              href="/customer/orders"
+              className="w-full inline-flex items-center justify-center rounded-xl bg-primary hover:bg-primary-hover text-white py-3 text-sm font-bold transition-colors"
+            >
+              Xem đơn hàng
+            </Link>
+          </>
+        ) : status === "NOT_FOUND" ? (
+          <>
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-yellow-100 text-yellow-700">
+              <AlertTriangle className="h-8 w-8" />
+            </div>
+
+            <div className="space-y-1">
+              <h2 className="text-xl font-extrabold text-foreground">
+                Không tìm thấy đơn hàng
+              </h2>
+              <p className="text-xs text-muted">
+                Không thể liên kết phản hồi thanh toán với tài khoản hiện tại.
+              </p>
+            </div>
+
+            <Link
+              href="/customer/orders"
+              className="w-full inline-flex items-center justify-center rounded-xl bg-primary hover:bg-primary-hover text-white py-3 text-sm font-bold transition-colors"
+            >
+              Xem lịch sử đơn hàng
+            </Link>
+          </>
         ) : (
           <>
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-100 text-red-600">
@@ -324,8 +401,12 @@ export default function PaymentReturnPage() {
             </div>
 
             <div className="space-y-1">
-              <h2 className="text-xl font-extrabold text-foreground">Thanh toán thất bại</h2>
-              <p className="text-xs text-muted">{errorMsg || 'Không thể xác minh giao dịch thanh toán.'}</p>
+              <h2 className="text-xl font-extrabold text-foreground">
+                Thanh toán thất bại
+              </h2>
+              <p className="text-xs text-muted">
+                {errorMsg || "Không thể xác minh giao dịch thanh toán."}
+              </p>
             </div>
 
             <div className="space-y-3 pt-4">
@@ -335,7 +416,7 @@ export default function PaymentReturnPage() {
               >
                 Thử thanh toán lại
               </Link>
-              
+
               <Link
                 href="/"
                 className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-border hover:bg-slate-50 text-foreground py-2.5 text-xs font-bold transition-colors"
@@ -345,7 +426,6 @@ export default function PaymentReturnPage() {
             </div>
           </>
         )}
-
       </div>
     </div>
   );

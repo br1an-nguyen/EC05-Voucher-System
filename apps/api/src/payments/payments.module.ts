@@ -10,6 +10,7 @@ import { StripeConfigService } from './stripe.config';
 import { StripeWebhookService } from './stripe-webhook.service';
 import { StripeReconciliationProcessor } from './stripe-reconciliation.processor';
 import { EmailService } from './email.service';
+import { VnPayConfigService } from './vnpay.config';
 
 @Module({
   imports: [PrismaModule],
@@ -18,6 +19,7 @@ import { EmailService } from './email.service';
     PaymentsService,
     PaymentFinalizationService,
     VnPayAdapter,
+    VnPayConfigService,
     StripeConfigService,
     StripeAdapter,
     StripeWebhookService,
@@ -29,6 +31,7 @@ import { EmailService } from './email.service';
     PaymentsService,
     PaymentFinalizationService,
     VnPayAdapter,
+    VnPayConfigService,
     StripeConfigService,
     StripeAdapter,
     StripeWebhookService,
@@ -37,5 +40,3 @@ import { EmailService } from './email.service';
   ],
 })
 export class PaymentsModule {}
-
-

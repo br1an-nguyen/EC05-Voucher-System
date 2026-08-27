@@ -32,6 +32,55 @@ describe('PaymentsService ownership', () => {
     ).rejects.toThrow(NotFoundException);
   });
 
+  it('does not create a payment attempt for another customer order', async () => {
+    const prisma = {
+      order: { findFirst: jest.fn().mockResolvedValue(null) },
+      $transaction: jest.fn(),
+    };
+    const service = new PaymentsService(prisma as any);
+
+    await expect(
+      service.createPaymentAttempt(
+        'other-customer',
+        'order-1',
+        PaymentProviderType.VNPAY,
+      ),
+    ).rejects.toThrow(NotFoundException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('does not create another payment attempt for an already paid order', async () => {
+    const order = {
+      orderId: 'order-1',
+      customerId: 'owner-1',
+      orderStatus: OrderStatus.CONFIRMED,
+      paymentStatus: PaymentStatus.PAID,
+      paymentTransactions: [],
+    };
+    const tx = {
+      $queryRaw: jest.fn(),
+      order: { findFirst: jest.fn().mockResolvedValue(order) },
+    };
+    const prisma = {
+      order: {
+        findFirst: jest.fn().mockResolvedValue({ orderId: order.orderId }),
+      },
+      $transaction: jest.fn(
+        (callback: (transaction: typeof tx) => Promise<unknown>) =>
+          callback(tx),
+      ),
+    };
+    const service = new PaymentsService(prisma as any);
+
+    await expect(
+      service.createPaymentAttempt(
+        'owner-1',
+        order.orderId,
+        PaymentProviderType.VNPAY,
+      ),
+    ).rejects.toThrow(BadRequestException);
+  });
+
   it('allows an admin to inspect payment status', async () => {
     const prisma = {
       paymentTransaction: { findUnique: jest.fn().mockResolvedValue(payment) },
