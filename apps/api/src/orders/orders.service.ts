@@ -35,13 +35,20 @@ export class OrdersService {
         FOR UPDATE
       `;
 
-      const cartItems = await tx.cartItem.findMany({
+      let cartItems = await tx.cartItem.findMany({
         where: { customerId },
         orderBy: { campaignId: 'asc' },
       });
 
+      const selectedIds = dto.cartItemIds;
+      if (selectedIds && selectedIds.length > 0) {
+        cartItems = cartItems.filter((item) =>
+          selectedIds.includes(item.cartItemId),
+        );
+      }
+
       if (cartItems.length === 0) {
-        throw new BadRequestException('Giỏ hàng của bạn đang trống.');
+        throw new BadRequestException('Giỏ hàng của bạn đang trống hoặc không có sản phẩm nào được chọn.');
       }
 
       let totalAmount = new Prisma.Decimal(0);
@@ -176,7 +183,10 @@ export class OrdersService {
       }
 
       await tx.cartItem.deleteMany({
-        where: { customerId },
+        where: { 
+          customerId,
+          cartItemId: { in: cartItems.map((item) => item.cartItemId) },
+        },
       });
 
       return order;

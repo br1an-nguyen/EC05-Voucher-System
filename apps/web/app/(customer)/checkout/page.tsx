@@ -6,6 +6,7 @@ import { getErrorMessage } from '../../../lib/errors';
 import { useAuth } from '../../../context/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import Header from '../../../components/Header';
 import { 
   CreditCard, 
   ShieldAlert, 
@@ -90,12 +91,18 @@ function CheckoutPageContent() {
   const [redirecting, setRedirecting] = useState(false);
 
   // Lấy giỏ hàng hiện tại để hiển thị tóm tắt
-  const fetchCart = useCallback(async () => {
+  const fetchCart = useCallback(async (selectedIds?: string[]) => {
     setLoading(true);
     try {
       const data = await apiRequest<CartItem[]>('/cart');
-      setCartItems(data);
-      if (data.length === 0) {
+      let filteredData = data;
+      
+      if (selectedIds && selectedIds.length > 0) {
+        filteredData = data.filter(item => selectedIds.includes(item.cartItemId));
+      }
+      
+      setCartItems(filteredData);
+      if (filteredData.length === 0) {
         router.push('/cart');
       }
     } catch (error: unknown) {
@@ -158,11 +165,13 @@ function CheckoutPageContent() {
         });
       } else {
         queueMicrotask(() => {
-          void fetchCart();
+          const itemsParam = searchParams.get('items');
+          const selectedIds = itemsParam ? itemsParam.split(',') : undefined;
+          void fetchCart(selectedIds);
         });
       }
     }
-  }, [user, authLoading, orderIdFromQuery, router, fetchCart, fetchExistingOrder]);
+  }, [user, authLoading, orderIdFromQuery, searchParams, router, fetchCart, fetchExistingOrder]);
 
   // Bộ đếm ngược giữ chỗ 15 phút
   useEffect(() => {
@@ -185,6 +194,7 @@ function CheckoutPageContent() {
     setSubmitting(true);
     setErrorMsg(null);
     try {
+      const cartItemIds = cartItems.map(item => item.cartItemId);
       const order = await apiRequest<CheckoutOrder>('/orders', {
         method: 'POST',
         body: JSON.stringify({
@@ -192,6 +202,7 @@ function CheckoutPageContent() {
           paymentProvider,
           isGift,
           recipientEmail: isGift ? recipientEmail : undefined,
+          cartItemIds,
         }),
       });
       setCreatedOrder(order);
@@ -247,9 +258,11 @@ function CheckoutPageContent() {
   // MÀN HÌNH SAU KHI ĐẶT HÀNG THÀNH CÔNG (CHỜ THANH TOÁN MOCK)
   if (createdOrder) {
     return (
-      <div className="min-h-screen bg-background font-sans py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-md mx-auto rounded-2xl border border-border bg-card p-8 shadow-xl text-center space-y-6">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-green-600">
+      <div className="min-h-screen bg-background font-sans flex flex-col">
+        <Header />
+        <main className="flex-1 py-12 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
+          <div className="max-w-md w-full mx-auto rounded-2xl border border-border bg-card p-8 shadow-xl text-center space-y-6">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-green-600">
             <CheckCircle className="h-8 w-8" />
           </div>
 
@@ -309,22 +322,17 @@ function CheckoutPageContent() {
             </Link>
           </div>
         </div>
+        </main>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background font-sans py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto space-y-6">
+    <div className="min-h-screen bg-background font-sans flex flex-col">
+      <Header />
+      <main className="flex-1 py-8 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto space-y-6">
         
-        {/* THANH BREADCRUMB */}
-        <div className="flex items-center gap-2 text-xs text-muted">
-          <Link href="/" className="hover:text-primary font-semibold transition-colors">Trang chủ</Link>
-          <ChevronRight className="h-3.5 w-3.5" />
-          <Link href="/cart" className="hover:text-primary font-semibold transition-colors">Giỏ hàng</Link>
-          <ChevronRight className="h-3.5 w-3.5" />
-          <span className="font-semibold text-foreground">Thanh toán</span>
-        </div>
 
         <div className="flex items-center gap-2 pb-3 border-b border-border/60">
           <CreditCard className="h-6 w-6 text-primary" />
@@ -422,12 +430,12 @@ function CheckoutPageContent() {
                 Chọn Cổng thanh toán
               </h3>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 
                 {/* STRIPE */}
-                <label className={`flex flex-col items-center justify-center p-4 border rounded-xl cursor-pointer hover:border-primary/50 transition-all ${
+                <label className={`flex flex-col items-center justify-center p-4 border rounded-xl cursor-pointer hover:border-primary/50 transition-all text-center h-full ${
                   paymentProvider === 'STRIPE'
-                    ? 'border-primary bg-primary/5 text-primary'
+                    ? 'border-primary bg-primary/5 text-primary shadow-sm'
                     : 'border-border bg-card text-foreground'
                 }`}>
                   <input
@@ -438,14 +446,14 @@ function CheckoutPageContent() {
                     onChange={() => setPaymentProvider('STRIPE')}
                     className="sr-only"
                   />
-                  <span className="text-xs font-extrabold tracking-wider">STRIPE</span>
-                  <span className="text-[9px] text-muted mt-1">Visa/Mastercard</span>
+                  <span className="text-sm font-extrabold tracking-wider">STRIPE</span>
+                  <span className="text-[10px] text-muted mt-1">Visa / Mastercard</span>
                 </label>
 
                 {/* PAYPAL */}
-                <label className={`flex flex-col items-center justify-center p-4 border rounded-xl cursor-pointer hover:border-primary/50 transition-all ${
+                <label className={`flex flex-col items-center justify-center p-4 border rounded-xl cursor-pointer hover:border-primary/50 transition-all text-center h-full ${
                   paymentProvider === 'PAYPAL'
-                    ? 'border-primary bg-primary/5 text-primary'
+                    ? 'border-primary bg-primary/5 text-primary shadow-sm'
                     : 'border-border bg-card text-foreground'
                 }`}>
                   <input
@@ -456,14 +464,14 @@ function CheckoutPageContent() {
                     onChange={() => setPaymentProvider('PAYPAL')}
                     className="sr-only"
                   />
-                  <span className="text-xs font-extrabold tracking-wider">PAYPAL</span>
-                  <span className="text-[9px] text-muted mt-1">Ví điện tử quốc tế</span>
+                  <span className="text-sm font-extrabold tracking-wider">PAYPAL</span>
+                  <span className="text-[10px] text-muted mt-1">Ví điện tử quốc tế</span>
                 </label>
 
                 {/* VNPAY */}
-                <label className={`flex flex-col items-center justify-center p-4 border rounded-xl cursor-pointer hover:border-primary/50 transition-all ${
+                <label className={`flex flex-col items-center justify-center p-4 border rounded-xl cursor-pointer hover:border-primary/50 transition-all text-center h-full ${
                   paymentProvider === 'VNPAY'
-                    ? 'border-primary bg-primary/5 text-primary'
+                    ? 'border-primary bg-primary/5 text-primary shadow-sm'
                     : 'border-border bg-card text-foreground'
                 }`}>
                   <input
@@ -474,14 +482,14 @@ function CheckoutPageContent() {
                     onChange={() => setPaymentProvider('VNPAY')}
                     className="sr-only"
                   />
-                  <span className="text-xs font-extrabold tracking-wider">VNPAY</span>
-                  <span className="text-[9px] text-muted mt-1">Thẻ ATM / QR</span>
+                  <span className="text-sm font-extrabold tracking-wider">VNPAY</span>
+                  <span className="text-[10px] text-muted mt-1">Thẻ ATM / QR Code</span>
                 </label>
 
                 {/* MOMO */}
-                <label className={`flex flex-col items-center justify-center p-4 border rounded-xl cursor-pointer hover:border-pink-500/50 transition-all ${
+                <label className={`flex flex-col items-center justify-center p-4 border rounded-xl cursor-pointer hover:border-pink-500/50 transition-all text-center h-full ${
                   paymentProvider === 'MOMO'
-                    ? 'border-pink-500 bg-pink-50 text-pink-600'
+                    ? 'border-pink-500 bg-pink-50 text-pink-600 shadow-sm'
                     : 'border-border bg-card text-foreground'
                 }`}>
                   <input
@@ -492,8 +500,8 @@ function CheckoutPageContent() {
                     onChange={() => setPaymentProvider('MOMO')}
                     className="sr-only"
                   />
-                  <span className="text-xs font-extrabold tracking-wider">MOMO</span>
-                  <span className="text-[9px] text-muted mt-1 text-center">Ví điện tử MoMo</span>
+                  <span className="text-sm font-extrabold tracking-wider">MOMO</span>
+                  <span className="text-[10px] text-muted mt-1">Ví điện tử MoMo</span>
                 </label>
 
               </div>
@@ -549,6 +557,7 @@ function CheckoutPageContent() {
         </form>
 
       </div>
+      </main>
     </div>
   );
 }
