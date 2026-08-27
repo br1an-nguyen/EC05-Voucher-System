@@ -13,6 +13,7 @@ describe('PaymentFinalizationService', () => {
   const campaignId = '00000000-0000-4000-8000-000000000062';
   const reservationId = '00000000-0000-4000-8000-000000000063';
   const itemId = '00000000-0000-4000-8000-000000000064';
+  const voucherExpiresAt = new Date('2030-12-31T16:59:59.000Z');
 
   function createContext(overrides?: {
     orderStatus?: OrderStatus;
@@ -42,7 +43,9 @@ describe('PaymentFinalizationService', () => {
           itemId,
           campaignId,
           quantity: 2,
-          campaign: { campaignId },
+          refundAllowedSnapshot: true,
+          refundWindowHoursSnapshot: 48,
+          campaign: { campaignId, usageEndTime: voucherExpiresAt },
         },
       ],
       inventoryReservations: overrides?.omitReservation
@@ -84,6 +87,7 @@ describe('PaymentFinalizationService', () => {
       voucherCampaign: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      orderItem: { update: jest.fn() },
       voucherCode: { create: jest.fn() },
     };
     const prisma = {
@@ -169,6 +173,17 @@ describe('PaymentFinalizationService', () => {
       },
     });
     expect(tx.voucherCode.create).toHaveBeenCalledTimes(2);
+    expect(tx.orderItem.update).toHaveBeenCalledWith({
+      where: { itemId },
+      data: {
+        refundDeadlineAt: expect.any(Date),
+      },
+    });
+    expect(tx.voucherCode.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        expiresAt: voucherExpiresAt,
+      }),
+    });
   });
 
   it('does not issue voucher codes again after a successful callback replay', async () => {

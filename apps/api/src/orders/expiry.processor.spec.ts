@@ -7,7 +7,7 @@ describe('ExpiryProcessor', () => {
     orderId: '00000000-0000-4000-8000-000000000021',
     campaignId: '00000000-0000-4000-8000-000000000022',
     quantity: 2,
-    status: ReservationStatus.ACTIVE,
+    status: ReservationStatus.ACTIVE as ReservationStatus,
     expiresAt: new Date(Date.now() - 60_000),
   };
 
