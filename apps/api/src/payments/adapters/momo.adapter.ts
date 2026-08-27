@@ -13,7 +13,7 @@ export class MomoAdapter implements PaymentProvider {
   private readonly accessKey = (process.env.MOMO_ACCESS_KEY || 'klm05TvNBzhg7h7j').replace(/['"]/g, '').trim();
   private readonly secretKey = (process.env.MOMO_SECRET_KEY || 'at67qH6mk8w5Y1nAyMoYKMWACiEi2bsa').replace(/['"]/g, '').trim();
   private readonly apiUrl = (process.env.MOMO_API_URL || 'https://test-payment.momo.vn/v2/gateway/api/create').replace(/['"]/g, '').trim();
-  private readonly returnUrl = (process.env.MOMO_RETURN_URL || 'http://localhost:3000/checkout').replace(/['"]/g, '').trim();
+  private readonly returnUrl = (process.env.MOMO_RETURN_URL || 'http://localhost:3000/payments/return/momo').replace(/['"]/g, '').trim();
   private readonly notifyUrl = (process.env.MOMO_NOTIFY_URL || 'https://webhook.site/placeholder-momo-ipn').replace(/['"]/g, '').trim();
 
   async createPayment(
@@ -26,7 +26,7 @@ export class MomoAdapter implements PaymentProvider {
     const orderInfo = `Thanh toan don hang ${orderCode}`;
     const redirectUrl = this.returnUrl;
     const ipnUrl = this.notifyUrl;
-    const requestType = 'captureWallet';
+    const requestType = 'payWithATM';
     const extraData = '';
 
     const rawSignature = `accessKey=${this.accessKey}&amount=${amountVal}&extraData=${extraData}&ipnUrl=${ipnUrl}&orderId=${orderId}&orderInfo=${orderInfo}&partnerCode=${this.partnerCode}&redirectUrl=${redirectUrl}&requestId=${requestId}&requestType=${requestType}`;

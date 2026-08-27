@@ -155,6 +155,15 @@ export default function PaymentReturnPage() {
         const paymentId = searchParams.get("paymentId");
         if (!paymentId) throw new Error("Không tìm thấy Payment ID.");
 
+      } else if (provider === "momo") {
+        const paymentId = searchParams.get("orderId");
+        if (!paymentId) throw new Error("Không tìm thấy Payment ID của MoMo.");
+        
+        // MoMo xử lý IPN bất đồng bộ, chúng ta sẽ Polling trạng thái giống Stripe
+        pollPaymentStatus(paymentId, "MoMo");
+      } else if (provider === "mock") {
+        const paymentId = searchParams.get("paymentId");
+        if (!paymentId) throw new Error("Không tìm thấy Payment ID.");
         // Ở chế độ Mock: Hiển thị giao diện cho developer trigger thành công
         void fetchPaymentStatus(paymentId);
         setLoading(false);
