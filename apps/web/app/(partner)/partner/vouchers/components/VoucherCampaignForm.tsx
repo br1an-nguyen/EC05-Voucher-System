@@ -114,6 +114,7 @@ export default function VoucherCampaignForm({ campaignId }: VoucherCampaignFormP
   const [loadingBranches, setLoadingBranches] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [discountPct, setDiscountPct] = useState<string>('');
 
   const {
     register,
@@ -160,6 +161,12 @@ export default function VoucherCampaignForm({ campaignId }: VoucherCampaignFormP
             setErrorMsg('Chỉ có thể chỉnh sửa voucher ở trạng thái Nháp hoặc Đã từ chối.');
             return;
           }
+          
+          const orig = Number(campaign.originalPrice);
+          const sale = Number(campaign.salePrice);
+          const pct = orig > 0 ? Math.round(((orig - sale) / orig) * 100) : 0;
+          setDiscountPct(String(pct));
+
           reset({
             title: campaign.title,
             description: campaign.description ?? '',
@@ -197,6 +204,61 @@ export default function VoucherCampaignForm({ campaignId }: VoucherCampaignFormP
     }
     void loadFormData();
   }, [campaignId, isEditing, reset]);
+
+  const handleOriginalPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const origStr = e.target.value;
+    const orig = Number(origStr);
+    if (!orig || orig <= 0) return;
+
+    if (discountPct !== '') {
+      const pct = Number(discountPct);
+      const sale = orig * (1 - pct / 100);
+      setValue('salePrice', String(Math.round(sale)), { shouldValidate: true });
+    } else {
+      const saleStr = getValues('salePrice');
+      if (saleStr) {
+        const sale = Number(saleStr);
+        const pct = Math.round(((orig - sale) / orig) * 100);
+        setDiscountPct(String(pct));
+      }
+    }
+  };
+
+  const handleDiscountPctChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const pctStr = e.target.value;
+    if (pctStr === '') {
+      setDiscountPct('');
+      return;
+    }
+
+    let pct = Number(pctStr);
+    if (Number.isNaN(pct)) return;
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+
+    const finalPctStr = String(pct);
+    setDiscountPct(finalPctStr);
+
+    const origStr = getValues('originalPrice');
+    if (origStr) {
+      const orig = Number(origStr);
+      const sale = orig * (1 - pct / 100);
+      setValue('salePrice', String(Math.round(sale)), { shouldValidate: true });
+    }
+  };
+
+  const handleSalePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const saleStr = e.target.value;
+    const sale = Number(saleStr);
+    const origStr = getValues('originalPrice');
+    if (origStr && saleStr !== '') {
+      const orig = Number(origStr);
+      if (orig > 0) {
+        const pct = Math.round(((orig - sale) / orig) * 100);
+        setDiscountPct(String(Math.max(0, Math.min(100, pct))));
+      }
+    }
+  };
 
   const onSubmit = async (data: CampaignSchemaType) => {
     setSaving(true);
@@ -422,14 +484,16 @@ export default function VoucherCampaignForm({ campaignId }: VoucherCampaignFormP
           </h3>
 
           {/* THIẾT LẬP GIÁ */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-semibold text-foreground mb-1.5">
                 Giá bán lẻ gốc (Retail Price)
               </label>
               <input
                 type="number"
-                {...register('originalPrice')}
+                {...register('originalPrice', {
+                  onChange: handleOriginalPriceChange,
+                })}
                 placeholder="Ví dụ: 100000"
                 className="block w-full rounded-lg border border-border bg-background py-2.5 px-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all"
               />
@@ -440,11 +504,31 @@ export default function VoucherCampaignForm({ campaignId }: VoucherCampaignFormP
 
             <div>
               <label className="block text-xs font-semibold text-foreground mb-1.5">
+                Tỷ lệ giảm giá (%)
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={discountPct}
+                  onChange={handleDiscountPctChange}
+                  placeholder="Ví dụ: 30"
+                  min={0}
+                  max={100}
+                  className="block w-full rounded-lg border border-border bg-background py-2.5 pl-3 pr-8 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all"
+                />
+                <span className="absolute right-3 top-2.5 text-sm text-muted font-bold">%</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-foreground mb-1.5">
                 Giá khuyến mãi bán ra (Sale Price)
               </label>
               <input
                 type="number"
-                {...register('salePrice')}
+                {...register('salePrice', {
+                  onChange: handleSalePriceChange,
+                })}
                 placeholder="Ví dụ: 70000"
                 className="block w-full rounded-lg border border-border bg-background py-2.5 px-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all"
               />
