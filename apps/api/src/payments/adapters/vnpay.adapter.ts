@@ -1,118 +1,158 @@
 import { Injectable } from '@nestjs/common';
-import { PaymentProvider, VerifiedPaymentResult } from '../interfaces/payment-provider.interface';
 import { PaymentTransaction } from '@prisma/client';
 import * as crypto from 'crypto';
+import {
+  PaymentProvider,
+  VerifiedPaymentResult,
+} from '../interfaces/payment-provider.interface';
+import { VnPayConfigService } from '../vnpay.config';
+
+type VnPayParams = Record<string, string>;
 
 @Injectable()
 export class VnPayAdapter implements PaymentProvider {
-  private readonly tmnCode = process.env.VNP_TMN_CODE || '2QX1X123';
-  private readonly hashSecret = process.env.VNP_HASH_SECRET || 'SECRET123';
-  private readonly vnpUrl = process.env.VNP_URL || 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html';
-  private readonly returnUrl = process.env.VNP_RETURN_URL || 'http://localhost:3000/payments/return/vnpay';
+  constructor(private readonly config: VnPayConfigService) {}
 
-  /**
-   * Tạo Payment URL chuyển hướng sang VNPay Sandbox.
-   */
-  async createPayment(payment: PaymentTransaction, orderCode: string): Promise<{ paymentUrl: string; providerOrderId?: string }> {
-    const date = new Date();
-    const createDate = this.formatDate(date);
-    
-    // VNPay yêu cầu số tiền nhân với 100 (đổi sang đơn vị xu/đồng nhỏ nhất)
-    const amountVal = Math.round(Number(payment.baseAmount) * 100);
+  createPayment(
+    payment: PaymentTransaction,
+    orderCode: string,
+    clientIp = '127.0.0.1',
+  ): Promise<{ paymentUrl: string; providerOrderId: string }> {
+    this.config.assertConfigured();
+    if (payment.requestCurrency !== 'VND') {
+      throw new Error('VNPAY only supports VND in this integration.');
+    }
 
-    const vnpParams: any = {
-      vnp_Version: '2.1.0',
+    const params: VnPayParams = {
+      vnp_Version: this.config.version,
       vnp_Command: 'pay',
-      vnp_TmnCode: this.tmnCode,
+      vnp_TmnCode: this.config.tmnCode,
+      vnp_Amount: (payment.requestAmountMinor * 100n).toString(),
+      vnp_CreateDate: this.formatDate(new Date()),
+      vnp_CurrCode: payment.requestCurrency,
+      vnp_IpAddr: this.normalizeIp(clientIp),
       vnp_Locale: 'vn',
-      vnp_CurrCode: 'VND',
-      vnp_TxnRef: payment.paymentId, // Sử dụng paymentId làm mã giao dịch
       vnp_OrderInfo: `Thanh toan don hang ${orderCode}`,
       vnp_OrderType: 'other',
-      vnp_Amount: amountVal.toString(),
-      vnp_ReturnUrl: this.returnUrl,
-      vnp_IpAddr: '127.0.0.1', // Địa chỉ IP giả lập
-      vnp_CreateDate: createDate,
+      vnp_ReturnUrl: this.config.returnUrl,
+      vnp_TxnRef: payment.paymentId,
     };
 
-    // Sắp xếp các tham số theo thứ tự alphabet để tính hash chữ ký bảo mật
-    const sortedParams = this.sortObject(vnpParams);
-    const queryString = Object.keys(sortedParams)
-      .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(sortedParams[key])}`)
-      .join('&');
-
-    const hmac = crypto.createHmac('sha512', this.hashSecret);
-    const secureHash = hmac.update(Buffer.from(queryString, 'utf-8')).digest('hex');
-
-    const paymentUrl = `${this.vnpUrl}?${queryString}&vnp_SecureHash=${secureHash}`;
-
-    return {
-      paymentUrl,
-      providerOrderId: payment.paymentId,
-    };
-  }
-
-  /**
-   * Xác thực chữ ký và dữ liệu phản hồi từ VNPay Callback / IPN.
-   */
-  async verifyAndParseNotification(reqQuery: any): Promise<VerifiedPaymentResult> {
-    const secureHash = reqQuery.vnp_SecureHash;
-
-    const verifyParams = { ...reqQuery };
-    delete verifyParams.vnp_SecureHash;
-    delete verifyParams.vnp_SecureHashType;
-
-    const sortedParams = this.sortObject(verifyParams);
-    
-    // VNPay yêu cầu encode khoảng trắng thành dấu cộng (+) khi verify signature
-    const queryString = Object.keys(sortedParams)
-      .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(sortedParams[key]).replace(/%20/g, '+')}`)
-      .join('&');
-
-    const hmac = crypto.createHmac('sha512', this.hashSecret);
-    const calculatedHash = hmac.update(Buffer.from(queryString, 'utf-8')).digest('hex');
-
-    const isValid = calculatedHash === secureHash;
-    const responseCode = reqQuery.vnp_ResponseCode;
-
-    return {
-      providerTransactionId: reqQuery.vnp_TransactionNo || 'MOCK-VNP-TX',
-      amountPaid: Number(reqQuery.vnp_Amount) / 100,
-      currency: 'VND',
-      status: isValid && responseCode === '00' ? 'SUCCESS' : 'FAILED',
-    };
-  }
-
-  /**
-   * Truy vấn trạng thái trực tiếp từ VNPay (Mock cho môi trường sandbox).
-   */
-  async queryStatus(providerOrderId: string): Promise<VerifiedPaymentResult> {
-    return {
-      providerTransactionId: 'QUERY-VNP-TX',
-      amountPaid: 0,
-      currency: 'VND',
-      status: 'SUCCESS',
-    };
-  }
-
-  private sortObject(obj: any): any {
-    const sorted: any = {};
-    const keys = Object.keys(obj).sort();
-    for (const key of keys) {
-      sorted[key] = obj[key];
+    if (payment.expiresAt) {
+      params.vnp_ExpireDate = this.formatDate(payment.expiresAt);
     }
-    return sorted;
+
+    const signingPayload = this.toQueryString(params);
+    const secureHash = this.sign(signingPayload);
+
+    return Promise.resolve({
+      paymentUrl: `${this.config.paymentUrl}?${signingPayload}&vnp_SecureHash=${secureHash}`,
+      providerOrderId: payment.paymentId,
+    });
+  }
+
+  verifyAndParseNotification(
+    requestQuery: Record<string, unknown>,
+  ): Promise<VerifiedPaymentResult> {
+    this.config.assertConfigured();
+    const params = this.toStringParams(requestQuery);
+    const receivedHash = params.vnp_SecureHash || '';
+    delete params.vnp_SecureHash;
+    delete params.vnp_SecureHashType;
+
+    const calculatedHash = this.sign(this.toQueryString(params));
+    const signatureValid = this.safeEqual(calculatedHash, receivedHash);
+    const amountMinor = /^\d+$/.test(params.vnp_Amount || '')
+      ? BigInt(params.vnp_Amount)
+      : -1n;
+    const responseCode = params.vnp_ResponseCode || '';
+    const transactionStatus = params.vnp_TransactionStatus || '';
+
+    return Promise.resolve({
+      providerTransactionId: params.vnp_TransactionNo || '',
+      amountPaid: Number(amountMinor) / 100,
+      amountMinor,
+      currency: params.vnp_CurrCode || '',
+      status:
+        signatureValid && responseCode === '00' && transactionStatus === '00'
+          ? 'SUCCESS'
+          : 'FAILED',
+      signatureValid,
+      responseCode,
+      transactionStatus,
+      transactionReference: params.vnp_TxnRef || '',
+      bankCode: params.vnp_BankCode,
+      payDate: params.vnp_PayDate,
+    });
+  }
+
+  queryStatus(): Promise<VerifiedPaymentResult> {
+    return Promise.reject(
+      new Error('VNPAY queryDR is not configured for this Sandbox flow.'),
+    );
+  }
+
+  private toStringParams(query: Record<string, unknown>): VnPayParams {
+    const params: VnPayParams = {};
+    for (const [key, value] of Object.entries(query)) {
+      if (typeof value === 'string') {
+        params[key] = value;
+      } else if (Array.isArray(value) && typeof value[0] === 'string') {
+        params[key] = value[0];
+      }
+    }
+    return params;
+  }
+
+  private toQueryString(params: VnPayParams): string {
+    return Object.keys(params)
+      .filter((key) => params[key] !== '')
+      .sort()
+      .map((key) => `${this.encode(key)}=${this.encode(params[key])}`)
+      .join('&');
+  }
+
+  private encode(value: string): string {
+    return encodeURIComponent(value).replace(/%20/g, '+');
+  }
+
+  private sign(payload: string): string {
+    return crypto
+      .createHmac('sha512', this.config.hashSecret)
+      .update(payload, 'utf8')
+      .digest('hex');
+  }
+
+  private safeEqual(expected: string, received: string): boolean {
+    if (!/^[a-fA-F0-9]{128}$/.test(received)) {
+      return false;
+    }
+    return crypto.timingSafeEqual(
+      Buffer.from(expected, 'hex'),
+      Buffer.from(received, 'hex'),
+    );
+  }
+
+  private normalizeIp(ip: string): string {
+    const firstIp = ip.split(',')[0]?.trim() || '127.0.0.1';
+    if (firstIp === '::1') return '127.0.0.1';
+    if (firstIp.startsWith('::ffff:')) return firstIp.slice(7);
+    return firstIp;
   }
 
   private formatDate(date: Date): string {
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    return (
-      date.getFullYear() +
-      pad(date.getMonth() + 1) +
-      pad(date.getDate()) +
-      pad(date.getHours()) +
-      pad(date.getMinutes()) +
-      pad(date.getSeconds())
-    );
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(date);
+    const value = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((part) => part.type === type)?.value || '';
+    return `${value('year')}${value('month')}${value('day')}${value('hour')}${value('minute')}${value('second')}`;
   }
 }

@@ -3,8 +3,15 @@ import { PaymentTransaction } from '@prisma/client';
 export interface VerifiedPaymentResult {
   providerTransactionId: string;
   amountPaid: number;
+  amountMinor?: bigint;
   currency: string;
   status: 'SUCCESS' | 'FAILED';
+  signatureValid?: boolean;
+  responseCode?: string;
+  transactionStatus?: string;
+  transactionReference?: string;
+  bankCode?: string;
+  payDate?: string;
 }
 
 export interface PaymentProvider {
@@ -14,6 +21,7 @@ export interface PaymentProvider {
   createPayment(
     payment: PaymentTransaction,
     orderCode: string,
+    clientIp?: string,
   ): Promise<{ paymentUrl: string; providerOrderId?: string }>;
 
   /**

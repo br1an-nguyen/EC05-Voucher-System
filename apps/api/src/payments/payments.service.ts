@@ -212,6 +212,58 @@ export class PaymentsService {
     });
   }
 
+  async bindVnPayReference(paymentId: string, transactionReference: string) {
+    const activated = await this.prisma.paymentTransaction.updateMany({
+      where: {
+        paymentId,
+        provider: PaymentProviderType.VNPAY,
+        providerOrderId: null,
+        status: PaymentTransactionStatus.CREATED,
+      },
+      data: {
+        providerOrderId: transactionReference,
+        status: PaymentTransactionStatus.PENDING,
+      },
+    });
+
+    if (activated.count !== 1) {
+      throw new ConflictException(
+        'Payment attempt đã bị thay thế trước khi URL VNPAY được tạo.',
+      );
+    }
+  }
+
+  async markVnPayFailed(
+    paymentId: string,
+    responseCode: string,
+    providerTransactionId?: string,
+  ): Promise<void> {
+    await this.prisma.paymentTransaction.updateMany({
+      where: {
+        paymentId,
+        provider: PaymentProviderType.VNPAY,
+        status: {
+          in: [
+            PaymentTransactionStatus.CREATED,
+            PaymentTransactionStatus.PENDING,
+          ],
+        },
+      },
+      data: {
+        status:
+          responseCode === '24'
+            ? PaymentTransactionStatus.CANCELLED
+            : PaymentTransactionStatus.FAILED,
+        providerTransactionId: providerTransactionId || undefined,
+        failureCode: `VNPAY_${responseCode || 'UNKNOWN'}`,
+        failureMessage:
+          responseCode === '24'
+            ? 'Khách hàng hủy giao dịch tại VNPAY.'
+            : 'VNPAY xác nhận giao dịch không thành công.',
+      },
+    });
+  }
+
   /**
    * Tìm giao dịch thanh toán theo ID đơn hàng từ phía đối tác (providerOrderId).
    * @param providerOrderId ID đơn hàng của cổng thanh toán
