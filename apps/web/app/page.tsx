@@ -105,7 +105,7 @@ function HomePageContent() {
       sortPrice: (searchParams.get('sortPrice') as 'asc'|'desc'|'') || '',
       sortDiscount: (searchParams.get('sortDiscount') as 'asc'|'desc'|'') || '',
       partnerId: searchParams.get('partnerId') || '',
-      validityStatus: searchParams.get('validityStatus') || '',
+      validityStatus: searchParams.get('validityStatus') || 'AVAILABLE',
       minDiscount: searchParams.get('minDiscount') || '',
       page: Number(searchParams.get('page')) || 1,
       limit: Number(searchParams.get('limit')) || 12,
@@ -128,7 +128,7 @@ function HomePageContent() {
   const [sortPrice, setSortPrice] = useState<'asc'|'desc'|''>(initialFilters.sortPrice || '');
   const [sortDiscount, setSortDiscount] = useState<'asc'|'desc'|''>(initialFilters.sortDiscount || '');
   const [partnerId, setPartnerId] = useState(initialFilters.partnerId || '');
-  const [validityStatus, setValidityStatus] = useState(initialFilters.validityStatus || '');
+  const [validityStatus, setValidityStatus] = useState(initialFilters.validityStatus || 'AVAILABLE');
   const [minDiscount, setMinDiscount] = useState(initialFilters.minDiscount || '');
   const [page, setPage] = useState(initialFilters.page || 1);
   const limit = 12; // Cố định limit mỗi trang
@@ -250,10 +250,10 @@ function HomePageContent() {
 
   const handleClearFilters = () => {
     setKeyword(''); setCategory(''); setProvince(''); setMaxPrice('');
-    setSortPrice(''); setSortDiscount(''); setPartnerId(''); setValidityStatus(''); setMinDiscount(''); setPage(1);
+    setSortPrice(''); setSortDiscount(''); setPartnerId(''); setValidityStatus('AVAILABLE'); setMinDiscount(''); setPage(1);
     router.push('/', { scroll: false });
     
-    void fetchCatalog({ keyword: '', categoryCode: '', provinceCode: '', maxPrice: '', sortPrice: '', sortDiscount: '', partnerId: '', validityStatus: '', minDiscount: '', page: 1, limit });
+    void fetchCatalog({ keyword: '', categoryCode: '', provinceCode: '', maxPrice: '', sortPrice: '', sortDiscount: '', partnerId: '', validityStatus: 'AVAILABLE', minDiscount: '', page: 1, limit });
     setTimeout(scrollToProducts, 50);
   };
 
@@ -345,7 +345,7 @@ function HomePageContent() {
                 Danh sách voucher
               </h2>
               <span className="text-sm font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full ml-2">
-                {campaigns.length} kết quả
+                {paginationMeta?.total ?? campaigns.length} kết quả
               </span>
             </div>
 

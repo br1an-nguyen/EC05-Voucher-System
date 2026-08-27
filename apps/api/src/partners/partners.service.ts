@@ -451,6 +451,8 @@ export class PartnersService {
       draftCount,
       rejectedCount,
       expiredCount,
+      pausedCount,
+      soldOutCount,
     ] = await Promise.all([
       this.prisma.partner.count(),
       this.prisma.voucherCampaign.count(),
@@ -475,6 +477,8 @@ export class PartnersService {
       this.prisma.voucherCampaign.count({ where: { status: 'DRAFT' } }),
       this.prisma.voucherCampaign.count({ where: { status: 'REJECTED' } }),
       this.prisma.voucherCampaign.count({ where: { status: 'EXPIRED' } }),
+      this.prisma.voucherCampaign.count({ where: { status: 'PAUSED' } }),
+      this.prisma.voucherCampaign.count({ where: { status: 'SOLD_OUT' } }),
     ]);
 
     // Truy vấn dữ liệu để tính hiệu suất đối tác
@@ -545,6 +549,8 @@ export class PartnersService {
         draft: draftCount,
         rejected: rejectedCount,
         expired: expiredCount,
+        paused: pausedCount,
+        soldOut: soldOutCount,
       },
       partnerPerformance: partnerPerformance, // Lấy toàn bộ danh sách đối tác
     };

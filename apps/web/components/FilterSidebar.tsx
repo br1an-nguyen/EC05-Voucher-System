@@ -175,7 +175,6 @@ export default function FilterSidebar({
             onChange={(event) => onValidityChange(event.target.value)}
             className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 pr-8 text-xs font-semibold text-slate-700 outline-none transition-all focus:border-primary/50 focus:bg-white"
           >
-            <option value="">Tất cả trạng thái</option>
             <option value="AVAILABLE">Đang mở bán</option>
             <option value="UPCOMING">Sắp mở bán</option>
           </select>
