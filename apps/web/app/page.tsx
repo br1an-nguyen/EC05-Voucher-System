@@ -6,7 +6,7 @@ import { getErrorMessage } from '../lib/errors';
 import Header from '../components/Header';
 import FilterSidebar from '../components/FilterSidebar';
 import VoucherCard, { type VoucherCampaignCard } from '../components/VoucherCard';
-import { ArrowRight, ShieldAlert, Ticket, Grid, ArrowUpNarrowWide, ArrowDownWideNarrow, Filter } from 'lucide-react';
+import { ArrowRight, ShieldAlert, Ticket, Grid, ArrowUpNarrowWide, ArrowDownWideNarrow, ArrowUpDown, Filter } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -410,10 +410,10 @@ function HomePageContent() {
               </div>
 
               {/* Sort Buttons */}
-              <div className="grid grid-cols-2 sm:flex sm:items-center bg-slate-100 p-1 rounded-xl shrink-0 gap-1">
+              <div className="flex items-center bg-slate-100 p-1 rounded-xl shrink-0 gap-1">
               <button
                 onClick={() => {
-                  const val = (sortPrice === 'asc' ? '' : 'asc') as 'asc' | 'desc' | '';
+                  const val = (sortPrice === '' ? 'asc' : sortPrice === 'asc' ? 'desc' : '') as 'asc' | 'desc' | '';
                   setSortPrice(val);
                   setSortDiscount(''); // clear other sort
                   const filters = { ...currentFilters(), sortPrice: val, sortDiscount: '' as 'asc' | 'desc' | '' };
@@ -421,48 +421,30 @@ function HomePageContent() {
                   void fetchCatalog(filters);
                 }}
                 className={`flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
-                  sortPrice === 'asc'
+                  sortPrice !== ''
                     ? 'bg-white text-primary shadow-sm ring-1 ring-slate-200/50'
                     : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
                 }`}
               >
-                <ArrowUpNarrowWide className="h-4 w-4" />
-                <span className="whitespace-nowrap">Giá tăng</span>
+                {sortPrice === 'asc' ? <ArrowUpNarrowWide className="h-4 w-4 text-primary" /> : sortPrice === 'desc' ? <ArrowDownWideNarrow className="h-4 w-4 text-primary" /> : <ArrowUpDown className="h-4 w-4 text-slate-400" />}
+                <span className="whitespace-nowrap">Giá</span>
               </button>
               <button
                 onClick={() => {
-                  const val = (sortPrice === 'desc' ? '' : 'desc') as 'asc' | 'desc' | '';
-                  setSortPrice(val);
-                  setSortDiscount(''); // clear other sort
-                  const filters = { ...currentFilters(), sortPrice: val, sortDiscount: '' as 'asc' | 'desc' | '' };
-                  updateBrowserFilters(filters);
-                  void fetchCatalog(filters);
-                }}
-                className={`flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
-                  sortPrice === 'desc'
-                    ? 'bg-white text-primary shadow-sm ring-1 ring-slate-200/50'
-                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
-                }`}
-              >
-                <ArrowDownWideNarrow className="h-4 w-4" />
-                <span className="whitespace-nowrap">Giá giảm</span>
-              </button>
-              <button
-                onClick={() => {
-                  const val = (sortDiscount === 'desc' ? '' : 'desc') as 'asc' | 'desc' | '';
+                  const val = (sortDiscount === '' ? 'desc' : sortDiscount === 'desc' ? 'asc' : '') as 'asc' | 'desc' | '';
                   setSortDiscount(val);
                   setSortPrice(''); // clear other sort
                   const filters = { ...currentFilters(), sortPrice: '' as 'asc' | 'desc' | '', sortDiscount: val };
                   updateBrowserFilters(filters);
                   void fetchCatalog(filters);
                 }}
-                className={`col-span-2 sm:col-auto flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
-                  sortDiscount === 'desc'
+                className={`flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+                  sortDiscount !== ''
                     ? 'bg-white text-primary shadow-sm ring-1 ring-slate-200/50'
                     : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
                 }`}
               >
-                <ArrowDownWideNarrow className="h-4 w-4" />
+                {sortDiscount === 'asc' ? <ArrowUpNarrowWide className="h-4 w-4 text-primary" /> : sortDiscount === 'desc' ? <ArrowDownWideNarrow className="h-4 w-4 text-primary" /> : <ArrowUpDown className="h-4 w-4 text-slate-400" />}
                 <span className="whitespace-nowrap">% Giảm</span>
               </button>
             </div>
