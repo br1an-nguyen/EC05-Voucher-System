@@ -9,6 +9,7 @@ import { getJwtSecret } from './jwt-secret';
 import { PasswordResetDeliveryService } from './password-reset-delivery.service';
 import { AuthSessionService } from './auth-session.service';
 import { ACCESS_TOKEN_TTL_SECONDS } from './auth-session.constants';
+import { AccountVerificationDeliveryService } from './account-verification-delivery.service';
 
 /**
  * Module quản lý toàn bộ các cấu hình xác thực JWT, Passport và kết nối UsersModule.
@@ -28,6 +29,7 @@ import { ACCESS_TOKEN_TTL_SECONDS } from './auth-session.constants';
     AuthSessionService,
     JwtStrategy,
     PasswordResetDeliveryService,
+    AccountVerificationDeliveryService,
   ],
   exports: [AuthService, AuthSessionService],
 })

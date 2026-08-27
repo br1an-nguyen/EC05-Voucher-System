@@ -1,8 +1,19 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 import { UpdateCampaignDto } from './dto/update-campaign.dto';
-import { Prisma, VoucherStatus, PartnerApprovalStatus, UserRole } from '@prisma/client';
+import {
+  Prisma,
+  VoucherStatus,
+  PartnerApprovalStatus,
+  UserRole,
+  ActivityCategory,
+} from '@prisma/client';
 import { PublicCatalogQueryDto } from './dto/public-catalog-query.dto';
 import { AuditService } from '../audit/audit.service';
 import { VIETNAM_PROVINCES } from '../common/constants/vietnam-provinces';
@@ -17,10 +28,12 @@ export class VouchersService {
     private auditService: AuditService,
   ) {}
 
-  private mapCatalogPresentation<T extends {
-    campaignBrands?: Array<{ isPrimary: boolean; brand: unknown }>;
-    campaignCategories?: Array<{ isPrimary: boolean; category: unknown }>;
-  }>(campaign: T) {
+  private mapCatalogPresentation<
+    T extends {
+      campaignBrands?: Array<{ isPrimary: boolean; brand: unknown }>;
+      campaignCategories?: Array<{ isPrimary: boolean; category: unknown }>;
+    },
+  >(campaign: T) {
     const { campaignBrands = [], campaignCategories = [], ...base } = campaign;
     return {
       ...base,
@@ -82,26 +95,34 @@ export class VouchersService {
       where: { partnerId },
     });
     if (!partner || partner.approvalStatus !== PartnerApprovalStatus.APPROVED) {
-      throw new ForbiddenException('Tài khoản đối tác của bạn chưa được xét duyệt kích hoạt bởi Admin.');
+      throw new ForbiddenException(
+        'Tài khoản đối tác của bạn chưa được xét duyệt kích hoạt bởi Admin.',
+      );
     }
 
     // Bước 2: Thực thi các quy tắc ràng buộc nghiệp vụ (Business Rules)
     // RB-02: Giá bán khuyến mãi phải nhỏ hơn giá gốc
     if (salePrice >= originalPrice) {
-      throw new BadRequestException('Giá khuyến mãi phải nhỏ hơn giá gốc của voucher (RB-02).');
+      throw new BadRequestException(
+        'Giá khuyến mãi phải nhỏ hơn giá gốc của voucher (RB-02).',
+      );
     }
 
     // RB-03: Thời gian mở bán kết thúc phải lớn hơn thời gian mở bán bắt đầu
     const startSale = new Date(saleStartTime);
     const endSale = new Date(saleEndTime);
     if (endSale <= startSale) {
-      throw new BadRequestException('Thời gian kết thúc bán phải sau thời gian bắt đầu bán (RB-03).');
+      throw new BadRequestException(
+        'Thời gian kết thúc bán phải sau thời gian bắt đầu bán (RB-03).',
+      );
     }
 
     const startUsage = new Date(usageStartTime);
     const endUsage = new Date(usageEndTime);
     if (endUsage <= startUsage) {
-      throw new BadRequestException('Thời gian kết thúc sử dụng phải sau thời gian bắt đầu sử dụng.');
+      throw new BadRequestException(
+        'Thời gian kết thúc sử dụng phải sau thời gian bắt đầu sử dụng.',
+      );
     }
 
     // Bước 3: Kiểm tra quyền sở hữu các chi nhánh được gán (RB-09)
@@ -113,7 +134,9 @@ export class VouchersService {
     });
 
     if (ownedBranches.length !== branchIds.length) {
-      throw new BadRequestException('Một hoặc nhiều chi nhánh được lựa chọn không trực thuộc quyền sở hữu của bạn.');
+      throw new BadRequestException(
+        'Một hoặc nhiều chi nhánh được lựa chọn không trực thuộc quyền sở hữu của bạn.',
+      );
     }
 
     // Bước 4: Lưu vào cơ sở dữ liệu thông qua transaction để gán các chi nhánh liên kết
@@ -163,34 +186,54 @@ export class VouchersService {
   /**
    * Cập nhật thông tin chiến dịch voucher (chỉ cho phép khi ở trạng thái DRAFT hoặc REJECTED).
    */
-  async update(partnerId: string, campaignId: string, updateCampaignDto: UpdateCampaignDto) {
+  async update(
+    partnerId: string,
+    campaignId: string,
+    updateCampaignDto: UpdateCampaignDto,
+  ) {
     const campaign = await this.prisma.voucherCampaign.findUnique({
       where: { campaignId },
     });
 
     if (!campaign || campaign.partnerId !== partnerId) {
-      throw new NotFoundException('Chiến dịch voucher không tồn tại hoặc bạn không có quyền sở hữu.');
+      throw new NotFoundException(
+        'Chiến dịch voucher không tồn tại hoặc bạn không có quyền sở hữu.',
+      );
     }
 
     // Chỉ cho phép chỉnh sửa khi chiến dịch ở trạng thái nháp DRAFT hoặc bị từ chối REJECTED
-    if (campaign.status !== VoucherStatus.DRAFT && campaign.status !== VoucherStatus.REJECTED) {
-      throw new BadRequestException('Chỉ có thể chỉnh sửa chiến dịch voucher đang ở trạng thái Nháp hoặc Từ chối.');
+    if (
+      campaign.status !== VoucherStatus.DRAFT &&
+      campaign.status !== VoucherStatus.REJECTED
+    ) {
+      throw new BadRequestException(
+        'Chỉ có thể chỉnh sửa chiến dịch voucher đang ở trạng thái Nháp hoặc Từ chối.',
+      );
     }
 
     const { branchIds, ...updateData } = updateCampaignDto;
 
     // Kiểm tra tính hợp lệ của giá nếu có cập nhật
-    const originalPrice = updateData.originalPrice ?? Number(campaign.originalPrice);
+    const originalPrice =
+      updateData.originalPrice ?? Number(campaign.originalPrice);
     const salePrice = updateData.salePrice ?? Number(campaign.salePrice);
     if (salePrice >= originalPrice) {
-      throw new BadRequestException('Giá khuyến mãi phải nhỏ hơn giá gốc của voucher (RB-02).');
+      throw new BadRequestException(
+        'Giá khuyến mãi phải nhỏ hơn giá gốc của voucher (RB-02).',
+      );
     }
 
     // Kiểm tra tính hợp lệ của ngày nếu có cập nhật
-    const startSale = updateData.saleStartTime ? new Date(updateData.saleStartTime) : campaign.saleStartTime;
-    const endSale = updateData.saleEndTime ? new Date(updateData.saleEndTime) : campaign.saleEndTime;
+    const startSale = updateData.saleStartTime
+      ? new Date(updateData.saleStartTime)
+      : campaign.saleStartTime;
+    const endSale = updateData.saleEndTime
+      ? new Date(updateData.saleEndTime)
+      : campaign.saleEndTime;
     if (endSale <= startSale) {
-      throw new BadRequestException('Thời gian kết thúc bán phải sau thời gian bắt đầu bán (RB-03).');
+      throw new BadRequestException(
+        'Thời gian kết thúc bán phải sau thời gian bắt đầu bán (RB-03).',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -203,8 +246,12 @@ export class VouchersService {
           salePrice,
           saleStartTime: startSale,
           saleEndTime: endSale,
-          usageStartTime: updateData.usageStartTime ? new Date(updateData.usageStartTime) : campaign.usageStartTime,
-          usageEndTime: updateData.usageEndTime ? new Date(updateData.usageEndTime) : campaign.usageEndTime,
+          usageStartTime: updateData.usageStartTime
+            ? new Date(updateData.usageStartTime)
+            : campaign.usageStartTime,
+          usageEndTime: updateData.usageEndTime
+            ? new Date(updateData.usageEndTime)
+            : campaign.usageEndTime,
           status: VoucherStatus.DRAFT, // Trả lại trạng thái DRAFT sau khi sửa đổi
         },
       });
@@ -219,7 +266,9 @@ export class VouchersService {
           },
         });
         if (ownedBranches.length !== branchIds.length) {
-          throw new BadRequestException('Một hoặc các chi nhánh được gán không trực thuộc quyền sở hữu của bạn.');
+          throw new BadRequestException(
+            'Một hoặc các chi nhánh được gán không trực thuộc quyền sở hữu của bạn.',
+          );
         }
 
         // Xóa liên kết cũ và thêm liên kết mới
@@ -256,11 +305,18 @@ export class VouchersService {
     });
 
     if (!campaign || campaign.partnerId !== partnerId) {
-      throw new NotFoundException('Chiến dịch voucher không tồn tại hoặc bạn không có quyền sở hữu.');
+      throw new NotFoundException(
+        'Chiến dịch voucher không tồn tại hoặc bạn không có quyền sở hữu.',
+      );
     }
 
-    if (campaign.status !== VoucherStatus.DRAFT && campaign.status !== VoucherStatus.REJECTED) {
-      throw new BadRequestException('Chỉ có thể gửi duyệt chiến dịch voucher đang ở trạng thái Nháp hoặc Bị từ chối.');
+    if (
+      campaign.status !== VoucherStatus.DRAFT &&
+      campaign.status !== VoucherStatus.REJECTED
+    ) {
+      throw new BadRequestException(
+        'Chỉ có thể gửi duyệt chiến dịch voucher đang ở trạng thái Nháp hoặc Bị từ chối.',
+      );
     }
 
     return this.prisma.voucherCampaign.update({
@@ -405,13 +461,15 @@ export class VouchersService {
     const allCampaignIds = new Set<string>();
     const categoryItems = categories.map((category) => {
       const direct = category.campaignCategories.filter(
-        (relation) => relation.campaign.soldQuantity < relation.campaign.capacity,
+        (relation) =>
+          relation.campaign.soldQuantity < relation.campaign.capacity,
       );
       const children = category.children.map((child) => ({
         code: child.code,
         name: child.nameVi,
         campaignCount: child.campaignCategories.filter(
-          (relation) => relation.campaign.soldQuantity < relation.campaign.capacity,
+          (relation) =>
+            relation.campaign.soldQuantity < relation.campaign.capacity,
         ).length,
       }));
       const campaignIds = new Set([
@@ -419,7 +477,8 @@ export class VouchersService {
         ...category.children.flatMap((child) =>
           child.campaignCategories
             .filter(
-              (relation) => relation.campaign.soldQuantity < relation.campaign.capacity,
+              (relation) =>
+                relation.campaign.soldQuantity < relation.campaign.capacity,
             )
             .map((relation) => relation.campaignId),
         ),
@@ -441,8 +500,34 @@ export class VouchersService {
   }
 
   /**
-   * Lấy các tỉnh/thành đang có voucher công khai và số chiến dịch tương ứng.
-   * @returns Danh sách khu vực có ít nhất một voucher còn hàng, đang mở bán.
+   * Khách hàng: Lấy danh sách đối tác đang có voucher khả dụng để làm bộ lọc.
+   */
+  async findPublicPartners() {
+    const now = new Date();
+    const partners = await this.prisma.partner.findMany({
+      where: {
+        user: {
+          status: 'ACTIVE',
+        },
+        campaigns: {
+          some: {
+            status: VoucherStatus.APPROVED,
+            saleStartTime: { lte: now },
+            saleEndTime: { gte: now },
+          },
+        },
+      },
+      select: {
+        partnerId: true,
+        companyName: true,
+      },
+      orderBy: { companyName: 'asc' },
+    });
+    return partners;
+  }
+
+  /**
+   * Khách hàng: Lấy danh sách tỉnh/thành phố có voucher đang mở bán.
    */
   async findPublicProvinces() {
     const now = new Date();
@@ -465,10 +550,14 @@ export class VouchersService {
     const campaignIdsByProvince = new Map<string, Set<string>>();
     for (const relation of relations) {
       const provinceCode = relation.branch.provinceCode;
-      if (!provinceCode || relation.campaign.soldQuantity >= relation.campaign.capacity) {
+      if (
+        !provinceCode ||
+        relation.campaign.soldQuantity >= relation.campaign.capacity
+      ) {
         continue;
       }
-      const campaignIds = campaignIdsByProvince.get(provinceCode) ?? new Set<string>();
+      const campaignIds =
+        campaignIdsByProvince.get(provinceCode) ?? new Set<string>();
       campaignIds.add(relation.campaignId);
       campaignIdsByProvince.set(provinceCode, campaignIds);
     }
@@ -493,15 +582,33 @@ export class VouchersService {
       branchId,
       provinceCode,
       sortPrice,
+      sortDiscount,
+      partnerId,
+      validityStatus,
+      minDiscount,
+      page = 1,
+      limit = 20,
     } = query;
     const now = new Date();
 
-    // Ràng buộc: Chiến dịch phải được phê duyệt và đang trong thời gian mở bán
+    // Ràng buộc cơ bản: Chiến dịch phải được phê duyệt
     const whereClause: Prisma.VoucherCampaignWhereInput = {
       status: VoucherStatus.APPROVED,
-      saleStartTime: { lte: now },
-      saleEndTime: { gte: now },
     };
+
+    if (validityStatus === 'AVAILABLE') {
+      whereClause.saleStartTime = { lte: now };
+      whereClause.saleEndTime = { gte: now };
+    } else if (validityStatus === 'UPCOMING') {
+      whereClause.saleStartTime = { gt: now };
+    } else {
+      // Mặc định trả về cả AVAILABLE và UPCOMING nếu không có tuỳ chọn
+      whereClause.saleEndTime = { gte: now };
+    }
+
+    if (partnerId) {
+      whereClause.partnerId = partnerId;
+    }
 
     if (categoryCode) {
       whereClause.campaignCategories = {
@@ -533,16 +640,52 @@ export class VouchersService {
       const mappedCategories: string[] = [];
 
       // Keyword to Category Mapping (Semantic search approximation)
-      if (['đồ ăn', 'ăn uống', 'ẩm thực', 'nhà hàng', 'quán ăn', 'cafe', 'trà sữa', 'buffet', 'lẩu', 'nướng'].some(w => lowerKeyword.includes(w))) {
+      if (
+        [
+          'đồ ăn',
+          'ăn uống',
+          'ẩm thực',
+          'nhà hàng',
+          'quán ăn',
+          'cafe',
+          'trà sữa',
+          'buffet',
+          'lẩu',
+          'nướng',
+        ].some((w) => lowerKeyword.includes(w))
+      ) {
         mappedCategories.push('Food & Beverage', 'FOOD_DRINK');
       }
-      if (['spa', 'làm đẹp', 'cắt tóc', 'massage', 'skincare', 'nail', 'gội đầu'].some(w => lowerKeyword.includes(w))) {
+      if (
+        [
+          'spa',
+          'làm đẹp',
+          'cắt tóc',
+          'massage',
+          'skincare',
+          'nail',
+          'gội đầu',
+        ].some((w) => lowerKeyword.includes(w))
+      ) {
         mappedCategories.push('Beauty & Spa');
       }
-      if (['mua sắm', 'quần áo', 'giày dép', 'thời trang', 'siêu thị', 'thực phẩm'].some(w => lowerKeyword.includes(w))) {
+      if (
+        [
+          'mua sắm',
+          'quần áo',
+          'giày dép',
+          'thời trang',
+          'siêu thị',
+          'thực phẩm',
+        ].some((w) => lowerKeyword.includes(w))
+      ) {
         mappedCategories.push('Shopping');
       }
-      if (['giải trí', 'xem phim', 'vui chơi', 'du lịch', 'khách sạn', 'vé'].some(w => lowerKeyword.includes(w))) {
+      if (
+        ['giải trí', 'xem phim', 'vui chơi', 'du lịch', 'khách sạn', 'vé'].some(
+          (w) => lowerKeyword.includes(w),
+        )
+      ) {
         mappedCategories.push('Entertainment');
       }
 
@@ -553,7 +696,9 @@ export class VouchersService {
         {
           campaignBrands: {
             some: {
-              brand: { displayName: { contains: keyword, mode: 'insensitive' } },
+              brand: {
+                displayName: { contains: keyword, mode: 'insensitive' },
+              },
             },
           },
         },
@@ -570,9 +715,7 @@ export class VouchersService {
       whereClause.campaignBranches = {
         some: {
           ...(branchId ? { branchId } : {}),
-          ...(provinceCode
-            ? { branch: { is: { provinceCode } } }
-            : {}),
+          ...(provinceCode ? { branch: { is: { provinceCode } } } : {}),
         },
       };
     }
@@ -581,6 +724,8 @@ export class VouchersService {
     if (sortPrice) {
       orderByClause.push({ salePrice: sortPrice });
     }
+    // Prisma không hỗ trợ sort theo percentage (original - sale)/original.
+    // Sẽ sort bằng JS sau khi query nếu cần.
     orderByClause.push({ createdAt: 'desc' });
 
     const campaigns = await this.prisma.voucherCampaign.findMany({
@@ -608,10 +753,53 @@ export class VouchersService {
       orderBy: orderByClause,
     });
 
-    // Lọc bỏ những chiến dịch đã hết hàng trong kho (Đã bán >= Sức chứa)
-    return campaigns
+    let processedCampaigns = campaigns
       .filter((campaign) => campaign.soldQuantity < campaign.capacity)
       .map((campaign) => this.mapCatalogPresentation(campaign));
+
+    // Lọc theo discount (nếu có minDiscount)
+    if (minDiscount !== undefined) {
+      processedCampaigns = processedCampaigns.filter((c) => {
+        const discountPct =
+          ((Number(c.originalPrice) - Number(c.salePrice)) /
+            Number(c.originalPrice)) *
+          100;
+        return discountPct >= minDiscount;
+      });
+    }
+
+    // Sort by discount
+    if (sortDiscount) {
+      processedCampaigns.sort((a, b) => {
+        const aDisc =
+          ((Number(a.originalPrice) - Number(a.salePrice)) /
+            Number(a.originalPrice)) *
+          100;
+        const bDisc =
+          ((Number(b.originalPrice) - Number(b.salePrice)) /
+            Number(b.originalPrice)) *
+          100;
+        return sortDiscount === 'desc' ? bDisc - aDisc : aDisc - bDisc;
+      });
+    }
+
+    // Pagination
+    const total = processedCampaigns.length;
+    const startIndex = (page - 1) * limit;
+    const paginatedCampaigns = processedCampaigns.slice(
+      startIndex,
+      startIndex + limit,
+    );
+
+    return {
+      data: paginatedCampaigns,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   // ================= ADMIN OPERATIONS =================
@@ -638,50 +826,74 @@ export class VouchersService {
    * Admin: Phê duyệt voucher chiến dịch thành APPROVED.
    */
   async adminApproveCampaign(adminId: string, campaignId: string) {
-    const campaign = await this.prisma.voucherCampaign.findUnique({
-      where: { campaignId },
+    return this.prisma.$transaction(async (tx) => {
+      const campaign = await tx.voucherCampaign.findUnique({
+        where: { campaignId },
+      });
+
+      if (!campaign) {
+        throw new NotFoundException(
+          'Chiến dịch voucher cần duyệt không tồn tại.',
+        );
+      }
+
+      if (campaign.status !== VoucherStatus.PENDING_APPROVAL) {
+        throw new BadRequestException(
+          'Chỉ có thể phê duyệt chiến dịch voucher đang ở trạng thái Chờ phê duyệt.',
+        );
+      }
+
+      const updated = await tx.voucherCampaign.update({
+        where: { campaignId },
+        data: { status: VoucherStatus.APPROVED },
+      });
+
+      await this.auditService.logAction(
+        adminId,
+        'APPROVE_VOUCHER',
+        'VoucherCampaign',
+        campaignId,
+        tx,
+      );
+      return updated;
     });
-
-    if (!campaign) {
-      throw new NotFoundException('Chiến dịch voucher cần duyệt không tồn tại.');
-    }
-
-    if (campaign.status !== VoucherStatus.PENDING_APPROVAL) {
-      throw new BadRequestException('Chỉ có thể phê duyệt chiến dịch voucher đang ở trạng thái Chờ phê duyệt.');
-    }
-
-    const updated = await this.prisma.voucherCampaign.update({
-      where: { campaignId },
-      data: { status: VoucherStatus.APPROVED },
-    });
-
-    await this.auditService.logAction(adminId, 'APPROVE_VOUCHER', 'VoucherCampaign', campaignId);
-    return updated;
   }
 
   /**
    * Admin: Từ chối phê duyệt voucher chiến dịch thành REJECTED.
    */
   async adminRejectCampaign(adminId: string, campaignId: string) {
-    const campaign = await this.prisma.voucherCampaign.findUnique({
-      where: { campaignId },
+    return this.prisma.$transaction(async (tx) => {
+      const campaign = await tx.voucherCampaign.findUnique({
+        where: { campaignId },
+      });
+
+      if (!campaign) {
+        throw new NotFoundException(
+          'Chiến dịch voucher cần từ chối không tồn tại.',
+        );
+      }
+
+      if (campaign.status !== VoucherStatus.PENDING_APPROVAL) {
+        throw new BadRequestException(
+          'Chỉ có thể từ chối chiến dịch voucher đang ở trạng thái Chờ phê duyệt.',
+        );
+      }
+
+      const updated = await tx.voucherCampaign.update({
+        where: { campaignId },
+        data: { status: VoucherStatus.REJECTED },
+      });
+
+      await this.auditService.logAction(
+        adminId,
+        'REJECT_VOUCHER',
+        'VoucherCampaign',
+        campaignId,
+        tx,
+      );
+      return updated;
     });
-
-    if (!campaign) {
-      throw new NotFoundException('Chiến dịch voucher cần từ chối không tồn tại.');
-    }
-
-    if (campaign.status !== VoucherStatus.PENDING_APPROVAL) {
-      throw new BadRequestException('Chỉ có thể từ chối chiến dịch voucher đang ở trạng thái Chờ phê duyệt.');
-    }
-
-    const updated = await this.prisma.voucherCampaign.update({
-      where: { campaignId },
-      data: { status: VoucherStatus.REJECTED },
-    });
-
-    await this.auditService.logAction(adminId, 'REJECT_VOUCHER', 'VoucherCampaign', campaignId);
-    return updated;
   }
 
   /**
@@ -736,7 +948,12 @@ export class VouchersService {
    * @param uniqueCode Mã voucher cần kiểm tra
    */
   async verifyVoucherCode(
-    actorUser: { userId: string; role: string; partnerId?: string | null; branchId?: string | null },
+    actorUser: {
+      userId: string;
+      role: string;
+      partnerId?: string | null;
+      branchId?: string | null;
+    },
     uniqueCode: string,
   ) {
     const voucher = await this.prisma.voucherCode.findUnique({
@@ -762,7 +979,9 @@ export class VouchersService {
     });
 
     if (!voucher) {
-      throw new NotFoundException('Mã voucher này không tồn tại trên hệ thống.');
+      throw new NotFoundException(
+        'Mã voucher này không tồn tại trên hệ thống.',
+      );
     }
 
     const campaign = voucher.orderItem.campaign;
@@ -775,17 +994,33 @@ export class VouchersService {
     if (
       actorUser.role === UserRole.PARTNER_STAFF &&
       actorUser.branchId &&
-      !campaign.campaignBranches.some((item) => item.branchId === actorUser.branchId)
+      !campaign.campaignBranches.some(
+        (item) => item.branchId === actorUser.branchId,
+      )
     ) {
-      throw new ForbiddenException('Voucher không áp dụng tại chi nhánh được phân công.');
+      throw new ForbiddenException(
+        'Voucher không áp dụng tại chi nhánh được phân công.',
+      );
     }
 
     // Trả về trạng thái chi tiết của voucher để hiển thị
+    const now = new Date();
+    let computedStatus = voucher.status;
+
+    if (
+      voucher.status === 'AVAILABLE' &&
+      ((voucher.expiresAt && now > voucher.expiresAt) ||
+        now > campaign.usageEndTime)
+    ) {
+      computedStatus = 'EXPIRED';
+    }
+
     return {
       codeId: voucher.codeId,
       uniqueCode: voucher.uniqueCode,
-      status: voucher.status,
+      status: computedStatus,
       issuedAt: voucher.issuedAt,
+      expiresAt: voucher.expiresAt,
       customer: voucher.customer,
       campaign: {
         title: campaign.title,
@@ -812,18 +1047,25 @@ export class VouchersService {
    * @param branchId ID chi nhánh thực hiện quét
    */
   async redeemVoucher(
-    actorUser: { userId: string; role: string; partnerId?: string | null; branchId?: string | null },
+    actorUser: {
+      userId: string;
+      role: string;
+      partnerId?: string | null;
+      branchId?: string | null;
+    },
     uniqueCode: string,
     branchId: string,
   ) {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       // 1. Tìm VoucherCode theo uniqueCode và khóa dòng để chống double-redemption
       const rawCode = await tx.voucherCode.findUnique({
         where: { uniqueCode },
       });
 
       if (!rawCode) {
-        throw new NotFoundException('Mã voucher này không tồn tại trên hệ thống.');
+        throw new NotFoundException(
+          'Mã voucher này không tồn tại trên hệ thống.',
+        );
       }
 
       await tx.$executeRawUnsafe(
@@ -864,24 +1106,61 @@ export class VouchersService {
         actorUser.branchId &&
         actorUser.branchId !== branchId
       ) {
-        throw new ForbiddenException('Bạn không được phép quét tại chi nhánh khác.');
+        throw new ForbiddenException(
+          'Bạn không được phép quét tại chi nhánh khác.',
+        );
       }
 
       // 3. Kiểm tra chi nhánh áp dụng của chiến dịch voucher (RB-09)
-      const isBranchApplicable = campaign.campaignBranches.some((cb) => cb.branchId === branchId);
+      const isBranchApplicable = campaign.campaignBranches.some(
+        (cb) => cb.branchId === branchId,
+      );
       if (!isBranchApplicable) {
-        throw new BadRequestException('Chiến dịch voucher này không được áp dụng tại chi nhánh hiện tại.');
+        throw new BadRequestException(
+          'Chiến dịch voucher này không được áp dụng tại chi nhánh hiện tại.',
+        );
       }
 
       // 4. Kiểm tra trạng thái khả dụng của mã (RB-07)
+      if (voucher.status === 'USED') {
+        throw new BadRequestException('Mã voucher này đã được sử dụng.');
+      }
+      if (voucher.status === 'EXPIRED') {
+        throw new BadRequestException('Mã voucher này đã hết hạn.');
+      }
+      if (voucher.status === 'CANCELLED') {
+        throw new BadRequestException('Mã voucher này đã bị hủy.');
+      }
+      if (voucher.status === 'LOCKED') {
+        throw new BadRequestException('Mã voucher này hiện đang bị khóa.');
+      }
       if (voucher.status !== 'AVAILABLE') {
-        throw new BadRequestException('Mã voucher này đã được sử dụng hoặc đã bị hủy/hết hạn.');
+        throw new BadRequestException(
+          'Mã voucher này không ở trạng thái khả dụng.',
+        );
       }
 
-      // 5. Kiểm tra thời hạn sử dụng của voucher (RB-08)
+      // 5. Kiểm tra thời hạn sử dụng cá nhân và thời gian chiến dịch (RB-08)
       const now = new Date();
-      if (now < campaign.usageStartTime || now > campaign.usageEndTime) {
-        throw new BadRequestException('Voucher đã hết hạn sử dụng hoặc chưa đến thời gian áp dụng.');
+      if (voucher.expiresAt && now > voucher.expiresAt) {
+        await tx.voucherCode.update({
+          where: { codeId: voucher.codeId },
+          data: { status: 'EXPIRED' },
+        });
+        throw new BadRequestException('Mã voucher cá nhân đã hết hạn sử dụng.');
+      }
+
+      if (now < campaign.usageStartTime) {
+        throw new BadRequestException('Voucher chưa đến thời gian áp dụng.');
+      }
+      if (now > campaign.usageEndTime) {
+        await tx.voucherCode.update({
+          where: { codeId: voucher.codeId },
+          data: { status: 'EXPIRED' },
+        });
+        throw new BadRequestException(
+          'Voucher đã hết hạn sử dụng theo chiến dịch.',
+        );
       }
 
       // 6. Ghi nhận lịch sử sử dụng VoucherUsageLog
@@ -915,8 +1194,23 @@ export class VouchersService {
         });
       }
 
+      await this.auditService.logActivity(
+        {
+          actorUserId: actorUser.userId,
+          actorRoleSnapshot: actorUser.role as UserRole,
+          category: ActivityCategory.VOUCHER,
+          actionType: 'REDEEM_VOUCHER',
+          targetEntity: 'VoucherCode',
+          targetId: uniqueCode,
+          metadata: { branchId },
+        },
+        tx,
+      );
+
       return log;
     });
+
+    return result;
   }
 
   async adminListCategories() {
@@ -938,67 +1232,124 @@ export class VouchersService {
   /**
    * Admin: Tạo danh mục voucher mới (BR-ADM-05).
    */
-  async adminCreateCategory(data: { code: string; nameVi: string; parentId?: string; displayOrder?: number }) {
-    const existing = await this.prisma.voucherCategory.findUnique({
-      where: { code: data.code },
-    });
-    if (existing) {
-      throw new BadRequestException('Mã danh mục này đã tồn tại trong hệ thống.');
-    }
+  async adminCreateCategory(
+    adminId: string,
+    data: {
+      code: string;
+      nameVi: string;
+      parentId?: string;
+      displayOrder?: number;
+    },
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.voucherCategory.findUnique({
+        where: { code: data.code },
+      });
+      if (existing) {
+        throw new BadRequestException(
+          'Mã danh mục này đã tồn tại trong hệ thống.',
+        );
+      }
 
-    return this.prisma.voucherCategory.create({
-      data: {
-        code: data.code,
-        nameVi: data.nameVi,
-        parentId: data.parentId || null,
-        displayOrder: data.displayOrder ?? 0,
-        isActive: true,
-      },
+      const created = await tx.voucherCategory.create({
+        data: {
+          code: data.code,
+          nameVi: data.nameVi,
+          parentId: data.parentId || null,
+          displayOrder: data.displayOrder ?? 0,
+          isActive: true,
+        },
+      });
+
+      await this.auditService.logAction(
+        adminId,
+        'CREATE_CATEGORY',
+        'VoucherCategory',
+        created.categoryId,
+        tx,
+      );
+      return created;
     });
   }
 
   /**
    * Admin: Cập nhật danh mục voucher (BR-ADM-05).
    */
-  async adminUpdateCategory(categoryId: string, data: { nameVi?: string; parentId?: string; displayOrder?: number; isActive?: boolean }) {
-    const category = await this.prisma.voucherCategory.findUnique({
-      where: { categoryId },
-    });
-    if (!category) {
-      throw new NotFoundException('Không tìm thấy danh mục yêu cầu.');
-    }
+  async adminUpdateCategory(
+    adminId: string,
+    categoryId: string,
+    data: {
+      nameVi?: string;
+      parentId?: string;
+      displayOrder?: number;
+      isActive?: boolean;
+    },
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const category = await tx.voucherCategory.findUnique({
+        where: { categoryId },
+      });
+      if (!category) {
+        throw new NotFoundException('Không tìm thấy danh mục yêu cầu.');
+      }
 
-    return this.prisma.voucherCategory.update({
-      where: { categoryId },
-      data: {
-        nameVi: data.nameVi,
-        parentId: data.parentId !== undefined ? (data.parentId || null) : undefined,
-        displayOrder: data.displayOrder,
-        isActive: data.isActive,
-      },
+      const updated = await tx.voucherCategory.update({
+        where: { categoryId },
+        data: {
+          nameVi: data.nameVi,
+          parentId:
+            data.parentId !== undefined ? data.parentId || null : undefined,
+          displayOrder: data.displayOrder,
+          isActive: data.isActive,
+        },
+      });
+
+      await this.auditService.logAction(
+        adminId,
+        'UPDATE_CATEGORY',
+        'VoucherCategory',
+        categoryId,
+        tx,
+      );
+      return updated;
     });
   }
 
   /**
    * Admin: Xóa danh mục voucher (BR-ADM-05).
    */
-  async adminDeleteCategory(categoryId: string) {
-    const campaignCount = await this.prisma.campaignCategory.count({
-      where: { categoryId },
-    });
-    if (campaignCount > 0) {
-      throw new BadRequestException('Không thể xóa danh mục này vì đang có chiến dịch voucher liên kết.');
-    }
+  async adminDeleteCategory(adminId: string, categoryId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const campaignCount = await tx.campaignCategory.count({
+        where: { categoryId },
+      });
+      if (campaignCount > 0) {
+        throw new BadRequestException(
+          'Không thể xóa danh mục này vì đang có chiến dịch voucher liên kết.',
+        );
+      }
 
-    const childrenCount = await this.prisma.voucherCategory.count({
-      where: { parentId: categoryId },
-    });
-    if (childrenCount > 0) {
-      throw new BadRequestException('Không thể xóa danh mục này vì có danh mục con đang trực thuộc.');
-    }
+      const childrenCount = await tx.voucherCategory.count({
+        where: { parentId: categoryId },
+      });
+      if (childrenCount > 0) {
+        throw new BadRequestException(
+          'Không thể xóa danh mục này vì có danh mục con đang trực thuộc.',
+        );
+      }
 
-    return this.prisma.voucherCategory.delete({
-      where: { categoryId },
+      const deleted = await tx.voucherCategory.delete({
+        where: { categoryId },
+      });
+
+      await this.auditService.logAction(
+        adminId,
+        'DELETE_CATEGORY',
+        'VoucherCategory',
+        categoryId,
+        tx,
+      );
+      return deleted;
     });
   }
 
@@ -1015,7 +1366,11 @@ export class VouchersService {
       where.OR = [
         { title: { contains: query.keyword, mode: 'insensitive' } },
         { description: { contains: query.keyword, mode: 'insensitive' } },
-        { partner: { companyName: { contains: query.keyword, mode: 'insensitive' } } },
+        {
+          partner: {
+            companyName: { contains: query.keyword, mode: 'insensitive' },
+          },
+        },
       ];
     }
     return this.prisma.voucherCampaign.findMany({
@@ -1051,20 +1406,204 @@ export class VouchersService {
   /**
    * Admin: Cập nhật trạng thái vòng đời của một chiến dịch voucher (BR-ADM-03).
    */
-  async adminUpdateCampaignStatus(adminId: string, campaignId: string, status: VoucherStatus) {
-    const campaign = await this.prisma.voucherCampaign.findUnique({
-      where: { campaignId },
+  async adminUpdateCampaignStatus(
+    adminId: string,
+    campaignId: string,
+    status: VoucherStatus,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const campaign = await tx.voucherCampaign.findUnique({
+        where: { campaignId },
+      });
+      if (!campaign) {
+        throw new NotFoundException('Không tìm thấy chiến dịch voucher.');
+      }
+
+      const updated = await tx.voucherCampaign.update({
+        where: { campaignId },
+        data: { status },
+      });
+
+      await this.auditService.logAction(
+        adminId,
+        'UPDATE_CAMPAIGN_STATUS',
+        'VoucherCampaign',
+        campaignId,
+        tx,
+      );
+      return updated;
     });
-    if (!campaign) {
-      throw new NotFoundException('Không tìm thấy chiến dịch voucher.');
+  }
+
+  /**
+   * Admin/Partner: Khóa mã voucher cá nhân (VoucherCode) ngưng không cho phép quét sử dụng (LOCKED).
+   * @param actorId ID người thao tác (Admin hoặc Partner)
+   * @param codeId ID mã voucher cần khóa
+   */
+  async lockVoucherCode(
+    actorUser: { userId: string; role: string; partnerId?: string | null },
+    codeId: string,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const voucher = await tx.voucherCode.findUnique({
+        where: { codeId },
+        include: {
+          orderItem: {
+            include: {
+              campaign: { select: { partnerId: true } },
+            },
+          },
+        },
+      });
+
+      if (!voucher) {
+        throw new NotFoundException('Không tìm thấy mã voucher yêu cầu.');
+      }
+
+      const actorPartnerId = this.resolveActorPartnerId(actorUser);
+      if (
+        actorPartnerId &&
+        voucher.orderItem.campaign.partnerId !== actorPartnerId
+      ) {
+        throw new ForbiddenException(
+          'Bạn không được phép khóa mã voucher của đối tác khác.',
+        );
+      }
+
+      if (voucher.status !== 'AVAILABLE') {
+        throw new BadRequestException(
+          `Không thể khóa mã voucher đang ở trạng thái ${voucher.status}.`,
+        );
+      }
+
+      const transition = await tx.voucherCode.updateMany({
+        where: { codeId, status: 'AVAILABLE' },
+        data: { status: 'LOCKED' },
+      });
+      if (transition.count !== 1) {
+        throw new BadRequestException(
+          'Trạng thái mã voucher đã thay đổi. Vui lòng thử lại.',
+        );
+      }
+
+      const updated = await tx.voucherCode.findUniqueOrThrow({
+        where: { codeId },
+      });
+
+      await this.auditService.logActivity(
+        {
+          actorUserId: actorUser.userId,
+          actorRoleSnapshot: actorUser.role as UserRole,
+          category: ActivityCategory.VOUCHER,
+          actionType: 'LOCK_VOUCHER_CODE',
+          targetEntity: 'VoucherCode',
+          targetId: codeId,
+        },
+        tx,
+      );
+      return updated;
+    });
+  }
+
+  /**
+   * Admin/Partner: Mở khóa mã voucher bị khóa trước đó về trạng thái khả dụng (AVAILABLE).
+   * @param actorId ID người thao tác (Admin hoặc Partner)
+   * @param codeId ID mã voucher cần mở khóa
+   */
+  async unlockVoucherCode(
+    actorUser: { userId: string; role: string; partnerId?: string | null },
+    codeId: string,
+  ) {
+    const result = await this.prisma.$transaction(async (tx) => {
+      const voucher = await tx.voucherCode.findUnique({
+        where: { codeId },
+        include: {
+          orderItem: {
+            include: {
+              campaign: {
+                select: { partnerId: true, usageEndTime: true },
+              },
+            },
+          },
+        },
+      });
+
+      if (!voucher) {
+        throw new NotFoundException('Không tìm thấy mã voucher yêu cầu.');
+      }
+
+      const actorPartnerId = this.resolveActorPartnerId(actorUser);
+      if (
+        actorPartnerId &&
+        voucher.orderItem.campaign.partnerId !== actorPartnerId
+      ) {
+        throw new ForbiddenException(
+          'Bạn không được phép mở khóa mã voucher của đối tác khác.',
+        );
+      }
+
+      if (voucher.status !== 'LOCKED') {
+        throw new BadRequestException(
+          'Chỉ có thể mở khóa đối với các mã voucher đang bị khóa (LOCKED).',
+        );
+      }
+
+      const now = new Date();
+      if (
+        (voucher.expiresAt !== null && voucher.expiresAt <= now) ||
+        voucher.orderItem.campaign.usageEndTime <= now
+      ) {
+        await tx.voucherCode.updateMany({
+          where: { codeId, status: 'LOCKED' },
+          data: { status: 'EXPIRED' },
+        });
+        await this.auditService.logActivity(
+          {
+            actorUserId: actorUser.userId,
+            actorRoleSnapshot: actorUser.role as UserRole,
+            category: ActivityCategory.VOUCHER,
+            actionType: 'EXPIRE_VOUCHER_CODE_ON_UNLOCK',
+            targetEntity: 'VoucherCode',
+            targetId: codeId,
+          },
+          tx,
+        );
+        return { expired: true as const, updated: null };
+      }
+
+      const transition = await tx.voucherCode.updateMany({
+        where: { codeId, status: 'LOCKED' },
+        data: { status: 'AVAILABLE' },
+      });
+      if (transition.count !== 1) {
+        throw new BadRequestException(
+          'Trạng thái mã voucher đã thay đổi. Vui lòng thử lại.',
+        );
+      }
+
+      const updated = await tx.voucherCode.findUniqueOrThrow({
+        where: { codeId },
+      });
+
+      await this.auditService.logActivity(
+        {
+          actorUserId: actorUser.userId,
+          actorRoleSnapshot: actorUser.role as UserRole,
+          category: ActivityCategory.VOUCHER,
+          actionType: 'UNLOCK_VOUCHER_CODE',
+          targetEntity: 'VoucherCode',
+          targetId: codeId,
+        },
+        tx,
+      );
+      return { expired: false as const, updated };
+    });
+
+    if (result.expired) {
+      throw new BadRequestException(
+        'Mã voucher đã hết hạn và không thể mở khóa.',
+      );
     }
-
-    const updated = await this.prisma.voucherCampaign.update({
-      where: { campaignId },
-      data: { status },
-    });
-
-    await this.auditService.logAction(adminId, 'UPDATE_CAMPAIGN_STATUS', 'VoucherCampaign', campaignId);
-    return updated;
+    return result.updated;
   }
 }

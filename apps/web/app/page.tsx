@@ -35,6 +35,26 @@ interface CatalogFilters {
   maxPrice: string;
   sortPrice?: 'asc' | 'desc' | '';
   sortDiscount?: 'asc' | 'desc' | '';
+  partnerId?: string;
+  validityStatus?: string;
+  minDiscount?: string;
+  page?: number;
+  limit?: number;
+}
+
+interface PartnerFilterOption {
+  partnerId: string;
+  companyName: string;
+}
+
+interface CatalogResponse {
+  data: VoucherCampaignCard[];
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
 }
 
 interface CatalogProvince {
@@ -60,6 +80,14 @@ function buildCatalogUrl(filters: CatalogFilters) {
   }
   
   if (filters.sortPrice) params.set('sortPrice', filters.sortPrice);
+  if (filters.sortDiscount) params.set('sortDiscount', filters.sortDiscount);
+  if (filters.partnerId) params.set('partnerId', filters.partnerId);
+  if (filters.validityStatus) params.set('validityStatus', filters.validityStatus);
+  if (filters.minDiscount) params.set('minDiscount', filters.minDiscount);
+  
+  params.set('page', (filters.page || 1).toString());
+  params.set('limit', (filters.limit || 12).toString());
+
   const queryString = params.toString();
   return `/vouchers${queryString ? `?${queryString}` : ''}`;
 }
@@ -76,13 +104,20 @@ function HomePageContent() {
       maxPrice: rawMaxPrice ? Number(rawMaxPrice).toLocaleString('vi-VN') : '',
       sortPrice: (searchParams.get('sortPrice') as 'asc'|'desc'|'') || '',
       sortDiscount: (searchParams.get('sortDiscount') as 'asc'|'desc'|'') || '',
+      partnerId: searchParams.get('partnerId') || '',
+      validityStatus: searchParams.get('validityStatus') || '',
+      minDiscount: searchParams.get('minDiscount') || '',
+      page: Number(searchParams.get('page')) || 1,
+      limit: Number(searchParams.get('limit')) || 12,
     };
   });
   
   const [campaigns, setCampaigns] = useState<VoucherCampaignCard[]>([]);
   const [categories, setCategories] = useState<CatalogCategory[]>([]);
   const [provinces, setProvinces] = useState<CatalogProvince[]>([]);
+  const [partners, setPartners] = useState<PartnerFilterOption[]>([]);
   const [totalCampaigns, setTotalCampaigns] = useState(0);
+  const [paginationMeta, setPaginationMeta] = useState<CatalogResponse['meta'] | null>(null);
   const [loading, setLoading] = useState(true);
   
   // States for filtering
@@ -92,14 +127,20 @@ function HomePageContent() {
   const [maxPrice, setMaxPrice] = useState(initialFilters.maxPrice);
   const [sortPrice, setSortPrice] = useState<'asc'|'desc'|''>(initialFilters.sortPrice || '');
   const [sortDiscount, setSortDiscount] = useState<'asc'|'desc'|''>(initialFilters.sortDiscount || '');
+  const [partnerId, setPartnerId] = useState(initialFilters.partnerId || '');
+  const [validityStatus, setValidityStatus] = useState(initialFilters.validityStatus || '');
+  const [minDiscount, setMinDiscount] = useState(initialFilters.minDiscount || '');
+  const [page, setPage] = useState(initialFilters.page || 1);
+  const limit = 12; // Cố định limit mỗi trang
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const fetchCatalog = useCallback(async (filters: CatalogFilters) => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const data = await apiRequest<VoucherCampaignCard[]>(buildCatalogUrl(filters));
-      setCampaigns(data);
+      const result = await apiRequest<CatalogResponse>(buildCatalogUrl(filters));
+      setCampaigns(result.data);
+      setPaginationMeta(result.meta);
     } catch (error: unknown) {
       setErrorMsg(getErrorMessage(error, 'Không thể tải danh sách voucher.'));
     } finally {
@@ -112,14 +153,17 @@ function HomePageContent() {
       setLoading(true);
       setErrorMsg(null);
       try {
-        const [catalogData, categoryData, provinceData] = await Promise.all([
-          apiRequest<VoucherCampaignCard[]>(buildCatalogUrl(initialFilters)),
+        const [catalogResult, categoryData, provinceData, partnerData] = await Promise.all([
+          apiRequest<CatalogResponse>(buildCatalogUrl(initialFilters)),
           apiRequest<CatalogCategoryResponse>('/vouchers/categories'),
           apiRequest<CatalogProvince[]>('/vouchers/provinces'),
+          apiRequest<PartnerFilterOption[]>('/vouchers/partners'),
         ]);
-        setCampaigns(catalogData);
+        setCampaigns(catalogResult.data);
+        setPaginationMeta(catalogResult.meta);
         setCategories(categoryData.categories);
         setProvinces(provinceData);
+        setPartners(partnerData);
         setTotalCampaigns(categoryData.totalCampaignCount);
       } catch (error: unknown) {
         setErrorMsg(getErrorMessage(error, 'Không thể tải catalog voucher.'));
@@ -144,9 +188,18 @@ function HomePageContent() {
     
     if (filters.sortPrice) params.set('sortPrice', filters.sortPrice);
     if (filters.sortDiscount) params.set('sortDiscount', filters.sortDiscount);
+    if (filters.partnerId) params.set('partnerId', filters.partnerId);
+    if (filters.validityStatus) params.set('validityStatus', filters.validityStatus);
+    if (filters.minDiscount) params.set('minDiscount', filters.minDiscount);
+    params.set('page', (filters.page || 1).toString());
+    
     const queryString = params.toString();
     router.push(queryString ? `/?${queryString}` : '/', { scroll: false });
   };
+
+  const currentFilters = (): CatalogFilters => ({
+    keyword, categoryCode: category, provinceCode: province, maxPrice, sortPrice, sortDiscount, partnerId, validityStatus, minDiscount, page, limit
+  });
 
   const scrollToProducts = () => {
     document.getElementById('product-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -154,14 +207,16 @@ function HomePageContent() {
 
   const handleHeaderSearch = (newKeyword: string) => {
     setKeyword(newKeyword);
-    const filters = { keyword: newKeyword, categoryCode: category, provinceCode: province, maxPrice, sortPrice, sortDiscount };
+    setPage(1);
+    const filters = { ...currentFilters(), keyword: newKeyword, page: 1 };
     updateBrowserFilters(filters);
     void fetchCatalog(filters);
     setTimeout(scrollToProducts, 50);
   };
 
   const handleSidebarFilter = () => {
-    const filters = { keyword, categoryCode: category, provinceCode: province, maxPrice, sortPrice, sortDiscount };
+    setPage(1);
+    const filters = { ...currentFilters(), page: 1 };
     updateBrowserFilters(filters);
     void fetchCatalog(filters);
     scrollToProducts();
@@ -169,7 +224,8 @@ function HomePageContent() {
 
   const handleCategoryChange = (categoryCode: string) => {
     setCategory(categoryCode);
-    const filters = { keyword, categoryCode, provinceCode: province, maxPrice, sortPrice, sortDiscount };
+    setPage(1);
+    const filters = { ...currentFilters(), categoryCode, page: 1 };
     updateBrowserFilters(filters);
     void fetchCatalog(filters);
     setTimeout(scrollToProducts, 50);
@@ -177,32 +233,33 @@ function HomePageContent() {
 
   const handleProvinceChange = (provinceCode: string) => {
     setProvince(provinceCode);
-    const filters = { keyword, categoryCode: category, provinceCode, maxPrice, sortPrice, sortDiscount };
+    setPage(1);
+    const filters = { ...currentFilters(), provinceCode, page: 1 };
     updateBrowserFilters(filters);
     void fetchCatalog(filters);
     setTimeout(scrollToProducts, 50);
   };
 
+  const handlePageChange = (newPage: number) => {
+    setPage(newPage);
+    const filters = { ...currentFilters(), page: newPage };
+    updateBrowserFilters(filters);
+    void fetchCatalog(filters);
+    scrollToProducts();
+  };
+
   const handleClearFilters = () => {
-    setKeyword('');
-    setCategory('');
-    setProvince('');
-    setMaxPrice('');
-    setSortPrice('');
-    setSortDiscount('');
+    setKeyword(''); setCategory(''); setProvince(''); setMaxPrice('');
+    setSortPrice(''); setSortDiscount(''); setPartnerId(''); setValidityStatus(''); setMinDiscount(''); setPage(1);
     router.push('/', { scroll: false });
     
-    void fetchCatalog({ keyword: '', categoryCode: '', provinceCode: '', maxPrice: '', sortPrice: '', sortDiscount: '' });
+    void fetchCatalog({ keyword: '', categoryCode: '', provinceCode: '', maxPrice: '', sortPrice: '', sortDiscount: '', partnerId: '', validityStatus: '', minDiscount: '', page: 1, limit });
     setTimeout(scrollToProducts, 50);
   };
 
   const getDisplayedCampaigns = () => {
-    if (!sortDiscount) return campaigns;
-    return [...campaigns].sort((a, b) => {
-      const aDisc = ((a.originalPrice - a.salePrice) / a.originalPrice) * 100;
-      const bDisc = ((b.originalPrice - b.salePrice) / b.originalPrice) * 100;
-      return sortDiscount === 'desc' ? bDisc - aDisc : aDisc - bDisc;
-    });
+    // Không sort trong JS nữa, API đã xử lý
+    return campaigns;
   };
 
   return (
@@ -243,12 +300,35 @@ function HomePageContent() {
             province={province}
             provinces={provinces}
             onProvinceChange={handleProvinceChange}
+            partnerId={partnerId}
+            partners={partners}
+            onPartnerChange={(p) => {
+              setPartnerId(p);
+              setPage(1);
+              const filters = { ...currentFilters(), partnerId: p, page: 1 };
+              updateBrowserFilters(filters);
+              void fetchCatalog(filters);
+              setTimeout(scrollToProducts, 50);
+            }}
+            validityStatus={validityStatus}
+            onValidityChange={(s) => {
+              setValidityStatus(s);
+              setPage(1);
+              const filters = { ...currentFilters(), validityStatus: s, page: 1 };
+              updateBrowserFilters(filters);
+              void fetchCatalog(filters);
+              setTimeout(scrollToProducts, 50);
+            }}
+            minDiscount={minDiscount}
+            onMinDiscountChange={(d) => setMinDiscount(d)}
             maxPrice={maxPrice}
             setMaxPrice={setMaxPrice}
             onFilter={handleSidebarFilter}
             onClear={handleClearFilters}
             onQuickPrice={(newPrice) => {
-              const filters = { keyword, categoryCode: category, provinceCode: province, maxPrice: newPrice, sortPrice, sortDiscount };
+              setMaxPrice(newPrice);
+              setPage(1);
+              const filters = { ...currentFilters(), maxPrice: newPrice, page: 1 };
               updateBrowserFilters(filters);
               void fetchCatalog(filters);
               scrollToProducts();
@@ -312,10 +392,10 @@ function HomePageContent() {
               <div className="flex items-center bg-slate-100 p-1 rounded-xl shrink-0 gap-1">
               <button
                 onClick={() => {
-                  const val = sortPrice === 'asc' ? '' : 'asc';
+                  const val = (sortPrice === 'asc' ? '' : 'asc') as 'asc' | 'desc' | '';
                   setSortPrice(val);
                   setSortDiscount(''); // clear other sort
-                  const filters: CatalogFilters = { keyword, categoryCode: category, provinceCode: province, maxPrice, sortPrice: val, sortDiscount: '' };
+                  const filters = { ...currentFilters(), sortPrice: val, sortDiscount: '' as 'asc' | 'desc' | '' };
                   updateBrowserFilters(filters);
                   void fetchCatalog(filters);
                 }}
@@ -330,10 +410,10 @@ function HomePageContent() {
               </button>
               <button
                 onClick={() => {
-                  const val = sortPrice === 'desc' ? '' : 'desc';
+                  const val = (sortPrice === 'desc' ? '' : 'desc') as 'asc' | 'desc' | '';
                   setSortPrice(val);
                   setSortDiscount(''); // clear other sort
-                  const filters: CatalogFilters = { keyword, categoryCode: category, provinceCode: province, maxPrice, sortPrice: val, sortDiscount: '' };
+                  const filters = { ...currentFilters(), sortPrice: val, sortDiscount: '' as 'asc' | 'desc' | '' };
                   updateBrowserFilters(filters);
                   void fetchCatalog(filters);
                 }}
@@ -348,12 +428,11 @@ function HomePageContent() {
               </button>
               <button
                 onClick={() => {
-                  const val = sortDiscount === 'desc' ? '' : 'desc';
+                  const val = (sortDiscount === 'desc' ? '' : 'desc') as 'asc' | 'desc' | '';
                   setSortDiscount(val);
                   setSortPrice(''); // clear other sort
-                  const filters: CatalogFilters = { keyword, categoryCode: category, provinceCode: province, maxPrice, sortPrice: '', sortDiscount: val };
+                  const filters = { ...currentFilters(), sortPrice: '' as 'asc' | 'desc' | '', sortDiscount: val };
                   updateBrowserFilters(filters);
-                  // Not strictly needed to refetch because sorting is done in-memory, but it keeps the URL in sync
                   void fetchCatalog(filters);
                 }}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
@@ -395,11 +474,62 @@ function HomePageContent() {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {getDisplayedCampaigns().map((c, i) => (
-                <VoucherCard key={c.campaignId} campaign={c} index={i} />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {getDisplayedCampaigns().map((c, i) => (
+                  <VoucherCard key={c.campaignId} campaign={c} index={i} />
+                ))}
+              </div>
+
+              {paginationMeta && paginationMeta.totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 mt-8 pt-6 border-t border-slate-100">
+                  <button
+                    onClick={() => handlePageChange(Math.max(1, page - 1))}
+                    disabled={page === 1}
+                    className="px-4 py-2 rounded-xl text-sm font-bold transition-all border border-slate-200 bg-white text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 hover:border-slate-300"
+                  >
+                    Trước
+                  </button>
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: paginationMeta.totalPages }).map((_, i) => {
+                      const pageNum = i + 1;
+                      const isActive = pageNum === page;
+                      // Display only a window of pages
+                      if (
+                        pageNum === 1 || 
+                        pageNum === paginationMeta.totalPages || 
+                        Math.abs(pageNum - page) <= 1
+                      ) {
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => handlePageChange(pageNum)}
+                            className={`w-10 h-10 rounded-xl text-sm font-bold transition-all ${
+                              isActive 
+                                ? 'bg-primary text-white shadow-sm ring-1 ring-primary/20' 
+                                : 'bg-transparent text-slate-600 hover:bg-slate-100'
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      }
+                      if (Math.abs(pageNum - page) === 2) {
+                        return <span key={pageNum} className="text-slate-400 font-bold px-1">...</span>;
+                      }
+                      return null;
+                    })}
+                  </div>
+                  <button
+                    onClick={() => handlePageChange(Math.min(paginationMeta.totalPages, page + 1))}
+                    disabled={page === paginationMeta.totalPages}
+                    className="px-4 py-2 rounded-xl text-sm font-bold transition-all border border-slate-200 bg-white text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 hover:border-slate-300"
+                  >
+                    Sau
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </main>

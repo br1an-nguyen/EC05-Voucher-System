@@ -14,7 +14,8 @@ import {
   LayoutDashboard,
   ShoppingBag,
   UserCog,
-  FolderTree
+  FolderTree,
+  MessageSquareWarning
 } from 'lucide-react';
 import {
   Sheet,
@@ -38,6 +39,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { name: 'Quản lý Đơn hàng', href: '/admin/orders', icon: ShoppingBag },
     { name: 'Quản lý Người dùng', href: '/admin/users', icon: UserCog },
     { name: 'Quản lý Danh mục', href: '/admin/categories', icon: FolderTree },
+    { name: 'Xử lý Khiếu nại', href: '/admin/complaints', icon: MessageSquareWarning },
     { name: 'Nhật ký hệ thống', href: '/admin/audit-logs', icon: ShieldAlert },
   ];
 

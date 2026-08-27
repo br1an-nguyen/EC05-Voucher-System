@@ -7,6 +7,7 @@ import { useAuth } from '../../../../context/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
+import { QRCodeSVG } from 'qrcode.react';
 import Header from '../../../../components/Header';
 import { 
   Ticket, 
@@ -416,12 +417,10 @@ export default function CustomerVouchersPage() {
 
               {/* QR Image Container */}
               <div className="bg-white border-2 border-border p-4 rounded-2xl inline-block mx-auto shadow-inner relative group">
-                <Image
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${selectedVoucher.uniqueCode}`}
-                  alt="Voucher QR Code"
-                  width={200}
-                  height={200}
-                  unoptimized
+                <QRCodeSVG
+                  value={selectedVoucher.uniqueCode}
+                  size={200}
+                  level="M"
                   className="mx-auto"
                 />
               </div>

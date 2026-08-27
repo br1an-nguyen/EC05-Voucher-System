@@ -14,9 +14,15 @@ import {
   VoucherStatus,
 } from '@prisma/client';
 
+import { AuditService } from '../audit/audit.service';
+import { ActivityCategory } from '@prisma/client';
+
 @Injectable()
 export class OrdersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private auditService: AuditService,
+  ) {}
 
   /**
    * Tạo đơn hàng từ giỏ hàng hiện tại của khách hàng.
@@ -183,7 +189,7 @@ export class OrdersService {
       }
 
       await tx.cartItem.deleteMany({
-        where: { 
+        where: {
           customerId,
           cartItemId: { in: cartItems.map((item) => item.cartItemId) },
         },
@@ -245,13 +251,16 @@ export class OrdersService {
   }
 
   /**
-   * Yêu cầu hoàn tiền và hủy đơn hàng (Refund logic - MVP hỗ trợ hoàn tiền toàn bộ).
-   * Ràng buộc: Chỉ hoàn tiền khi toàn bộ mã voucher trong đơn hàng chưa được sử dụng.
+   * Yêu cầu hoàn tiền và hủy đơn hàng (Refund logic).
+   * Ràng buộc:
+   * 1. Kiểm tra State Machine: Chỉ đơn hàng CONFIRMED và PAID mới được phép hoàn tiền.
+   * 2. Kiểm tra Policy Snapshot & Deadline: refundAllowedSnapshot và refundWindowHoursSnapshot.
+   * 3. Kiểm tra (RB-14): Chỉ hoàn tiền khi toàn bộ mã voucher trong đơn hàng chưa được sử dụng.
    * @param customerId ID khách hàng yêu cầu hoàn tiền
    * @param orderId ID đơn hàng cần hoàn tiền
    */
   async requestRefund(customerId: string, orderId: string) {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       // 1. Tìm đơn hàng và khóa dòng để đảm bảo nhất quán
       await tx.$queryRaw`
         SELECT order_id FROM "Orders"
@@ -275,7 +284,16 @@ export class OrdersService {
         );
       }
 
-      // Ràng buộc: Đơn hàng phải đã thanh toán thành công
+      // Kiểm tra State Machine: Ngăn chặn thao tác trên đơn hàng đã hủy / hoàn tiền
+      if (
+        order.orderStatus === OrderStatus.CANCELLED ||
+        order.paymentStatus === PaymentStatus.REFUNDED
+      ) {
+        throw new BadRequestException(
+          'Đơn hàng này đã được hủy hoặc hoàn tiền trước đó.',
+        );
+      }
+
       if (
         order.paymentStatus !== PaymentStatus.PAID ||
         order.orderStatus !== OrderStatus.CONFIRMED
@@ -285,6 +303,31 @@ export class OrdersService {
         );
       }
 
+      // 2. Kiểm tra chính sách hoàn tiền snapshot tại thời điểm mua (Policy snapshot & deadline)
+      const now = new Date();
+      for (const item of order.orderItems) {
+        if (item.refundAllowedSnapshot === false) {
+          throw new BadRequestException(
+            'Voucher trong đơn hàng này không cho phép hoàn tiền theo chính sách lúc mua.',
+          );
+        }
+
+        if (
+          item.refundWindowHoursSnapshot &&
+          item.refundWindowHoursSnapshot > 0
+        ) {
+          const refundDeadline = new Date(
+            order.createdAt.getTime() +
+              item.refundWindowHoursSnapshot * 3600 * 1000,
+          );
+          if (now > refundDeadline) {
+            throw new BadRequestException(
+              `Đã quá thời hạn yêu cầu hoàn tiền (${item.refundWindowHoursSnapshot} giờ kể từ khi đặt hàng).`,
+            );
+          }
+        }
+      }
+
       const payment = order.paymentTransactions[0];
       if (!payment) {
         throw new BadRequestException(
@@ -292,31 +335,33 @@ export class OrdersService {
         );
       }
 
-      // 2. Tìm toàn bộ các mã voucher đã phát hành từ đơn hàng này
-      const voucherCodes = await tx.voucherCode.findMany({
+      // 3. Tìm toàn bộ các mã voucher đã phát hành từ đơn hàng này
+      const usedVoucherCode = await tx.voucherCode.findFirst({
         where: {
           orderItem: { orderId: order.orderId },
+          OR: [{ status: 'USED' }, { usageLogs: { some: {} } }],
         },
+        select: { codeId: true },
       });
 
-      // Ràng buộc (RB-14): Nếu có bất kỳ mã voucher nào đã dùng (status === USED), từ chối hoàn tiền
-      const hasUsedCode = voucherCodes.some((vc) => vc.status === 'USED');
-      if (hasUsedCode) {
+      // Multi-use vouchers remain AVAILABLE until their final use, therefore
+      // usage history is the authoritative signal for refund eligibility.
+      if (usedVoucherCode) {
         throw new BadRequestException(
           'Không thể hoàn tiền vì đã có ít nhất một mã voucher trong đơn hàng đã được sử dụng.',
         );
       }
 
-      // 3. Hủy bỏ tất cả các mã voucher chưa dùng (chuyển sang CANCELLED)
+      // 4. Hủy bỏ tất cả các mã voucher chưa dùng (chuyển sang CANCELLED)
       await tx.voucherCode.updateMany({
         where: {
           orderItem: { orderId: order.orderId },
-          status: 'AVAILABLE',
+          status: { in: ['AVAILABLE', 'LOCKED', 'EXPIRED'] },
         },
         data: { status: 'CANCELLED' },
       });
 
-      // 4. Khởi tạo bản ghi hoàn tiền PaymentRefund
+      // 5. Khởi tạo bản ghi hoàn tiền PaymentRefund
       await tx.paymentRefund.create({
         data: {
           paymentId: payment.paymentId,
@@ -328,7 +373,7 @@ export class OrdersService {
         },
       });
 
-      // 5. Cập nhật trạng thái đơn hàng thành CANCELLED và trạng thái thanh toán thành REFUNDED
+      // 6. Cập nhật trạng thái đơn hàng thành CANCELLED và trạng thái thanh toán thành REFUNDED
       const updatedOrder = await tx.order.update({
         where: { orderId: order.orderId },
         data: {
@@ -337,18 +382,40 @@ export class OrdersService {
         },
       });
 
-      // 6. Hoàn lại số lượng tồn kho của voucher chiến dịch (giảm soldQuantity)
+      // 7. Hoàn lại số lượng tồn kho của voucher chiến dịch (giảm soldQuantity)
       for (const item of order.orderItems) {
-        await tx.voucherCampaign.update({
-          where: { campaignId: item.campaignId },
+        const restored = await tx.voucherCampaign.updateMany({
+          where: {
+            campaignId: item.campaignId,
+            soldQuantity: { gte: item.quantity },
+          },
           data: {
             soldQuantity: { decrement: item.quantity },
           },
         });
+        if (restored.count !== 1) {
+          throw new Error(
+            `Sold quantity is inconsistent for campaign ${item.campaignId}.`,
+          );
+        }
       }
+
+      await this.auditService.logActivity(
+        {
+          actorUserId: customerId,
+          actorRoleSnapshot: 'CUSTOMER',
+          category: ActivityCategory.TRANSACTION,
+          actionType: 'REQUEST_REFUND',
+          targetEntity: 'Order',
+          targetId: orderId,
+        },
+        tx,
+      );
 
       return updatedOrder;
     });
+
+    return result;
   }
 
   /**
@@ -380,10 +447,11 @@ export class OrdersService {
   /**
    * Admin: Thực hiện hoàn tiền/hủy đơn hàng trực tuyến của hệ thống.
    * Bỏ qua kiểm tra khách hàng sở hữu.
+   * @param adminId ID quản trị viên thực hiện
    * @param orderId ID đơn hàng cần hoàn tiền
    */
-  async adminRefundOrder(orderId: string) {
-    return this.prisma.$transaction(async (tx) => {
+  async adminRefundOrder(adminId: string, orderId: string) {
+    const result = await this.prisma.$transaction(async (tx) => {
       // Khóa dòng
       await tx.$queryRaw`
         SELECT order_id FROM "Orders"
@@ -406,6 +474,15 @@ export class OrdersService {
       }
 
       if (
+        order.orderStatus === OrderStatus.CANCELLED ||
+        order.paymentStatus === PaymentStatus.REFUNDED
+      ) {
+        throw new BadRequestException(
+          'Đơn hàng này đã được hủy hoặc hoàn tiền trước đó.',
+        );
+      }
+
+      if (
         order.paymentStatus !== PaymentStatus.PAID ||
         order.orderStatus !== OrderStatus.CONFIRMED
       ) {
@@ -421,14 +498,15 @@ export class OrdersService {
         );
       }
 
-      const voucherCodes = await tx.voucherCode.findMany({
+      const usedVoucherCode = await tx.voucherCode.findFirst({
         where: {
           orderItem: { orderId: order.orderId },
+          OR: [{ status: 'USED' }, { usageLogs: { some: {} } }],
         },
+        select: { codeId: true },
       });
 
-      const hasUsedCode = voucherCodes.some((vc) => vc.status === 'USED');
-      if (hasUsedCode) {
+      if (usedVoucherCode) {
         throw new BadRequestException(
           'Không thể hoàn tiền vì đã có ít nhất một mã voucher đã được sử dụng.',
         );
@@ -438,7 +516,7 @@ export class OrdersService {
       await tx.voucherCode.updateMany({
         where: {
           orderItem: { orderId: order.orderId },
-          status: 'AVAILABLE',
+          status: { in: ['AVAILABLE', 'LOCKED', 'EXPIRED'] },
         },
         data: { status: 'CANCELLED' },
       });
@@ -466,15 +544,33 @@ export class OrdersService {
 
       // Trả lại tồn kho
       for (const item of order.orderItems) {
-        await tx.voucherCampaign.update({
-          where: { campaignId: item.campaignId },
+        const restored = await tx.voucherCampaign.updateMany({
+          where: {
+            campaignId: item.campaignId,
+            soldQuantity: { gte: item.quantity },
+          },
           data: {
             soldQuantity: { decrement: item.quantity },
           },
         });
+        if (restored.count !== 1) {
+          throw new Error(
+            `Sold quantity is inconsistent for campaign ${item.campaignId}.`,
+          );
+        }
       }
+
+      await this.auditService.logAction(
+        adminId,
+        'ADMIN_REFUND_ORDER',
+        'Order',
+        orderId,
+        tx,
+      );
 
       return updatedOrder;
     });
+
+    return result;
   }
 }

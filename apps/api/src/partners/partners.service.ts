@@ -8,7 +8,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { UpdatePartnerDto } from './dto/update-partner.dto';
-import { PartnerAccountStatus, PartnerApprovalStatus, Prisma, UserStatus } from '@prisma/client';
+import {
+  PartnerAccountStatus,
+  PartnerApprovalStatus,
+  Prisma,
+  UserStatus,
+} from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
@@ -464,7 +469,9 @@ export class PartnersService {
       this.prisma.user.count({ where: { role: 'ADMIN' } }),
       this.prisma.user.count({ where: { role: 'PARTNER_STAFF' } }),
       this.prisma.voucherCampaign.count({ where: { status: 'APPROVED' } }),
-      this.prisma.voucherCampaign.count({ where: { status: 'PENDING_APPROVAL' } }),
+      this.prisma.voucherCampaign.count({
+        where: { status: 'PENDING_APPROVAL' },
+      }),
       this.prisma.voucherCampaign.count({ where: { status: 'DRAFT' } }),
       this.prisma.voucherCampaign.count({ where: { status: 'REJECTED' } }),
       this.prisma.voucherCampaign.count({ where: { status: 'EXPIRED' } }),
@@ -587,15 +594,16 @@ export class PartnersService {
         data: { status: UserStatus.ACTIVE },
       });
 
+      await this.auditService.logAction(
+        adminId,
+        'APPROVE_PARTNER',
+        'Partner',
+        partnerId,
+        tx,
+      );
+
       return updatedPartner;
     });
-
-    await this.auditService.logAction(
-      adminId,
-      'APPROVE_PARTNER',
-      'Partner',
-      partnerId,
-    );
     return res;
   }
 
@@ -628,22 +636,27 @@ export class PartnersService {
         data: { revokedAt: new Date() },
       });
 
+      await this.auditService.logAction(
+        adminId,
+        'REJECT_PARTNER',
+        'Partner',
+        partnerId,
+        tx,
+      );
+
       return updatedPartner;
     });
-
-    await this.auditService.logAction(
-      adminId,
-      'REJECT_PARTNER',
-      'Partner',
-      partnerId,
-    );
     return res;
   }
 
   /**
    * Admin: Khóa/Mở khóa tài khoản đối tác.
    */
-  async adminTogglePartnerStatus(adminId: string, partnerId: string, status: PartnerAccountStatus) {
+  async adminTogglePartnerStatus(
+    adminId: string,
+    partnerId: string,
+    status: PartnerAccountStatus,
+  ) {
     const partner = await this.prisma.partner.findUnique({
       where: { partnerId },
     });
@@ -652,7 +665,10 @@ export class PartnersService {
       throw new NotFoundException('Không tìm thấy đối tác.');
     }
 
-    const userStatus = status === PartnerAccountStatus.ACTIVE ? UserStatus.ACTIVE : UserStatus.LOCKED;
+    const userStatus =
+      status === PartnerAccountStatus.ACTIVE
+        ? UserStatus.ACTIVE
+        : UserStatus.LOCKED;
 
     const res = await this.prisma.$transaction(async (tx) => {
       // 1. Cập nhật trạng thái đối tác
@@ -667,11 +683,27 @@ export class PartnersService {
         data: { status: userStatus },
       });
 
+      if (userStatus === UserStatus.LOCKED) {
+        await tx.authSession.updateMany({
+          where: { userId: partnerId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+      }
+
+      const action =
+        status === PartnerAccountStatus.ACTIVE
+          ? 'ACTIVATE_PARTNER'
+          : 'LOCK_PARTNER';
+      await this.auditService.logAction(
+        adminId,
+        action,
+        'Partner',
+        partnerId,
+        tx,
+      );
+
       return updatedPartner;
     });
-
-    const action = status === PartnerAccountStatus.ACTIVE ? 'ACTIVATE_PARTNER' : 'LOCK_PARTNER';
-    await this.auditService.logAction(adminId, action, 'Partner', partnerId);
     return res;
   }
 

@@ -50,4 +50,35 @@ export class PublicCatalogQueryDto {
   @IsOptional()
   @IsIn(['asc', 'desc'])
   sortPrice?: 'asc' | 'desc';
+
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  sortDiscount?: 'asc' | 'desc';
+
+  @IsOptional()
+  @IsUUID('4')
+  partnerId?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  minDiscount?: number;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['AVAILABLE', 'UPCOMING'])
+  validityStatus?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  limit?: number;
 }

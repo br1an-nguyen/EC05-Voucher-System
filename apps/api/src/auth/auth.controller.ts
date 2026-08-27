@@ -24,6 +24,10 @@ import {
 } from './auth-cookie';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import type { AccessPrincipal } from './auth-session.service';
+import {
+  AccountVerificationRequestDto,
+  VerifyAccountDto,
+} from './dto/account-verification.dto';
 
 const MINUTE_MS = 60_000;
 
@@ -153,5 +157,19 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 15 * MINUTE_MS } })
   async resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
     return this.authService.resetPassword(resetPasswordDto);
+  }
+
+  @Post('request-account-verification')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: 10 * MINUTE_MS } })
+  async requestAccountVerification(@Body() dto: AccountVerificationRequestDto) {
+    return this.authService.requestAccountVerification(dto);
+  }
+
+  @Post('verify-account')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: MINUTE_MS } })
+  async verifyAccount(@Body() dto: VerifyAccountDto) {
+    return this.authService.verifyAccount(dto);
   }
 }

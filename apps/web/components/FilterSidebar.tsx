@@ -16,6 +16,11 @@ interface ProvinceFilterOption {
   campaignCount: number;
 }
 
+interface PartnerFilterOption {
+  partnerId: string;
+  companyName: string;
+}
+
 export interface FilterSidebarProps {
   category: string;
   categories: CategoryFilterOption[];
@@ -24,6 +29,13 @@ export interface FilterSidebarProps {
   province: string;
   provinces: ProvinceFilterOption[];
   onProvinceChange: (value: string) => void;
+  partnerId: string;
+  partners: PartnerFilterOption[];
+  onPartnerChange: (value: string) => void;
+  validityStatus: string;
+  onValidityChange: (value: string) => void;
+  minDiscount: string;
+  onMinDiscountChange: (value: string) => void;
   maxPrice: string;
   setMaxPrice: (val: string) => void;
   onFilter: () => void;
@@ -39,6 +51,13 @@ export default function FilterSidebar({
   province,
   provinces,
   onProvinceChange,
+  partnerId,
+  partners,
+  onPartnerChange,
+  validityStatus,
+  onValidityChange,
+  minDiscount,
+  onMinDiscountChange,
   maxPrice,
   setMaxPrice,
   onFilter,
@@ -119,6 +138,83 @@ export default function FilterSidebar({
         <h2 className="text-base font-extrabold text-slate-800 uppercase tracking-tight">
           Bộ lọc tìm kiếm
         </h2>
+      </div>
+
+      {/* Đối tác */}
+      <div className="space-y-3">
+        <label htmlFor="partner-filter" className="block text-xs font-bold text-slate-700">
+          Đối tác cung cấp
+        </label>
+        <div className="relative">
+          <select
+            id="partner-filter"
+            value={partnerId}
+            onChange={(event) => onPartnerChange(event.target.value)}
+            className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 pr-8 text-xs font-semibold text-slate-700 outline-none transition-all focus:border-primary/50 focus:bg-white"
+          >
+            <option value="">Tất cả đối tác</option>
+            {partners.map((option) => (
+              <option key={option.partnerId} value={option.partnerId}>
+                {option.companyName}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        </div>
+      </div>
+
+      {/* Trạng thái hiệu lực */}
+      <div className="space-y-3">
+        <label htmlFor="status-filter" className="block text-xs font-bold text-slate-700">
+          Trạng thái hiệu lực
+        </label>
+        <div className="relative">
+          <select
+            id="status-filter"
+            value={validityStatus}
+            onChange={(event) => onValidityChange(event.target.value)}
+            className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 pr-8 text-xs font-semibold text-slate-700 outline-none transition-all focus:border-primary/50 focus:bg-white"
+          >
+            <option value="">Tất cả trạng thái</option>
+            <option value="AVAILABLE">Đang mở bán</option>
+            <option value="UPCOMING">Sắp mở bán</option>
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        </div>
+      </div>
+
+      {/* Mức giảm giá */}
+      <div className="space-y-3">
+        <label className="block text-xs font-bold text-slate-700">Mức giảm giá tối thiểu</label>
+        <div className="flex gap-2 flex-wrap">
+          {[10, 20, 30, 50].map((disc) => (
+            <button
+              key={disc}
+              onClick={() => {
+                onMinDiscountChange(disc.toString());
+                setTimeout(onFilter, 50); // auto apply
+              }}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${
+                minDiscount === disc.toString()
+                  ? 'bg-primary text-white border-primary shadow-sm'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-primary hover:text-primary'
+              }`}
+            >
+              &ge; {disc}%
+            </button>
+          ))}
+          {minDiscount && (
+            <button
+              onClick={() => {
+                onMinDiscountChange('');
+                setTimeout(onFilter, 50);
+              }}
+              className="px-2 py-1 text-[10px] text-slate-400 hover:text-slate-600 underline"
+            >
+              Bỏ chọn
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Khu vực */}
