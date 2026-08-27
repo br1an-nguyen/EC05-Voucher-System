@@ -84,6 +84,8 @@ export class VouchersService {
     const {
       title,
       description,
+      termsAndConditions,
+      thumbnailUrl,
       category,
       originalPrice,
       salePrice,
@@ -154,6 +156,8 @@ export class VouchersService {
           partnerId,
           title,
           description,
+          termsAndConditions,
+          thumbnailUrl,
           category,
           originalPrice,
           salePrice,
