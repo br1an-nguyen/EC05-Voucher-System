@@ -12,12 +12,10 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 // Sử dụng một bcrypt hash cố định đại diện cho mật khẩu "Password123"
-// Điều này giúp tránh phải import thư viện bcrypt trong script seed
 const DEFAULT_PASSWORD_HASH = "$2b$10$FQgA0cVsWGkuhZAX8nfBte.tjl.wXzY8aO3eO.siP1gybqxO/dfoy";
 
 async function main() {
   console.log("Bắt đầu dọn dẹp cơ sở dữ liệu...");
-  // Sử dụng TRUNCATE TABLE CASCADE để xóa sạch dữ liệu trong các bảng có khóa ngoại chéo
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE 
       "Complaints",
@@ -41,10 +39,14 @@ async function main() {
   `);
   console.log("Đã dọn dẹp xong cơ sở dữ liệu.");
 
-  console.log("Bắt đầu tạo dữ liệu mẫu...");
+  console.log("Bắt đầu tạo dữ liệu nền (Tài khoản đối tác thật, Chi nhánh thật, Nhân viên)...");
 
-  // 1. Tạo các tài khoản Users gốc (chưa gán partner_id/branch_id)
-  // Tài khoản Admin
+  const oneMonthAgo = new Date();
+  oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+  const oneWeekAgo = new Date();
+  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+  // 1. Tạo tài khoản Admin
   const admin = await prisma.user.create({
     data: {
       email: "admin@vouchersystem.com",
@@ -56,501 +58,465 @@ async function main() {
     },
   });
 
-  // Tài khoản Customers
-  const customer1 = await prisma.user.create({
-    data: {
-      email: "customer1@gmail.com",
-      phone: "0901234567",
-      passwordHash: DEFAULT_PASSWORD_HASH,
-      fullName: "Nguyễn Văn Khách Hàng 1",
-      role: "CUSTOMER",
-      status: "ACTIVE",
+  // Tạo 9 khách hàng mẫu phong phú và thực tế Việt Nam
+  const customersInfo = [
+    { email: "customer1@gmail.com", fullName: "Nguyễn Văn Khách Hàng 1", phone: "0901234567" },
+    { email: "customer2@gmail.com", fullName: "Lê Thị Khách Hàng 2", phone: "0901234568" },
+    { email: "customer3@gmail.com", fullName: "Trần Văn Khách Hàng 3", phone: "0901234569" },
+    { email: "customer.minhhoang@gmail.com", fullName: "Phạm Minh Hoàng", phone: "0907777111" },
+    { email: "customer.thutrang@gmail.com", fullName: "Trần Thu Trang", phone: "0907777222" },
+    { email: "customer.minhduc@gmail.com", fullName: "Nguyễn Minh Đức", phone: "0907777333" },
+    { email: "customer.thaovy@gmail.com", fullName: "Lê Thảo Vy", phone: "0907777444" },
+    { email: "customer.anhtuan@gmail.com", fullName: "Hoàng Anh Tuấn", phone: "0907777555" },
+    { email: "customer.hoangyen@gmail.com", fullName: "Vũ Hoàng Yến", phone: "0907777666" },
+  ];
+
+  const createdCustomers = [];
+  for (const c of customersInfo) {
+    const user = await prisma.user.create({
+      data: {
+        email: c.email,
+        phone: c.phone,
+        passwordHash: DEFAULT_PASSWORD_HASH,
+        fullName: c.fullName,
+        role: "CUSTOMER",
+        status: "ACTIVE",
+      },
+    });
+    createdCustomers.push(user);
+  }
+
+  // 2. Tạo các tài khoản Owners của các đối tác thương hiệu thật (20 đối tác cực kỳ đầy đủ)
+  const partnersInfo = [
+    {
+      email: "partner.cong@gmail.com",
+      phone: "0912111111",
+      fullName: "Đại diện Cộng Cà Phê",
+      companyName: "Công ty Cổ phần Thương mại và Dịch vụ Cộng Cà Phê",
+      taxCode: "0108888888",
+      representative: "Nguyễn Hà Ninh",
     },
-  });
-
-  const customer2 = await prisma.user.create({
-    data: {
-      email: "customer2@gmail.com",
-      phone: "0901234568",
-      passwordHash: DEFAULT_PASSWORD_HASH,
-      fullName: "Lê Thị Khách Hàng 2",
-      role: "CUSTOMER",
-      status: "ACTIVE",
+    {
+      email: "partner.highlands@gmail.com",
+      phone: "0912222222",
+      fullName: "Đại diện Highlands Coffee",
+      companyName: "Công ty Cổ phần Dịch vụ Cà phê Cao Nguyên",
+      taxCode: "0109999999",
+      representative: "David Thái",
     },
-  });
-
-  // Tài khoản Partner Owners (Tạo user trước, sau đó tạo Partner profile liên kết 1:1)
-  const partnerUser1 = await prisma.user.create({
-    data: {
-      email: "partner1@vouchersystem.com",
-      phone: "0911234567",
-      passwordHash: DEFAULT_PASSWORD_HASH,
-      fullName: "Đại diện Đối tác ABC",
-      role: "PARTNER",
-      status: "ACTIVE",
+    {
+      email: "partner.cgv@gmail.com",
+      phone: "0912333333",
+      fullName: "Đại diện CGV Cinemas",
+      companyName: "Công ty TNHH CJ CGV Việt Nam",
+      taxCode: "0107777777",
+      representative: "Ko Jae Min",
     },
-  });
-
-  const partnerUser2 = await prisma.user.create({
-    data: {
-      email: "partner2@vouchersystem.com",
-      phone: "0911234568",
-      passwordHash: DEFAULT_PASSWORD_HASH,
-      fullName: "Đại diện Đối tác XYZ",
-      role: "PARTNER",
-      status: "ACTIVE",
+    {
+      email: "partner.grab@gmail.com",
+      phone: "0912444444",
+      fullName: "Đại diện Grab Vietnam",
+      companyName: "Công ty TNHH Grab (Vietnam)",
+      taxCode: "0106666666",
+      representative: "Alejandro Osorio",
     },
-  });
-
-  // 2. Tạo Partners Profile liên kết 1:1 với User tương ứng
-  const partner1 = await prisma.partner.create({
-    data: {
-      partnerId: partnerUser1.userId,
-      companyName: "Công ty TNHH Ăn uống ABC",
-      taxCode: "0101234567",
-      representative: "Nguyễn Văn A",
-      approvalStatus: "APPROVED",
-      accountStatus: "ACTIVE",
+    {
+      email: "partner.touslesjours@gmail.com",
+      phone: "0912555555",
+      fullName: "Đại diện TOUS les JOURS",
+      companyName: "Công ty TNHH TOUS les JOURS Việt Nam",
+      taxCode: "0105555555",
+      representative: "Lim Jong Sung",
     },
-  });
-
-  const partner2 = await prisma.partner.create({
-    data: {
-      partnerId: partnerUser2.userId,
-      companyName: "Hệ thống Thời trang XYZ",
-      taxCode: "0101234568",
-      representative: "Trần Thị B",
-      approvalStatus: "APPROVED",
-      accountStatus: "ACTIVE",
+    {
+      email: "partner.pizza4ps@gmail.com",
+      phone: "0912666666",
+      fullName: "Đại diện Pizza 4P's",
+      companyName: "Công ty Cổ phần Pizza 4P's",
+      taxCode: "0104444444",
+      representative: "Yosuke Masuko",
     },
-  });
-
-  // 3. Tạo các chi nhánh (Branches) cho đối tác
-  // Chi nhánh của Partner 1 (ABC)
-  const branch1_abc = await prisma.branch.create({
-    data: {
-      partnerId: partner1.partnerId,
-      name: "Chi nhánh ABC Quận 1",
-      address: "123 Lê Lợi, Quận 1, Tp. HCM",
-      provinceCode: "79",
-      // latitude: 10.776,
-      // longitude: 106.701,
+    {
+      email: "partner.lotteria@gmail.com",
+      phone: "0912777777",
+      fullName: "Đại diện Lotteria",
+      companyName: "Công ty TNHH Lotteria Việt Nam",
+      taxCode: "0103333333",
+      representative: "Choi Kee Ryong",
     },
-  });
-
-  const branch2_abc = await prisma.branch.create({
-    data: {
-      partnerId: partner1.partnerId,
-      name: "Chi nhánh ABC Quận 3",
-      address: "456 Nguyễn Đình Chiểu, Quận 3, Tp. HCM",
-      provinceCode: "79",
-      // latitude: 10.772,
-      // longitude: 106.685,
+    {
+      email: "partner.dottie@gmail.com",
+      phone: "0912888888",
+      fullName: "Đại diện Dottie",
+      companyName: "Công ty TNHH Thời trang Dottie",
+      taxCode: "0102222222",
+      representative: "Nguyễn Lê Trung",
     },
-  });
-
-  // Chi nhánh của Partner 2 (XYZ)
-  const branch1_xyz = await prisma.branch.create({
-    data: {
-      partnerId: partner2.partnerId,
-      name: "Cửa hàng XYZ Quận 1",
-      address: "789 Nguyễn Trãi, Quận 1, Tp. HCM",
-      provinceCode: "79",
-      // latitude: 10.758,
-      // longitude: 106.689,
+    {
+      email: "partner.bactom@gmail.com",
+      phone: "0912999999",
+      fullName: "Đại diện Bác Tôm",
+      companyName: "Chuỗi thực phẩm sạch Bác Tôm",
+      taxCode: "0101111112",
+      representative: "Trần Mạnh Chiến",
     },
-  });
-
-  const branch2_xyz = await prisma.branch.create({
-    data: {
-      partnerId: partner2.partnerId,
-      name: "Cửa hàng XYZ Bình Thạnh",
-      address: "101 Điện Biên Phủ, Bình Thạnh, Tp. HCM",
-      provinceCode: "79",
-      // latitude: 10.798,
-      // longitude: 106.711,
+    {
+      email: "partner.kmarket@gmail.com",
+      phone: "0912000000",
+      fullName: "Đại diện K-Market",
+      companyName: "Công ty TNHH K-Market",
+      taxCode: "0101111113",
+      representative: "Kang Myeong Man",
     },
-  });
-
-  // 4. Tạo nhân viên đối tác (PARTNER_STAFF) gán partner_id và branch_id cụ thể
-  const staff1_abc = await prisma.user.create({
-    data: {
-      email: "staff1_abc@vouchersystem.com",
-      phone: "0921234567",
-      passwordHash: DEFAULT_PASSWORD_HASH,
-      fullName: "Nhân viên ABC Lê Lợi",
-      role: "PARTNER_STAFF",
-      partnerId: partner1.partnerId,
-      branchId: branch1_abc.branchId,
-      status: "ACTIVE",
+    {
+      email: "partner.cocospa@gmail.com",
+      phone: "0912111112",
+      fullName: "Đại diện Coco Spa",
+      companyName: "Coco Spa & Clinic Việt Nam",
+      taxCode: "0101111114",
+      representative: "Lee Min Hee",
     },
-  });
-
-  const staff2_abc = await prisma.user.create({
-    data: {
-      email: "staff2_abc@vouchersystem.com",
-      phone: "0921234568",
-      passwordHash: DEFAULT_PASSWORD_HASH,
-      fullName: "Nhân viên ABC Nguyễn Đình Chiểu",
-      role: "PARTNER_STAFF",
-      partnerId: partner1.partnerId,
-      branchId: branch2_abc.branchId,
-      status: "ACTIVE",
+    {
+      email: "partner.hplus@gmail.com",
+      phone: "0912222223",
+      fullName: "Đại diện Y Tế H Plus",
+      companyName: "Hệ thống Y khoa H Plus Group",
+      taxCode: "0101111115",
+      representative: "Nguyễn Thanh Hải",
     },
-  });
-
-  const staff1_xyz = await prisma.user.create({
-    data: {
-      email: "staff1_xyz@vouchersystem.com",
-      phone: "0921234569",
-      passwordHash: DEFAULT_PASSWORD_HASH,
-      fullName: "Nhân viên XYZ Nguyễn Trãi",
-      role: "PARTNER_STAFF",
-      partnerId: partner2.partnerId,
-      branchId: branch1_xyz.branchId,
-      status: "ACTIVE",
+    {
+      email: "partner.smilebeauty@gmail.com",
+      phone: "0912333334",
+      fullName: "Đại diện Smile Beauty",
+      companyName: "Nha khoa Thẩm mỹ Smile Beauty",
+      taxCode: "0101111116",
+      representative: "Lê Thu Trang",
     },
-  });
-
-  const staff2_xyz = await prisma.user.create({
-    data: {
-      email: "staff2_xyz@vouchersystem.com",
-      phone: "0921234570",
-      passwordHash: DEFAULT_PASSWORD_HASH,
-      fullName: "Nhân viên XYZ Điện Biên Phủ",
-      role: "PARTNER_STAFF",
-      partnerId: partner2.partnerId,
-      branchId: branch2_xyz.branchId,
-      status: "ACTIVE",
+    {
+      email: "partner.lottecinema@gmail.com",
+      phone: "0912444445",
+      fullName: "Đại diện Lotte Cinema",
+      companyName: "Công ty TNHH Lotte Cinema Việt Nam",
+      taxCode: "0101111117",
+      representative: "Lee Hae Sun",
     },
-  });
-
-  // 5. Tạo các chiến dịch Voucher (VoucherCampaign) và liên kết Chi nhánh áp dụng
-  // Các mốc thời gian mẫu
-  const oneMonthAgo = new Date();
-  oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-
-  const oneMonthHence = new Date();
-  oneMonthHence.setMonth(oneMonthHence.getMonth() + 1);
-
-  const twoMonthsHence = new Date();
-  twoMonthsHence.setMonth(twoMonthsHence.getMonth() + 2);
-
-  const twoMonthsAgo = new Date();
-  twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
-
-  const oneWeekAgo = new Date();
-  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-
-  // Chiến dịch 1 (ABC): Buffet Lẩu 199k - APPROVED (Active)
-  const campaign1 = await prisma.voucherCampaign.create({
-    data: {
-      partnerId: partner1.partnerId,
-      title: "Voucher Buffet Lẩu 199k tại ABC",
-      description: "Áp dụng cho toàn bộ thực đơn lẩu buffet tối từ Thứ 2 đến Thứ 6.",
-      category: "Food & Beverage",
-      originalPrice: 299000,
-      salePrice: 199000,
-      saleStartTime: oneMonthAgo,
-      saleEndTime: oneMonthHence,
-      usageStartTime: oneMonthAgo,
-      usageEndTime: twoMonthsHence,
-      capacity: 100,
-      soldQuantity: 5,
-      reservedStock: 0,
-      status: "APPROVED",
-      isMultiUse: false,
-      refundAllowed: true,
-      refundWindowHours: 48,
-      refundPolicy: "Hoàn tiền toàn bộ trong vòng 48 giờ từ khi thanh toán nếu voucher chưa được sử dụng.",
-      cancellationPolicy: "Voucher đã sử dụng hoặc quá thời hạn hoàn tiền không thể hủy.",
-      policyVersion: 1,
+    {
+      email: "partner.life4cuts@gmail.com",
+      phone: "0912555556",
+      fullName: "Đại diện Life4cuts",
+      companyName: "Công ty TNHH Life4cuts Việt Nam",
+      taxCode: "0101111118",
+      representative: "Kim Ji Hoon",
     },
-  });
-
-  await prisma.campaignBranch.createMany({
-    data: [
-      { partnerId: partner1.partnerId, campaignId: campaign1.campaignId, branchId: branch1_abc.branchId },
-      { partnerId: partner1.partnerId, campaignId: campaign1.campaignId, branchId: branch2_abc.branchId },
-    ],
-  });
-
-  // Chiến dịch 2 (ABC): Giảm giá nước uống 50% - APPROVED (Active)
-  const campaign2 = await prisma.voucherCampaign.create({
-    data: {
-      partnerId: partner1.partnerId,
-      title: "Voucher Nước uống giảm giá 50%",
-      description: "Giảm trực tiếp 50% cho tất cả thức uống trà sữa và cà phê.",
-      category: "Food & Beverage",
-      originalPrice: 50000,
-      salePrice: 25000,
-      saleStartTime: oneMonthAgo,
-      saleEndTime: oneMonthHence,
-      usageStartTime: oneMonthAgo,
-      usageEndTime: twoMonthsHence,
-      capacity: 200,
-      soldQuantity: 10,
-      reservedStock: 2,
-      status: "APPROVED",
-      isMultiUse: false,
-      refundAllowed: false,
-      refundPolicy: "Voucher không áp dụng hoàn tiền sau khi thanh toán.",
-      cancellationPolicy: "Đơn chỉ có thể hủy trước khi thanh toán hoàn tất.",
-      policyVersion: 1,
+    {
+      email: "partner.extrim@gmail.com",
+      phone: "0912666667",
+      fullName: "Đại diện Extrim",
+      companyName: "Công ty TNHH Extrim Việt Nam",
+      taxCode: "0101111119",
+      representative: "Nguyễn Minh Đăng",
     },
-  });
-
-  await prisma.campaignBranch.create({
-    data: { partnerId: partner1.partnerId, campaignId: campaign2.campaignId, branchId: branch1_abc.branchId },
-  });
-
-  // Chiến dịch 3 (ABC): DRAFT
-  const campaign3 = await prisma.voucherCampaign.create({
-    data: {
-      partnerId: partner1.partnerId,
-      title: "Voucher Trà sữa ABC mới (DRAFT)",
-      description: "Chiến dịch nháp chưa công bố.",
-      category: "Food & Beverage",
-      originalPrice: 40000,
-      salePrice: 20000,
-      saleStartTime: oneMonthHence,
-      saleEndTime: twoMonthsHence,
-      usageStartTime: oneMonthHence,
-      usageEndTime: twoMonthsHence,
-      capacity: 50,
-      soldQuantity: 0,
-      reservedStock: 0,
-      status: "DRAFT",
-      isMultiUse: false,
+    {
+      email: "partner.go2joy@gmail.com",
+      phone: "0912777778",
+      fullName: "Đại diện Go2Joy",
+      companyName: "Công ty Cổ phần Go2Joy Việt Nam",
+      taxCode: "0101111120",
+      representative: "Simon Byun",
     },
-  });
-
-  await prisma.campaignBranch.create({
-    data: { partnerId: partner1.partnerId, campaignId: campaign3.campaignId, branchId: branch1_abc.branchId },
-  });
-
-  // Chiến dịch 4 (XYZ): Mua sắm Thời trang XYZ 100k - APPROVED (Active)
-  const campaign4 = await prisma.voucherCampaign.create({
-    data: {
-      partnerId: partner2.partnerId,
-      title: "Voucher Mua sắm Thời trang XYZ 100k",
-      description: "Áp dụng cho hóa đơn mua sắm quần áo thời trang bất kỳ từ 300k.",
-      category: "Shopping",
-      originalPrice: 150000,
-      salePrice: 100000,
-      saleStartTime: oneMonthAgo,
-      saleEndTime: oneMonthHence,
-      usageStartTime: oneMonthAgo,
-      usageEndTime: twoMonthsHence,
-      capacity: 150,
-      soldQuantity: 20,
-      reservedStock: 0,
-      status: "APPROVED",
-      isMultiUse: false,
+    {
+      email: "partner.hoayeuthuong@gmail.com",
+      phone: "0912888889",
+      fullName: "Đại diện Hoa Yêu Thương",
+      companyName: "Công ty Cổ phần Hoa Yêu Thương",
+      taxCode: "0101111121",
+      representative: "Phạm Hoàng Thái Dương",
     },
-  });
-
-  await prisma.campaignBranch.createMany({
-    data: [
-      { partnerId: partner2.partnerId, campaignId: campaign4.campaignId, branchId: branch1_xyz.branchId },
-      { partnerId: partner2.partnerId, campaignId: campaign4.campaignId, branchId: branch2_xyz.branchId },
-    ],
-  });
-
-  // Chiến dịch 5 (XYZ): Mua sắm SOLD OUT
-  const campaign5 = await prisma.voucherCampaign.create({
-    data: {
-      partnerId: partner2.partnerId,
-      title: "Voucher Mua sắm SOLD OUT",
-      description: "Chiến dịch giới hạn đặc biệt đã bán hết.",
-      category: "Shopping",
-      originalPrice: 200000,
-      salePrice: 100000,
-      saleStartTime: oneMonthAgo,
-      saleEndTime: oneMonthHence,
-      usageStartTime: oneMonthAgo,
-      usageEndTime: twoMonthsHence,
-      capacity: 10,
-      soldQuantity: 10,
-      reservedStock: 0,
-      status: "SOLD_OUT",
-      isMultiUse: false,
+    {
+      email: "partner.westway@gmail.com",
+      phone: "0912999990",
+      fullName: "Đại diện Westway Dental",
+      companyName: "Viện Nha khoa Quốc tế Westway",
+      taxCode: "0101111122",
+      representative: "Trần Nguyễn Minh Phú",
     },
-  });
-
-  await prisma.campaignBranch.create({
-    data: { partnerId: partner2.partnerId, campaignId: campaign5.campaignId, branchId: branch1_xyz.branchId },
-  });
-
-  // Chiến dịch 6 (XYZ): EXPIRED (Đã hết hạn bán và sử dụng)
-  const campaign6 = await prisma.voucherCampaign.create({
-    data: {
-      partnerId: partner2.partnerId,
-      title: "Voucher Mua sắm EXPIRED",
-      description: "Chiến dịch đã kết thúc bán tuần trước.",
-      category: "Shopping",
-      originalPrice: 200000,
-      salePrice: 100000,
-      saleStartTime: twoMonthsAgo,
-      saleEndTime: oneWeekAgo,
-      usageStartTime: twoMonthsAgo,
-      usageEndTime: oneWeekAgo,
-      capacity: 50,
-      soldQuantity: 5,
-      reservedStock: 0,
-      status: "EXPIRED",
-      isMultiUse: false,
+    {
+      email: "partner.suoitien@gmail.com",
+      phone: "0912000001",
+      fullName: "Đại diện Công Viên Suối Tiên",
+      companyName: "Công ty Cổ phần Du lịch Văn hóa Suối Tiên",
+      taxCode: "0101111123",
+      representative: "Đinh Văn Vui",
     },
+  ];
+
+  const createdPartners: Record<string, string> = {};
+
+  for (const info of partnersInfo) {
+    const user = await prisma.user.create({
+      data: {
+        email: info.email,
+        phone: info.phone,
+        passwordHash: DEFAULT_PASSWORD_HASH,
+        fullName: info.fullName,
+        role: "PARTNER",
+        status: "ACTIVE",
+      },
+    });
+
+    const partner = await prisma.partner.create({
+      data: {
+        partnerId: user.userId,
+        companyName: info.companyName,
+        taxCode: info.taxCode,
+        representative: info.representative,
+        approvalStatus: "APPROVED",
+        accountStatus: "ACTIVE",
+      },
+    });
+
+    createdPartners[info.email] = partner.partnerId;
+  }
+
+  // 3. Tạo các chi nhánh thật cho từng đối tác (Gán đúng chủ sở hữu 100%)
+  const partnerCongId = createdPartners["partner.cong@gmail.com"];
+  const partnerHighlandsId = createdPartners["partner.highlands@gmail.com"];
+  const partnerCgvId = createdPartners["partner.cgv@gmail.com"];
+  const partnerGrabId = createdPartners["partner.grab@gmail.com"];
+  const partnerTousLesJoursId = createdPartners["partner.touslesjours@gmail.com"];
+  const partnerPizza4PsId = createdPartners["partner.pizza4ps@gmail.com"];
+  const partnerLotteriaId = createdPartners["partner.lotteria@gmail.com"];
+  const partnerDottieId = createdPartners["partner.dottie@gmail.com"];
+  const partnerBacTomId = createdPartners["partner.bactom@gmail.com"];
+  const partnerKMarketId = createdPartners["partner.kmarket@gmail.com"];
+  const partnerCocoSpaId = createdPartners["partner.cocospa@gmail.com"];
+  const partnerHPlusId = createdPartners["partner.hplus@gmail.com"];
+  const partnerSmileBeautyId = createdPartners["partner.smilebeauty@gmail.com"];
+  const partnerLotteCinemaId = createdPartners["partner.lottecinema@gmail.com"];
+  const partnerLife4cutsId = createdPartners["partner.life4cuts@gmail.com"];
+  const partnerExtrimId = createdPartners["partner.extrim@gmail.com"];
+  const partnerGo2JoyId = createdPartners["partner.go2joy@gmail.com"];
+  const partnerHoaYeuThuongId = createdPartners["partner.hoayeuthuong@gmail.com"];
+  const partnerWestwayId = createdPartners["partner.westway@gmail.com"];
+  const partnerSuoiTienId = createdPartners["partner.suoitien@gmail.com"];
+
+  // Cộng Cà Phê
+  const branchCongHN = await prisma.branch.create({
+    data: { partnerId: partnerCongId, name: "Cộng Cà Phê - Cầu Gỗ (Hà Nội)", address: "Số 116 Cầu Gỗ, Phường Hàng Đào, Quận Hoàn Kiếm, Hà Nội", provinceCode: "01" }
+  });
+  const branchCongHCM = await prisma.branch.create({
+    data: { partnerId: partnerCongId, name: "Cộng Cà Phê - Sư Vạn Hạnh (TP.HCM)", address: "764 Sư Vạn Hạnh, Phường 12, Quận 10, TP. Hồ Chí Minh", provinceCode: "79" }
   });
 
-  await prisma.campaignBranch.create({
-    data: { partnerId: partner2.partnerId, campaignId: campaign6.campaignId, branchId: branch2_xyz.branchId },
+  // Highlands Coffee
+  const branchHighlandsHN = await prisma.branch.create({
+    data: { partnerId: partnerHighlandsId, name: "Highlands Coffee - Nhà Hát Lớn (Hà Nội)", address: "Số 1 Tràng Tiền, Phường Tràng Tiền, Quận Hoàn Kiếm, Hà Nội", provinceCode: "01" }
+  });
+  const branchHighlandsHCM = await prisma.branch.create({
+    data: { partnerId: partnerHighlandsId, name: "Highlands Coffee - Diamond Plaza (TP.HCM)", address: "Tầng trệt, Diamond Plaza, 34 Lê Duẩn, Bến Nghé, Quận 1, TP. Hồ Chí Minh", provinceCode: "79" }
   });
 
-  // 6. Tạo đơn hàng (Orders) và Voucher Codes đã phát hành
-  // Đơn hàng 1: Customer 1 mua 1 Voucher Buffet Lẩu (Campaign 1) thanh toán qua Stripe thành công
-  const order1 = await prisma.order.create({
-    data: {
-      orderCode: "ORD-STRIPE-001",
-      customerId: customer1.userId,
-      recipientNote: "Quà sinh nhật cho bạn",
-      totalAmount: 199000,
-      baseCurrency: "VND",
-      selectedPaymentProvider: "STRIPE",
-      orderStatus: "CONFIRMED",
-      paymentStatus: "PAID",
-      reservationExpiresAt: oneMonthAgo,
-      createdAt: oneMonthAgo,
-    },
+  // CGV Cinemas
+  const branchCgvHN = await prisma.branch.create({
+    data: { partnerId: partnerCgvId, name: "CGV Cinemas - Vincom Nguyễn Chí Thanh (Hà Nội)", address: "Tầng 6, Vincom Center Nguyễn Chí Thanh, 54A Nguyễn Chí Thanh, Láng Thượng, Đống Đa, Hà Nội", provinceCode: "01" }
+  });
+  const branchCgvHCM = await prisma.branch.create({
+    data: { partnerId: partnerCgvId, name: "CGV Cinemas - Hùng Vương Plaza (TP.HCM)", address: "Tầng 7, Hùng Vương Plaza, 126 Hùng Vương, Phường 12, Quận 5, TP. Hồ Chí Minh", provinceCode: "79" }
   });
 
-  const orderItem1 = await prisma.orderItem.create({
-    data: {
-      orderId: order1.orderId,
-      campaignId: campaign1.campaignId,
-      quantity: 1,
-      unitPrice: 199000,
-      refundAllowedSnapshot: true,
-      refundWindowHoursSnapshot: 48,
-      refundPolicySnapshot: "Hoàn tiền toàn bộ trong vòng 48 giờ từ khi thanh toán nếu voucher chưa được sử dụng.",
-      cancellationPolicySnapshot: "Voucher đã sử dụng hoặc quá thời hạn hoàn tiền không thể hủy.",
-      policyVersionSnapshot: 1,
-      refundDeadlineAt: new Date(oneMonthAgo.getTime() + 48 * 60 * 60 * 1000),
-    },
+  // Grab Vietnam
+  const branchGrabHN = await prisma.branch.create({
+    data: { partnerId: partnerGrabId, name: "Grab Vietnam - Văn phòng Lotte (Hà Nội)", address: "Tầng 30, Tòa nhà Lotte Center Hà Nội, 54 Liễu Giai, Phường Cống Vị, Quận Ba Đình, Hà Nội", provinceCode: "01" }
+  });
+  const branchGrabHCM = await prisma.branch.create({
+    data: { partnerId: partnerGrabId, name: "Grab Vietnam - Văn phòng Mapletree (TP.HCM)", address: "Tầng 15, Mapletree Business Centre, 1060 Nguyễn Văn Linh, Tân Phong, Quận 7, TP. Hồ Chí Minh", provinceCode: "79" }
   });
 
-  // Tạo giao dịch thanh toán Stripe thành công
-  await prisma.paymentTransaction.create({
-    data: {
-      orderId: order1.orderId,
-      provider: "STRIPE",
-      attemptNo: 1,
-      status: "SUCCEEDED",
-      idempotencyKey: "idem-stripe-001",
-      providerOrderId: "ch_stripe_123456",
-      providerTransactionId: "txn_stripe_123456",
-      baseAmount: 199000,
-      requestAmountMinor: BigInt(199000),
-      requestCurrency: "VND",
-      paidAt: oneMonthAgo,
-      createdAt: oneMonthAgo,
-    },
+  // TOUS les JOURS
+  const branchTousLesJoursHN = await prisma.branch.create({
+    data: { partnerId: partnerTousLesJoursId, name: "Tous les Jours - Keangnam (Hà Nội)", address: "Tầng 1, Keangnam Landmark 72, Phạm Hùng, Mễ Trì, Nam Từ Liêm, Hà Nội", provinceCode: "01" }
+  });
+  const branchTousLesJoursHCM = await prisma.branch.create({
+    data: { partnerId: partnerTousLesJoursId, name: "Tous les Jours - Hai Bà Trưng (TP.HCM)", address: "180 Hai Bà Trưng, Phường Đa Kao, Quận 1, TP. Hồ Chí Minh", provinceCode: "79" }
   });
 
-  // Phát hành 1 voucher code khả dụng cho Customer 1
-  const voucherCode1 = await prisma.voucherCode.create({
-    data: {
-      itemId: orderItem1.itemId,
-      uniqueCode: "LAUABC999",
-      customerId: customer1.userId,
-      status: "AVAILABLE",
-      issuedAt: oneMonthAgo,
-      expiresAt: twoMonthsHence,
-    },
+  // Pizza 4P's
+  const branchPizza4PsHN = await prisma.branch.create({
+    data: { partnerId: partnerPizza4PsId, name: "Pizza 4P's - Tràng Tiền (Hà Nội)", address: "43 Tràng Tiền, Phường Tràng Tiền, Quận Hoàn Kiếm, Hà Nội", provinceCode: "01" }
+  });
+  const branchPizza4PsHCM = await prisma.branch.create({
+    data: { partnerId: partnerPizza4PsId, name: "Pizza 4P's - Bến Thành (TP.HCM)", address: "8 Thủ Khoa Huân, Phường Bến Thành, Quận 1, TP. Hồ Chí Minh", provinceCode: "79" }
   });
 
-  // Đơn hàng 2: Customer 2 mua 2 Voucher Mua sắm 100k (Campaign 4) thanh toán qua PayPal thành công
-  const order2 = await prisma.order.create({
-    data: {
-      orderCode: "ORD-PAYPAL-002",
-      customerId: customer2.userId,
-      totalAmount: 200000,
-      baseCurrency: "VND",
-      selectedPaymentProvider: "PAYPAL",
-      orderStatus: "CONFIRMED",
-      paymentStatus: "PAID",
-      reservationExpiresAt: oneMonthAgo,
-      createdAt: oneMonthAgo,
-    },
+  // Lotteria
+  const branchLotteriaHN = await prisma.branch.create({
+    data: { partnerId: partnerLotteriaId, name: "Lotteria - Lotte Center (Hà Nội)", address: "Tầng B1, Lotte Center, 54 Liễu Giai, Phường Cống Vị, Quận Ba Đình, Hà Nội", provinceCode: "01" }
+  });
+  const branchLotteriaHCM = await prisma.branch.create({
+    data: { partnerId: partnerLotteriaId, name: "Lotteria - Nguyễn Đình Chiểu (TP.HCM)", address: "126 Nguyễn Đình Chiểu, Phường 6, Quận 3, TP. Hồ Chí Minh", provinceCode: "79" }
   });
 
-  const orderItem2 = await prisma.orderItem.create({
-    data: {
-      orderId: order2.orderId,
-      campaignId: campaign4.campaignId,
-      quantity: 2,
-      unitPrice: 100000,
-      refundAllowedSnapshot: false,
-      refundPolicySnapshot: "Voucher không áp dụng hoàn tiền sau khi thanh toán.",
-      cancellationPolicySnapshot: "Đơn chỉ có thể hủy trước khi thanh toán hoàn tất.",
-      policyVersionSnapshot: 1,
-    },
+  // Dottie
+  const branchDottieHN = await prisma.branch.create({
+    data: { partnerId: partnerDottieId, name: "Dottie - Chùa Bộc (Hà Nội)", address: "16 Chùa Bộc, Phường Quang Trung, Quận Đống Đa, Hà Nội", provinceCode: "01" }
+  });
+  const branchDottieHCM = await prisma.branch.create({
+    data: { partnerId: partnerDottieId, name: "Dottie - Nguyễn Trãi (TP.HCM)", address: "170 Nguyễn Trãi, Phường Bến Thành, Quận 1, TP. Hồ Chí Minh", provinceCode: "79" }
   });
 
-  // Tạo giao dịch thanh toán PayPal thành công (Có quy đổi ngoại tệ)
-  await prisma.paymentTransaction.create({
-    data: {
-      orderId: order2.orderId,
-      provider: "PAYPAL",
-      attemptNo: 1,
-      status: "SUCCEEDED",
-      idempotencyKey: "idem-paypal-002",
-      providerOrderId: "pay_paypal_987654",
-      providerTransactionId: "txn_paypal_987654",
-      baseAmount: 200000,
-      requestAmountMinor: BigInt(800), // 8.00 USD
-      requestCurrency: "USD",
-      exchangeRate: 25000, // 1 USD = 25,000 VND
-      paidAt: oneMonthAgo,
-      createdAt: oneMonthAgo,
-    },
+  // Bác Tôm
+  const branchBacTomHN = await prisma.branch.create({
+    data: { partnerId: partnerBacTomId, name: "Bác Tôm - Nguyễn Công Trứ (Hà Nội)", address: "Số 6 Nguyễn Công Trứ, Phường Phạm Đình Hổ, Quận Hai Bà Trưng, Hà Nội", provinceCode: "01" }
+  });
+  const branchBacTomHCM = await prisma.branch.create({
+    data: { partnerId: partnerBacTomId, name: "Bác Tôm - Thảo Điền (TP.HCM)", address: "24 Thảo Điền, Phường Thảo Điền, Quận 2, TP. Hồ Chí Minh", provinceCode: "79" }
   });
 
-  // Phát hành 2 voucher codes cho Customer 2
-  // Code 1: Đã được sử dụng (Redeemed) tại Cửa hàng XYZ Quận 1
-  const voucherCode2 = await prisma.voucherCode.create({
-    data: {
-      itemId: orderItem2.itemId,
-      uniqueCode: "XYZ100K001",
-      customerId: customer2.userId,
-      status: "USED",
-      issuedAt: oneMonthAgo,
-      expiresAt: twoMonthsHence,
-    },
+  // K-Market
+  const branchKMarketHN = await prisma.branch.create({
+    data: { partnerId: partnerKMarketId, name: "K-Market - Keangnam (Hà Nội)", address: "Tầng trệt, Keangnam Landmark 72, Phạm Hùng, Nam Từ Liêm, Hà Nội", provinceCode: "01" }
+  });
+  const branchKMarketHCM = await prisma.branch.create({
+    data: { partnerId: partnerKMarketId, name: "K-Market - Thảo Điền (TP.HCM)", address: "26 Thảo Điền, Phường Thảo Điền, Quận 2, TP. Hồ Chí Minh", provinceCode: "79" }
   });
 
-  // Ghi nhận lịch sử sử dụng voucher code 1
-  await prisma.voucherUsageLog.create({
-    data: {
-      codeId: voucherCode2.codeId,
-      branchId: branch1_xyz.branchId,
-      usedAt: oneMonthAgo,
-    },
+  // Coco Spa
+  const branchCocoSpaHN = await prisma.branch.create({
+    data: { partnerId: partnerCocoSpaId, name: "Coco Spa - Hồ Tây (Hà Nội)", address: "145 Vệ Hồ, Phường Xuân La, Quận Tây Hồ, Hà Nội", provinceCode: "01" }
+  });
+  const branchCocoSpaHCM = await prisma.branch.create({
+    data: { partnerId: partnerCocoSpaId, name: "Coco Spa - Quận 1 (TP.HCM)", address: "Số 10 Lý Tự Trọng, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh", provinceCode: "79" }
   });
 
-  // Code 2: Vẫn còn khả dụng
-  await prisma.voucherCode.create({
-    data: {
-      itemId: orderItem2.itemId,
-      uniqueCode: "XYZ100K002",
-      customerId: customer2.userId,
-      status: "AVAILABLE",
-      issuedAt: oneMonthAgo,
-      expiresAt: twoMonthsHence,
-    },
+  // Y Tế H Plus
+  const branchHPlusHN = await prisma.branch.create({
+    data: { partnerId: partnerHPlusId, name: "Y Tế H Plus - Láng Hạ (Hà Nội)", address: "12 Láng Hạ, Phường Thành Công, Quận Ba Đình, Hà Nội", provinceCode: "01" }
+  });
+  const branchHPlusHCM = await prisma.branch.create({
+    data: { partnerId: partnerHPlusId, name: "Y Tế H Plus - Quận 3 (TP.HCM)", address: "154 Võ Thị Sáu, Phường 6, Quận 3, TP. Hồ Chí Minh", provinceCode: "79" }
   });
 
-  // 7. Tạo một số dòng nhật ký hệ thống (Audit Logs) làm mẫu
+  // Smile Beauty
+  const branchSmileBeautyHN = await prisma.branch.create({
+    data: { partnerId: partnerSmileBeautyId, name: "Smile Beauty - Đống Đa (Hà Nội)", address: "101 Nguyễn Chí Thanh, Phường Láng Hạ, Quận Đống Đa, Hà Nội", provinceCode: "01" }
+  });
+  const branchSmileBeautyHCM = await prisma.branch.create({
+    data: { partnerId: partnerSmileBeautyId, name: "Smile Beauty - Quận 10 (TP.HCM)", address: "405 Cách Mạng Tháng Tám, Phường 13, Quận 10, TP. Hồ Chí Minh", provinceCode: "79" }
+  });
+
+  // Lotte Cinema
+  const branchLotteCinemaHN = await prisma.branch.create({
+    data: { partnerId: partnerLotteCinemaId, name: "Lotte Cinema - Landmark (Hà Nội)", address: "Tầng 5, Keangnam Landmark 72, Phạm Hùng, Nam Từ Liêm, Hà Nội", provinceCode: "01" }
+  });
+  const branchLotteCinemaHCM = await prisma.branch.create({
+    data: { partnerId: partnerLotteCinemaId, name: "Lotte Cinema - Nam Sài Gòn (TP.HCM)", address: "Tầng 3, Lotte Mart Nam Sài Gòn, 469 Nguyễn Hữu Thọ, Tân Hưng, Quận 7, TP. Hồ Chí Minh", provinceCode: "79" }
+  });
+
+  // Life4cuts
+  const branchLife4cutsHN = await prisma.branch.create({
+    data: { partnerId: partnerLife4cutsId, name: "Life4cuts - Hoàn Kiếm (Hà Nội)", address: "Số 2 Hàng Khay, Phường Tràng Tiền, Quận Hoàn Kiếm, Hà Nội", provinceCode: "01" }
+  });
+  const branchLife4cutsHCM = await prisma.branch.create({
+    data: { partnerId: partnerLife4cutsId, name: "Life4cuts - Quận 1 (TP.HCM)", address: "Số 120 Nguyễn Huệ, Bến Nghé, Quận 1, TP. Hồ Chí Minh", provinceCode: "79" }
+  });
+
+  // Extrim
+  const branchExtrimHN = await prisma.branch.create({
+    data: { partnerId: partnerExtrimId, name: "Extrim - Đống Đa (Hà Nội)", address: "45 Nguyễn Chí Thanh, Phường Láng Hạ, Quận Đống Đa, Hà Nội", provinceCode: "01" }
+  });
+  const branchExtrimHCM = await prisma.branch.create({
+    data: { partnerId: partnerExtrimId, name: "Extrim - Quận 3 (TP.HCM)", address: "127 Lý Chính Thắng, Phường 7, Quận 3, TP. Hồ Chí Minh", provinceCode: "79" }
+  });
+
+  // Go2Joy
+  const branchGo2JoyHN = await prisma.branch.create({
+    data: { partnerId: partnerGo2JoyId, name: "Văn phòng Go2Joy (Hà Nội)", address: "Tầng 10, Tòa nhà HL, ngõ 82 Duy Tân, Dịch Vọng Hậu, Cầu Giấy, Hà Nội", provinceCode: "01" }
+  });
+  const branchGo2JoyHCM = await prisma.branch.create({
+    data: { partnerId: partnerGo2JoyId, name: "Văn phòng Go2Joy (TP.HCM)", address: "Tầng 12, Tòa nhà M-H, 728-730 Võ Văn Kiệt, Phường 1, Quận 5, TP. Hồ Chí Minh", provinceCode: "79" }
+  });
+
+  // Hoa Yêu Thương
+  const branchHoaYeuThuongHN = await prisma.branch.create({
+    data: { partnerId: partnerHoaYeuThuongId, name: "Hoa Yêu Thương - Hai Bà Trưng (Hà Nội)", address: "354 Lạc Trung, Phường Thanh Lương, Quận Hai Bà Trưng, Hà Nội", provinceCode: "01" }
+  });
+  const branchHoaYeuThuongHCM = await prisma.branch.create({
+    data: { partnerId: partnerHoaYeuThuongId, name: "Hoa Yêu Thương - Quận 3 (TP.HCM)", address: "270L Võ Thị Sáu, Phường 7, Quận 3, TP. Hồ Chí Minh", provinceCode: "79" }
+  });
+
+  // Westway Dental
+  const branchWestwayHN = await prisma.branch.create({
+    data: { partnerId: partnerWestwayId, name: "Westway Dental - Cầu Giấy (Hà Nội)", address: "Tầng 2, Vincom Plaza Trần Duy Hưng, Cầu Giấy, Hà Nội", provinceCode: "01" }
+  });
+  const branchWestwayHCM = await prisma.branch.create({
+    data: { partnerId: partnerWestwayId, name: "Westway Dental - Thảo Điền (TP.HCM)", address: "122 Xuân Thủy, Phường Thảo Điền, Quận 2, TP. Hồ Chí Minh", provinceCode: "79" }
+  });
+
+  // Suối Tiên
+  const branchSuoiTienHCM = await prisma.branch.create({
+    data: { partnerId: partnerSuoiTienId, name: "Công Viên Văn Hóa Suối Tiên (TP.HCM)", address: "120 Xa lộ Hà Nội, Phường Tân Phú, Quận 9, TP. Hồ Chí Minh", provinceCode: "79" }
+  });
+
+  // 4. TỰ ĐỘNG TẠO 1 TÀI KHOẢN NHÂN VIÊN CHO MỌI CHI NHÁNH TRONG HỆ THỐNG
+  const allBranches = [
+    { branch: branchCongHN, prefix: "cong.hn", partnerId: partnerCongId, name: "Cộng Cầu Gỗ" },
+    { branch: branchCongHCM, prefix: "cong.hcm", partnerId: partnerCongId, name: "Cộng Sư Vạn Hạnh" },
+    { branch: branchHighlandsHN, prefix: "highlands.hn", partnerId: partnerHighlandsId, name: "Highlands Nhà Hát Lớn" },
+    { branch: branchHighlandsHCM, prefix: "highlands.hcm", partnerId: partnerHighlandsId, name: "Highlands Diamond" },
+    { branch: branchCgvHN, prefix: "cgv.hn", partnerId: partnerCgvId, name: "CGV Nguyễn Chí Thanh" },
+    { branch: branchCgvHCM, prefix: "cgv.hcm", partnerId: partnerCgvId, name: "CGV Hùng Vương" },
+    { branch: branchGrabHN, prefix: "grab.hn", partnerId: partnerGrabId, name: "Grab Lotte HN" },
+    { branch: branchGrabHCM, prefix: "grab.hcm", partnerId: partnerGrabId, name: "Grab Mapletree HCM" },
+    { branch: branchTousLesJoursHN, prefix: "touslesjours.hn", partnerId: partnerTousLesJoursId, name: "Tous les Jours Keangnam" },
+    { branch: branchTousLesJoursHCM, prefix: "touslesjours.hcm", partnerId: partnerTousLesJoursId, name: "Tous les Jours Hai Bà Trưng" },
+    { branch: branchPizza4PsHN, prefix: "pizza4ps.hn", partnerId: partnerPizza4PsId, name: "Pizza 4P's Tràng Tiền" },
+    { branch: branchPizza4PsHCM, prefix: "pizza4ps.hcm", partnerId: partnerPizza4PsId, name: "Pizza 4P's Bến Thành" },
+    { branch: branchLotteriaHN, prefix: "lotteria.hn", partnerId: partnerLotteriaId, name: "Lotteria Lotte Center" },
+    { branch: branchLotteriaHCM, prefix: "lotteria.hcm", partnerId: partnerLotteriaId, name: "Lotteria Nguyễn Đình Chiểu" },
+    { branch: branchDottieHN, prefix: "dottie.hn", partnerId: partnerDottieId, name: "Dottie Chùa Bộc" },
+    { branch: branchDottieHCM, prefix: "dottie.hcm", partnerId: partnerDottieId, name: "Dottie Nguyễn Trãi" },
+    { branch: branchBacTomHN, prefix: "bactom.hn", partnerId: partnerBacTomId, name: "Bác Tôm Nguyễn Công Trứ" },
+    { branch: branchBacTomHCM, prefix: "bactom.hcm", partnerId: partnerBacTomId, name: "Bác Tôm Thảo Điền" },
+    { branch: branchKMarketHN, prefix: "kmarket.hn", partnerId: partnerKMarketId, name: "K-Market Keangnam" },
+    { branch: branchKMarketHCM, prefix: "kmarket.hcm", partnerId: partnerKMarketId, name: "K-Market Thảo Điền" },
+    { branch: branchCocoSpaHN, prefix: "cocospa.hn", partnerId: partnerCocoSpaId, name: "Coco Spa Hồ Tây" },
+    { branch: branchCocoSpaHCM, prefix: "cocospa.hcm", partnerId: partnerCocoSpaId, name: "Coco Spa Quận 1" },
+    { branch: branchHPlusHN, prefix: "hplus.hn", partnerId: partnerHPlusId, name: "Y Tế H Plus Láng Hạ" },
+    { branch: branchHPlusHCM, prefix: "hplus.hcm", partnerId: partnerHPlusId, name: "Y Tế H Plus Quận 3" },
+    { branch: branchSmileBeautyHN, prefix: "smilebeauty.hn", partnerId: partnerSmileBeautyId, name: "Smile Beauty Đống Đa" },
+    { branch: branchSmileBeautyHCM, prefix: "smilebeauty.hcm", partnerId: partnerSmileBeautyId, name: "Smile Beauty Quận 10" },
+    { branch: branchLotteCinemaHN, prefix: "lottecinema.hn", partnerId: partnerLotteCinemaId, name: "Lotte Cinema Landmark" },
+    { branch: branchLotteCinemaHCM, prefix: "lottecinema.hcm", partnerId: partnerLotteCinemaId, name: "Lotte Cinema Nam Sài Gòn" },
+    { branch: branchLife4cutsHN, prefix: "life4cuts.hn", partnerId: partnerLife4cutsId, name: "Life4cuts Hoàn Kiếm" },
+    { branch: branchLife4cutsHCM, prefix: "life4cuts.hcm", partnerId: partnerLife4cutsId, name: "Life4cuts Quận 1" },
+    { branch: branchExtrimHN, prefix: "extrim.hn", partnerId: partnerExtrimId, name: "Extrim Đống Đa" },
+    { branch: branchExtrimHCM, prefix: "extrim.hcm", partnerId: partnerExtrimId, name: "Extrim Quận 3" },
+    { branch: branchGo2JoyHN, prefix: "go2joy.hn", partnerId: partnerGo2JoyId, name: "Go2Joy Cầu Giấy" },
+    { branch: branchGo2JoyHCM, prefix: "go2joy.hcm", partnerId: partnerGo2JoyId, name: "Go2Joy Quận 5" },
+    { branch: branchHoaYeuThuongHN, prefix: "hoayeuthuong.hn", partnerId: partnerHoaYeuThuongId, name: "Hoa Yêu Thương Lạc Trung" },
+    { branch: branchHoaYeuThuongHCM, prefix: "hoayeuthuong.hcm", partnerId: partnerHoaYeuThuongId, name: "Hoa Yêu Thương Quận 3" },
+    { branch: branchWestwayHN, prefix: "westway.hn", partnerId: partnerWestwayId, name: "Westway Trần Duy Hưng" },
+    { branch: branchWestwayHCM, prefix: "westway.hcm", partnerId: partnerWestwayId, name: "Westway Thảo Điền" },
+    { branch: branchSuoiTienHCM, prefix: "suoitien.hcm", partnerId: partnerSuoiTienId, name: "Suối Tiên Quận 9" },
+  ];
+
+  console.log(`Đang tự động sinh ${allBranches.length} tài khoản nhân viên chi nhánh...`);
+  for (const item of allBranches) {
+    await prisma.user.create({
+      data: {
+        email: `staff.${item.prefix}@gmail.com`,
+        phone: "092" + Math.floor(Math.random() * 10000000).toString().padStart(7, "0"),
+        passwordHash: DEFAULT_PASSWORD_HASH,
+        fullName: `Nhân viên ${item.name}`,
+        role: "PARTNER_STAFF",
+        partnerId: item.partnerId,
+        branchId: item.branch.branchId,
+        status: "ACTIVE",
+      },
+    });
+  }
+
+  // 5. Tạo một số Audit Logs làm mẫu
   await prisma.auditLog.create({
     data: {
       adminId: admin.userId,
@@ -558,24 +524,11 @@ async function main() {
       adminEmailSnapshot: admin.email,
       actionType: "APPROVE_PARTNER",
       targetEntity: "Partners",
-      targetId: partner1.partnerId,
+      targetId: partnerCongId,
       timestamp: oneMonthAgo,
     },
   });
 
-  await prisma.auditLog.create({
-    data: {
-      adminId: admin.userId,
-      adminNameSnapshot: admin.fullName || "Admin",
-      adminEmailSnapshot: admin.email,
-      actionType: "APPROVE_CAMPAIGN",
-      targetEntity: "Voucher_Campaigns",
-      targetId: campaign1.campaignId,
-      timestamp: oneMonthAgo,
-    },
-  });
-
-  // 8. Dữ liệu nền cho lịch sử hoạt động, nội dung và khiếu nại.
   await prisma.activityLog.createMany({
     data: [
       {
@@ -584,19 +537,19 @@ async function main() {
         category: "ADMIN",
         actionType: "APPROVE_PARTNER",
         targetEntity: "Partners",
-        targetId: partner1.partnerId,
+        targetId: partnerCongId,
         metadata: { source: "seed" },
         occurredAt: oneMonthAgo,
       },
       {
-        actorUserId: customer1.userId,
+        actorUserId: createdCustomers[0].userId,
         actorRoleSnapshot: "CUSTOMER",
-        category: "TRANSACTION",
-        actionType: "PAYMENT_SUCCEEDED",
-        targetEntity: "Orders",
-        targetId: order1.orderId,
-        metadata: { paymentProvider: "STRIPE" },
-        occurredAt: oneMonthAgo,
+        category: "AUTH",
+        actionType: "USER_LOGIN",
+        targetEntity: "Users",
+        targetId: createdCustomers[0].userId,
+        metadata: { client: "web" },
+        occurredAt: oneWeekAgo,
       },
     ],
   });
@@ -629,23 +582,7 @@ async function main() {
     ],
   });
 
-  await prisma.complaint.create({
-    data: {
-      customerId: customer1.userId,
-      orderId: order1.orderId,
-      campaignId: campaign1.campaignId,
-      type: "ORDER",
-      subject: "Cần hỗ trợ về điều kiện sử dụng",
-      description: "Khách hàng cần xác nhận lại chi nhánh áp dụng của voucher.",
-      status: "RESOLVED",
-      resolutionResponse: "Đã xác nhận voucher áp dụng tại hai chi nhánh ABC trong danh sách.",
-      resolvedById: admin.userId,
-      resolvedAt: oneWeekAgo,
-      createdAt: oneMonthAgo,
-    },
-  });
-
-  console.log("Đã tạo dữ liệu mẫu thành công!");
+  console.log("Đã nạp dữ liệu nền và tài khoản gốc thành công!");
 }
 
 main()
@@ -654,7 +591,7 @@ main()
     pool.end();
   })
   .catch(async (e) => {
-    console.error("Lỗi khi seed dữ liệu:", e);
+    console.error("Lỗi khi seed dữ liệu nền:", e);
     await prisma.$disconnect();
     pool.end();
     process.exit(1);

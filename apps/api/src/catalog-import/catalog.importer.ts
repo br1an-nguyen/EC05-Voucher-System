@@ -7,7 +7,7 @@ import { validateNormalizedCatalog } from './catalog.validator';
 
 const asBoolean = (value: string): boolean => value.toLowerCase() === 'true';
 const compoundKey = (source: string, externalId: string): string => `${source}::${externalId}`;
-const IMPORT_TRANSACTION_TIMEOUT_MS = 120_000;
+const IMPORT_TRANSACTION_TIMEOUT_MS = 300_000;
 
 async function resolveCatalogPartnerId(
   prisma: PrismaService,
@@ -190,6 +190,33 @@ async function applyDataset(
         partnerId,
       );
 
+      // Truy vấn tất cả đối tác APPROVED một lần duy nhất để làm bộ nhớ đệm (caching)
+      const approvedPartners = await tx.partner.findMany({
+        where: { approvalStatus: "APPROVED" },
+        select: { partnerId: true, companyName: true },
+      });
+
+      const partnerCong = approvedPartners.find(p => p.companyName.includes("Cộng Cà Phê"));
+      const partnerHighlands = approvedPartners.find(p => p.companyName.includes("Cà phê Cao Nguyên"));
+      const partnerCgv = approvedPartners.find(p => p.companyName.includes("CJ CGV"));
+      const partnerGrab = approvedPartners.find(p => p.companyName.includes("Grab"));
+      const partnerTousLesJours = approvedPartners.find(p => p.companyName.includes("TOUS les JOURS"));
+      const partnerPizza4Ps = approvedPartners.find(p => p.companyName.includes("Pizza 4P"));
+      const partnerLotteria = approvedPartners.find(p => p.companyName.includes("Lotteria"));
+      const partnerDottie = approvedPartners.find(p => p.companyName.includes("Dottie"));
+      const partnerBacTom = approvedPartners.find(p => p.companyName.includes("Bác Tôm"));
+      const partnerKMarket = approvedPartners.find(p => p.companyName.includes("K-Market"));
+      const partnerCocoSpa = approvedPartners.find(p => p.companyName.includes("Coco Spa"));
+      const partnerHPlus = approvedPartners.find(p => p.companyName.includes("H Plus"));
+      const partnerSmileBeauty = approvedPartners.find(p => p.companyName.includes("Smile Beauty"));
+      const partnerLotteCinema = approvedPartners.find(p => p.companyName.includes("Lotte Cinema"));
+      const partnerLife4cuts = approvedPartners.find(p => p.companyName.includes("Life4cuts"));
+      const partnerExtrim = approvedPartners.find(p => p.companyName.includes("Extrim"));
+      const partnerGo2Joy = approvedPartners.find(p => p.companyName.includes("Go2Joy"));
+      const partnerHoaYeuThuong = approvedPartners.find(p => p.companyName.includes("Hoa Yêu Thương"));
+      const partnerWestway = approvedPartners.find(p => p.companyName.includes("Westway"));
+      const partnerSuoiTien = approvedPartners.find(p => p.companyName.includes("Suối Tiên"));
+
       for (const row of dataset.campaigns) {
         const existing = await tx.voucherCampaign.findUnique({
           where: {
@@ -200,6 +227,62 @@ async function applyDataset(
           },
           select: { campaignId: true },
         });
+
+        // Tìm brand của campaign để gán partnerId chính xác cho đối tác tương ứng (sử dụng cache)
+        let campaignPartnerId = partnerId;
+        const campaignBrand = dataset.campaignBrands.find(
+          (cb) => cb.campaign_external_id === row.external_id,
+        );
+        if (campaignBrand) {
+          const brandKey = compoundKey(campaignBrand.brand_external_source, campaignBrand.brand_external_id);
+          const brandId = brandIds.get(brandKey);
+          if (brandId) {
+            const brandObj = dataset.brands.find((b) => b.external_id === campaignBrand.brand_external_id);
+            const displayName = brandObj?.display_name.toLowerCase() || '';
+            if (displayName.includes('cộng') || displayName.includes('cong')) {
+              if (partnerCong) campaignPartnerId = partnerCong.partnerId;
+            } else if (displayName.includes('highlands')) {
+              if (partnerHighlands) campaignPartnerId = partnerHighlands.partnerId;
+            } else if (displayName.includes('cgv')) {
+              if (partnerCgv) campaignPartnerId = partnerCgv.partnerId;
+            } else if (displayName.includes('grab')) {
+              if (partnerGrab) campaignPartnerId = partnerGrab.partnerId;
+            } else if (displayName.includes('tous') || displayName.includes('jours')) {
+              if (partnerTousLesJours) campaignPartnerId = partnerTousLesJours.partnerId;
+            } else if (displayName.includes('4p')) {
+              if (partnerPizza4Ps) campaignPartnerId = partnerPizza4Ps.partnerId;
+            } else if (displayName.includes('lotteria')) {
+              if (partnerLotteria) campaignPartnerId = partnerLotteria.partnerId;
+            } else if (displayName.includes('dottie')) {
+              if (partnerDottie) campaignPartnerId = partnerDottie.partnerId;
+            } else if (displayName.includes('tôm') || displayName.includes('tom')) {
+              if (partnerBacTom) campaignPartnerId = partnerBacTom.partnerId;
+            } else if (displayName.includes('k-market') || displayName.includes('kmarket')) {
+              if (partnerKMarket) campaignPartnerId = partnerKMarket.partnerId;
+            } else if (displayName.includes('coco') || displayName.includes('spa')) {
+              if (partnerCocoSpa) campaignPartnerId = partnerCocoSpa.partnerId;
+            } else if (displayName.includes('h plus') || displayName.includes('hplus')) {
+              if (partnerHPlus) campaignPartnerId = partnerHPlus.partnerId;
+            } else if (displayName.includes('smile') || displayName.includes('beauty') || displayName.includes('nha khoa')) {
+              if (partnerSmileBeauty) campaignPartnerId = partnerSmileBeauty.partnerId;
+            } else if (displayName.includes('lotte') && displayName.includes('cinema')) {
+              if (partnerLotteCinema) campaignPartnerId = partnerLotteCinema.partnerId;
+            } else if (displayName.includes('life4cuts') || displayName.includes('life 4 cuts')) {
+              if (partnerLife4cuts) campaignPartnerId = partnerLife4cuts.partnerId;
+            } else if (displayName.includes('extrim')) {
+              if (partnerExtrim) campaignPartnerId = partnerExtrim.partnerId;
+            } else if (displayName.includes('go2joy')) {
+              if (partnerGo2Joy) campaignPartnerId = partnerGo2Joy.partnerId;
+            } else if (displayName.includes('hoa yêu thương') || displayName.includes('hoa yeu thuong')) {
+              if (partnerHoaYeuThuong) campaignPartnerId = partnerHoaYeuThuong.partnerId;
+            } else if (displayName.includes('westway')) {
+              if (partnerWestway) campaignPartnerId = partnerWestway.partnerId;
+            } else if (displayName.includes('suối tiên') || displayName.includes('suoi tien')) {
+              if (partnerSuoiTien) campaignPartnerId = partnerSuoiTien.partnerId;
+            }
+          }
+        }
+
         const sharedData = {
           title: row.title,
           description: row.description,
@@ -220,13 +303,16 @@ async function applyDataset(
         const campaign = existing
           ? await tx.voucherCampaign.update({
               where: { campaignId: existing.campaignId },
-              data: sharedData,
+              data: {
+                ...sharedData,
+                partnerId: campaignPartnerId,
+              },
               select: { campaignId: true },
             })
           : await tx.voucherCampaign.create({
               data: {
                 ...sharedData,
-                partnerId,
+                partnerId: campaignPartnerId,
                 saleStartTime: new Date(row.sale_start_time),
                 saleEndTime: new Date(row.sale_end_time),
                 usageStartTime: new Date(row.usage_start_time),
@@ -277,7 +363,7 @@ async function applyDataset(
         if (campaignBranches.length > 0) {
           await tx.campaignBranch.createMany({
             data: campaignBranches.map((relation) => ({
-              partnerId,
+              partnerId: campaignPartnerId,
               campaignId: campaign.campaignId,
               branchId:
                 branchIds.get(
