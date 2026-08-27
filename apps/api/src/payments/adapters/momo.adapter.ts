@@ -26,7 +26,7 @@ export class MomoAdapter implements PaymentProvider {
     const orderInfo = `Thanh toan don hang ${orderCode}`;
     const redirectUrl = this.returnUrl;
     const ipnUrl = this.notifyUrl;
-    const requestType = 'payWithATM';
+    const requestType = 'captureWallet'; // Thử dùng captureWallet thay vì payWithATM
     const extraData = '';
 
     const rawSignature = `accessKey=${this.accessKey}&amount=${amountVal}&extraData=${extraData}&ipnUrl=${ipnUrl}&orderId=${orderId}&orderInfo=${orderInfo}&partnerCode=${this.partnerCode}&redirectUrl=${redirectUrl}&requestId=${requestId}&requestType=${requestType}`;
