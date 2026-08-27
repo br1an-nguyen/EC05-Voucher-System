@@ -36,6 +36,8 @@ const voucherCategories = [
 const campaignSchema = z.object({
   title: z.string().min(1, 'Tiêu đề không được để trống.'),
   description: z.string().optional(),
+  termsAndConditions: z.string().optional(),
+  thumbnailUrl: z.string().optional(),
   category: z.string().min(1, 'Vui lòng chọn danh mục.'),
   originalPrice: z.string().min(1, 'Giá gốc không được để trống.'),
   salePrice: z.string().min(1, 'Giá bán không được để trống.'),
@@ -79,6 +81,8 @@ interface CampaignDetail {
   campaignId: string;
   title: string;
   description: string | null;
+  termsAndConditions: string | null;
+  thumbnailUrl: string | null;
   category: string | null;
   originalPrice: number;
   salePrice: number;
@@ -125,6 +129,9 @@ export default function VoucherCampaignForm({ campaignId }: VoucherCampaignFormP
       isMultiUse: false,
       branchIds: [],
       category: '',
+      description: '',
+      termsAndConditions: '',
+      thumbnailUrl: '',
       originalPrice: '',
       salePrice: '',
       capacity: '',
@@ -134,6 +141,7 @@ export default function VoucherCampaignForm({ campaignId }: VoucherCampaignFormP
 
   const isMultiUseSelected = useWatch({ control, name: 'isMultiUse' });
   const selectedBranchIds = useWatch({ control, name: 'branchIds' }) || [];
+  const thumbnailUrlValue = useWatch({ control, name: 'thumbnailUrl' }) || '';
   const multiUseRegistration = register('isMultiUse');
 
   // Load chi nhánh và dữ liệu hiện tại khi chỉnh sửa.
@@ -155,6 +163,8 @@ export default function VoucherCampaignForm({ campaignId }: VoucherCampaignFormP
           reset({
             title: campaign.title,
             description: campaign.description ?? '',
+            termsAndConditions: campaign.termsAndConditions ?? '',
+            thumbnailUrl: campaign.thumbnailUrl ?? '',
             category: campaign.category ?? '',
             originalPrice: String(campaign.originalPrice),
             salePrice: String(campaign.salePrice),
@@ -196,6 +206,8 @@ export default function VoucherCampaignForm({ campaignId }: VoucherCampaignFormP
     const payload = {
       title: data.title,
       description: data.description,
+      termsAndConditions: data.termsAndConditions,
+      thumbnailUrl: data.thumbnailUrl,
       category: data.category,
       originalPrice: Number(data.originalPrice),
       salePrice: Number(data.salePrice),
@@ -330,7 +342,7 @@ export default function VoucherCampaignForm({ campaignId }: VoucherCampaignFormP
 
             <div>
               <label className="block text-xs font-semibold text-foreground mb-1.5">
-                Số lượng phát hành (Sức chứa)
+                Số lượng phát hành
               </label>
               <input
                 type="number"
@@ -347,14 +359,58 @@ export default function VoucherCampaignForm({ campaignId }: VoucherCampaignFormP
           {/* MÔ TẢ CHI TIẾT */}
           <div>
             <label className="block text-xs font-semibold text-foreground mb-1.5">
-              Mô tả chi tiết & Điều khoản sử dụng
+              Thông tin sản phẩm
             </label>
             <textarea
-              rows={4}
+              rows={3}
               {...register('description')}
-              placeholder="Mô tả chi tiết quyền lợi của voucher, chính sách áp dụng hoặc các món trong buffet..."
+              placeholder="Mô tả chi tiết quyền lợi của voucher, thông tin nổi bật của sản phẩm..."
               className="block w-full rounded-lg border border-border bg-background py-2.5 px-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all"
             />
+          </div>
+
+          {/* ĐIỀU KHOẢN SỬ DỤNG */}
+          <div>
+            <label className="block text-xs font-semibold text-foreground mb-1.5">
+              Chú ý & Điều kiện áp dụng
+            </label>
+            <textarea
+              rows={3}
+              {...register('termsAndConditions')}
+              placeholder="Ví dụ: Mỗi voucher sử dụng 1 lần, không áp dụng đồng thời khuyến mãi khác, không quy đổi tiền mặt..."
+              className="block w-full rounded-lg border border-border bg-background py-2.5 px-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all"
+            />
+          </div>
+
+          {/* HÌNH ẢNH VOUCHER */}
+          <div>
+            <label className="block text-xs font-semibold text-foreground mb-1.5">
+              Đường dẫn hình ảnh đại diện (URL)
+            </label>
+            <input
+              type="text"
+              {...register('thumbnailUrl')}
+              placeholder="Ví dụ: https://images.unsplash.com/photo-... hoặc https://img.giftpop.vn/..."
+              className="block w-full rounded-lg border border-border bg-background py-2.5 px-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all"
+            />
+            {errors.thumbnailUrl && (
+              <p className="mt-1 text-xs text-primary">{errors.thumbnailUrl.message}</p>
+            )}
+            
+            {/* Image Preview */}
+            {thumbnailUrlValue && /^https?:\/\/.+/i.test(thumbnailUrlValue) && (
+              <div className="mt-3 relative h-32 w-full max-w-[240px] rounded-lg overflow-hidden border border-border bg-slate-50 flex items-center justify-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={thumbnailUrlValue}
+                  alt="Ảnh xem trước"
+                  className="h-full w-full object-contain"
+                  onError={(e) => {
+                    (e.target as HTMLElement).style.display = 'none';
+                  }}
+                />
+              </div>
+            )}
           </div>
         </div>
 
@@ -384,7 +440,7 @@ export default function VoucherCampaignForm({ campaignId }: VoucherCampaignFormP
 
             <div>
               <label className="block text-xs font-semibold text-foreground mb-1.5">
-                Giá khuyến mãi bán ra (Sale Price - RB-02)
+                Giá khuyến mãi bán ra (Sale Price)
               </label>
               <input
                 type="number"
@@ -416,7 +472,7 @@ export default function VoucherCampaignForm({ campaignId }: VoucherCampaignFormP
 
             <div>
               <label className="block text-xs font-semibold text-foreground mb-1.5">
-                Thời gian kết thúc mở bán (RB-03)
+                Thời gian kết thúc mở bán
               </label>
               <input
                 type="datetime-local"
@@ -471,7 +527,7 @@ export default function VoucherCampaignForm({ campaignId }: VoucherCampaignFormP
           {/* DANH SÁCH CHI NHÁNH CHỌN (RB-09) */}
           <div>
             <label className="block text-xs font-semibold text-foreground mb-2">
-              Lựa chọn chi nhánh áp dụng quét mã (Ít nhất 1 chi nhánh)
+              Lựa chọn chi nhánh áp dụng mã (Ít nhất 1 chi nhánh)
             </label>
             {loadingBranches ? (
               <div className="py-4 text-center">
