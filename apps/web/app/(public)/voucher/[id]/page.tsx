@@ -103,6 +103,7 @@ export default function VoucherDetailPage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [purchaseQty, setPurchaseQty] = useState(1);
+  const [cartQuantity, setCartQuantity] = useState(0);
   const [demoMessage, setDemoMessage] = useState<string | null>(null);
 
   // States cho module Đánh giá & Phản hồi (Commit 24)
@@ -135,6 +136,27 @@ export default function VoucherDetailPage() {
     }
   }, [campaignId]);
 
+  useEffect(() => {
+    async function loadCartQuantity() {
+      if (user?.role === 'CUSTOMER') {
+        try {
+          const cartItems = await apiRequest<any[]>('/cart');
+          const item = cartItems.find((i) => i.campaignId === campaignId);
+          if (item) {
+            setCartQuantity(item.quantity);
+          }
+        } catch (e) {
+          // Ignore error
+        }
+      }
+    }
+    loadCartQuantity();
+    
+    const handleCartUpdated = () => loadCartQuantity();
+    window.addEventListener('cart-updated', handleCartUpdated);
+    return () => window.removeEventListener('cart-updated', handleCartUpdated);
+  }, [user, campaignId]);
+
   const handleReviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmittingReview(true);
@@ -165,28 +187,50 @@ export default function VoucherDetailPage() {
     }
   };
 
-  const handlePurchaseClick = async () => {
+  const handleAddToCart = async () => {
     if (!user) {
-      // Điều hướng về trang login nếu chưa đăng nhập
-      router.push('/login?redirect=' + encodeURIComponent(window.location.pathname));
+      router.push('/login?redirect=' + encodeURIComponent(window.location.pathname + '?intent=add_to_cart&campaignId=' + campaignId));
       return;
     }
 
     setErrorMsg(null);
     try {
-      await apiRequest<void>('/cart/items', {
+      await apiRequest<any>('/cart/items', {
         method: 'POST',
         body: JSON.stringify({
           campaignId,
           quantity: purchaseQty,
         }),
       });
-      setDemoMessage(`Đã thêm thành công ${purchaseQty} voucher vào giỏ hàng! Đang chuyển hướng...`);
+      window.dispatchEvent(new Event('cart-updated'));
+      setDemoMessage(`Đã thêm thành công ${purchaseQty} voucher vào giỏ hàng!`);
       setTimeout(() => {
-        router.push('/cart');
-      }, 1200);
+        setDemoMessage(null);
+      }, 3000);
     } catch (error: unknown) {
       setErrorMsg(getErrorMessage(error, 'Không thể thêm voucher vào giỏ hàng.'));
+    }
+  };
+
+  const handleBuyNow = async () => {
+    if (!user) {
+      router.push('/login?redirect=' + encodeURIComponent(window.location.pathname + '?intent=buy_now&campaignId=' + campaignId));
+      return;
+    }
+
+    setErrorMsg(null);
+    try {
+      const data = await apiRequest<any>('/cart/items', {
+        method: 'POST',
+        body: JSON.stringify({
+          campaignId,
+          quantity: purchaseQty,
+        }),
+      });
+      window.dispatchEvent(new Event('cart-updated'));
+      router.push('/checkout?items=' + data.cartItemId);
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, 'Không thể mua ngay.'));
     }
   };
 
@@ -213,6 +257,7 @@ export default function VoucherDetailPage() {
 
   const remaining = campaign.capacity - campaign.soldQuantity;
   const isSoldOut = remaining <= 0;
+  const maxAllowed = Math.max(0, Math.min(remaining, 10 - cartQuantity));
   const discountPct = Math.round(((Number(campaign.originalPrice) - Number(campaign.salePrice)) / Number(campaign.originalPrice)) * 100);
 
   return (
@@ -510,7 +555,9 @@ export default function VoucherDetailPage() {
               {/* Bộ chọn số lượng (nếu chưa hết hàng) */}
               {!isSoldOut && (
                 <div className="border-t border-border/60 pt-4 space-y-2">
-                  <label className="block text-xs font-semibold text-foreground">Chọn số lượng mua</label>
+                  <label className="block text-xs font-semibold text-foreground">
+                    Chọn số lượng mua {cartQuantity > 0 && <span className="text-primary font-normal">(Đã có {cartQuantity} trong giỏ)</span>}
+                  </label>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -525,14 +572,17 @@ export default function VoucherDetailPage() {
                     </span>
                     <button
                       type="button"
-                      disabled={purchaseQty >= Math.min(remaining, 10)}
+                      disabled={purchaseQty >= maxAllowed}
                       onClick={() => setPurchaseQty(purchaseQty + 1)}
                       className="h-8 w-8 rounded-lg border border-border flex items-center justify-center font-bold text-foreground hover:bg-slate-50 disabled:opacity-50"
                     >
                       +
                     </button>
-                    <span className="text-[10px] text-muted ml-1">(Tối đa 10)</span>
+                    <span className="text-[10px] text-muted ml-1">(Tối đa {maxAllowed})</span>
                   </div>
+                  {maxAllowed === 0 && (
+                    <p className="text-xs text-red-500 mt-1">Bạn đã đạt giới hạn tối đa 10 voucher trong giỏ hàng.</p>
+                  )}
                 </div>
               )}
 
@@ -545,15 +595,26 @@ export default function VoucherDetailPage() {
               )}
 
               {/* Nút Đặt mua */}
-              <button
-                type="button"
-                onClick={handlePurchaseClick}
-                disabled={isSoldOut}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary hover:bg-primary-hover text-white py-3 text-sm font-bold disabled:bg-slate-300 disabled:text-slate-500 transition-colors shadow shadow-primary/10"
-              >
-                <ShoppingCart className="h-4 w-4" />
-                {isSoldOut ? 'Đã hết hàng' : user ? 'Mua Voucher ngay' : 'Đăng nhập để mua'}
-              </button>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={handleAddToCart}
+                  disabled={isSoldOut || maxAllowed === 0}
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border-2 border-primary bg-primary/5 hover:bg-primary/10 text-primary py-3 text-sm font-bold disabled:border-slate-300 disabled:text-slate-500 transition-colors"
+                >
+                  <ShoppingCart className="h-4 w-4 shrink-0" />
+                  {isSoldOut ? 'Hết hàng' : 'Thêm vào giỏ'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBuyNow}
+                  disabled={isSoldOut || maxAllowed === 0}
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-primary hover:bg-primary-hover text-white py-3 text-sm font-bold disabled:bg-slate-300 disabled:text-slate-500 transition-colors shadow shadow-primary/10"
+                >
+                  <Ticket className="h-4 w-4 shrink-0" />
+                  {isSoldOut ? 'Hết hàng' : 'Mua ngay'}
+                </button>
+              </div>
 
             </div>
           </div>

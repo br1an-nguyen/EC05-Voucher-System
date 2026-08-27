@@ -190,7 +190,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, [logout, session, user]);
 
-  const login = async (loginData: LoginData) => {
+  const login = async (loginData: LoginData, redirectPath?: string | null) => {
     setLoading(true);
     try {
       const auth = await apiRequest<AuthResponse>("/auth/login", {
@@ -200,7 +200,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       acceptAuthSession(auth);
       applySession(auth);
 
-      if (auth.user.role === "ADMIN") {
+      if (redirectPath) {
+        router.push(redirectPath);
+      } else if (auth.user.role === "ADMIN") {
         router.push("/admin");
       } else if (auth.user.role === "PARTNER") {
         router.push("/partner");

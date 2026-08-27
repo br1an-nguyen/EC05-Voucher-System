@@ -59,6 +59,7 @@ export default function VoucherCard({
   ];
   const bgGradient = gradients[index % gradients.length];
   const [isAdding, setIsAdding] = useState(false);
+  const [isBuying, setIsBuying] = useState(false);
   const [toast, setToast] = useState<CartToast | null>(null);
   const dismissToastTimer = useRef<number | null>(null);
 
@@ -84,7 +85,7 @@ export default function VoucherCard({
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (isAdding) return;
+    if (isAdding || isBuying) return;
 
     setIsAdding(true);
     try {
@@ -115,11 +116,53 @@ export default function VoucherCard({
       );
       if (needsLogin) {
         window.setTimeout(() => {
-          router.push("/login?redirect=/");
+          const redirectPath = encodeURIComponent(`/?intent=add_to_cart&campaignId=${c.campaignId}`);
+          router.push(`/login?redirect=${redirectPath}`);
         }, 900);
       }
     } finally {
       setIsAdding(false);
+    }
+  };
+
+  const handleBuyNow = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isAdding || isBuying) return;
+
+    setIsBuying(true);
+    try {
+      const data = await apiRequest<any>("/cart/items", {
+        method: "POST",
+        body: JSON.stringify({
+          campaignId: c.campaignId,
+          quantity: 1,
+        }),
+      });
+      window.dispatchEvent(new Event("cart-updated"));
+      
+      const cartItemId = data.cartItemId;
+      router.push(`/checkout?items=${cartItemId}`);
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Không thể mua ngay.";
+      const needsLogin = /unauthorized|đăng nhập/i.test(errorMessage);
+      showToast(
+        {
+          kind: "error",
+          message: needsLogin
+            ? "Vui lòng đăng nhập để mua voucher."
+            : errorMessage,
+        },
+        needsLogin ? 1200 : 4500,
+      );
+      if (needsLogin) {
+        window.setTimeout(() => {
+          const redirectPath = encodeURIComponent(`/?intent=buy_now&campaignId=${c.campaignId}`);
+          router.push(`/login?redirect=${redirectPath}`);
+        }, 900);
+      }
+      setIsBuying(false);
     }
   };
 
@@ -261,7 +304,7 @@ export default function VoucherCard({
             </span>
           </div>
 
-          <div className="mt-4 flex items-end justify-between pr-10">
+          <div className="mt-4 flex items-end justify-between">
             <div>
               <div className="text-xs text-slate-400 line-through font-medium mb-0.5">
                 {Number(c.originalPrice).toLocaleString("vi-VN")} đ
@@ -270,6 +313,32 @@ export default function VoucherCard({
                 {Number(c.salePrice).toLocaleString("vi-VN")}
                 <span className="text-sm font-bold align-top ml-0.5">đ</span>
               </div>
+            </div>
+
+            <div 
+              className="flex items-center gap-2 relative z-10" 
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+            >
+              <button
+                onClick={handleBuyNow}
+                disabled={isAdding || isBuying}
+                title="Mua ngay"
+                className="flex h-9 px-3 items-center justify-center rounded-lg bg-primary text-white text-[11px] font-bold shadow-sm transition-colors hover:bg-primary-hover disabled:cursor-wait disabled:opacity-70"
+              >
+                {isBuying ? <span className="animate-spin w-3 h-3 border-2 border-white border-t-transparent rounded-full mr-1.5"></span> : null}
+                Mua ngay
+              </button>
+              <button
+                onClick={handleAddToCart}
+                disabled={isAdding || isBuying}
+                title="Thêm vào giỏ hàng"
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary transition-colors hover:bg-primary hover:text-white disabled:cursor-wait disabled:opacity-70"
+              >
+                <Plus className={`h-4 w-4 ${isAdding ? "animate-spin" : ""}`} />
+              </button>
             </div>
           </div>
 
@@ -290,15 +359,6 @@ export default function VoucherCard({
         </div>
       </Link>
 
-      {/* Action Button: Add to Cart */}
-      <button
-        onClick={handleAddToCart}
-        disabled={isAdding}
-        title="Thêm vào giỏ hàng"
-        className="absolute bottom-[4.5rem] right-4 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-primary/20 bg-primary/10 text-primary shadow-sm transition-all duration-300 hover:bg-primary hover:text-white disabled:cursor-wait disabled:opacity-70"
-      >
-        <Plus className={`h-5 w-5 ${isAdding ? "animate-spin" : ""}`} />
-      </button>
     </motion.div>
   );
 }
