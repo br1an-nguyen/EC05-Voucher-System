@@ -62,12 +62,12 @@ const profileSchema = z
   .refine(
     (data) => {
       if (data.newPassword && data.newPassword.length > 0) {
-        return data.newPassword.length >= 6;
+        return data.newPassword.length >= 8;
       }
       return true;
     },
     {
-      message: "Mật khẩu mới phải chứa ít nhất 6 ký tự.",
+      message: "Mật khẩu mới phải chứa ít nhất 8 ký tự.",
       path: ["newPassword"],
     },
   );
@@ -158,14 +158,14 @@ export default function UserProfilePage() {
         },
       );
 
-      if (user) {
-        setUser({ ...user, ...updatedUser });
-      }
-
       if (data.newPassword) {
         alert("Mật khẩu đã được thay đổi. Vui lòng đăng nhập lại.");
         await logout();
         return;
+      }
+
+      if (user) {
+        setUser({ ...user, ...updatedUser });
       }
 
       setSuccessMsg("Cập nhật thông tin tài khoản thành công!");
