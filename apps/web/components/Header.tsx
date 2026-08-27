@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
 import { apiRequest } from '../lib/api';
 import { 
@@ -49,7 +49,6 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
   const { user, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const [keyword, setKeyword] = useState(initialKeyword);
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -66,7 +65,8 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
             let count = 0;
             if (Array.isArray(data)) {
               const isCheckout = pathname.startsWith('/checkout');
-              const checkoutItems = searchParams.get('items')?.split(',') || [];
+              const urlParams = new URLSearchParams(window.location.search);
+              const checkoutItems = urlParams.get('items')?.split(',') || [];
               
               data.forEach(item => {
                 if (isCheckout && item.cartItemId && checkoutItems.includes(item.cartItemId)) {
@@ -89,7 +89,7 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
 
     window.addEventListener('cart-updated', fetchCart);
     return () => window.removeEventListener('cart-updated', fetchCart);
-  }, [user, pathname, searchParams]);
+  }, [user, pathname]);
 
   // Fetch suggestions with debounce
   useEffect(() => {
