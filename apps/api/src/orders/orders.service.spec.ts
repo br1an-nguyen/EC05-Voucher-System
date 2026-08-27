@@ -39,12 +39,15 @@ describe('OrdersService checkout', () => {
       inventoryReservation: { create: jest.fn() },
     };
     const prisma = { $transaction: jest.fn((callback) => callback(tx)) };
-    return { campaign, prisma, tx };
+    const audit = {
+      logActivity: jest.fn().mockResolvedValue(undefined),
+    };
+    return { campaign, prisma, tx, audit };
   }
 
   it('rejects a campaign that is not currently approved for sale', async () => {
-    const { prisma, tx } = createTransaction({ status: VoucherStatus.DRAFT });
-    const service = new OrdersService(prisma as any);
+    const { prisma, tx, audit } = createTransaction({ status: VoucherStatus.DRAFT });
+    const service = new OrdersService(prisma as any, audit as any);
 
     await expect(
       service.checkout('00000000-0000-4000-8000-000000000001', {
@@ -55,8 +58,8 @@ describe('OrdersService checkout', () => {
   });
 
   it('uses the locked current price and exact decimal arithmetic', async () => {
-    const { campaign, prisma, tx } = createTransaction();
-    const service = new OrdersService(prisma as any);
+    const { campaign, prisma, tx, audit } = createTransaction();
+    const service = new OrdersService(prisma as any, audit as any);
 
     await service.checkout('00000000-0000-4000-8000-000000000001', {
       paymentProvider: PaymentProviderType.STRIPE,

@@ -66,7 +66,7 @@ describe('ComplaintsService complaint integrity', () => {
     'rejects a foreign %s reference',
     async (_label, reference, repository) => {
       const { service, tx } = createContext();
-      tx[repository].findFirst.mockResolvedValue(null);
+      (tx as Record<string, any>)[repository].findFirst.mockResolvedValue(null);
 
       await expect(
         service.create(customerId, {
