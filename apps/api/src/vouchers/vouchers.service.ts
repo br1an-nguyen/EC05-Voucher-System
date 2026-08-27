@@ -872,6 +872,15 @@ export class VouchersService {
         [
           'đồ ăn',
           'ăn uống',
+          'đồ uống',
+          'nước uống',
+          'thức uống',
+          'giải khát',
+          'nước',
+          'trà',
+          'cà phê',
+          'sinh tố',
+          'nước ép',
           'ẩm thực',
           'nhà hàng',
           'quán ăn',
@@ -895,7 +904,7 @@ export class VouchersService {
           'gội đầu',
         ].some((w) => lowerKeyword.includes(w))
       ) {
-        mappedCategories.push('Beauty & Spa');
+        mappedCategories.push('Beauty & Spa', 'Beauty', 'BEAUTY_HEALTH');
       }
       if (
         [
@@ -907,14 +916,14 @@ export class VouchersService {
           'thực phẩm',
         ].some((w) => lowerKeyword.includes(w))
       ) {
-        mappedCategories.push('Shopping');
+        mappedCategories.push('Shopping', 'SHOPPING_RETAIL');
       }
       if (
-        ['giải trí', 'xem phim', 'vui chơi', 'du lịch', 'khách sạn', 'vé'].some(
+        ['giải trí', 'xem phim', 'vui chơi', 'du lịch', 'khách sạn', 'vé', 'công viên'].some(
           (w) => lowerKeyword.includes(w),
         )
       ) {
-        mappedCategories.push('Entertainment');
+        mappedCategories.push('Entertainment', 'ENTERTAINMENT');
       }
 
       const searchConditions: any[] = [
