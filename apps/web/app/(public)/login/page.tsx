@@ -42,7 +42,8 @@ function LoginForm() {
     };
 
     try {
-      await login(payload);
+      const redirectPath = searchParams.get('redirect');
+      await login(payload, redirectPath);
     } catch (error: unknown) {
       setErrorMsg(getErrorMessage(error, 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.'));
     }
