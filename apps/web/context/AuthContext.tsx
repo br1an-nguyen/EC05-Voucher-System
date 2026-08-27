@@ -200,16 +200,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       acceptAuthSession(auth);
       applySession(auth);
 
-      if (redirectPath) {
-        router.push(redirectPath);
-      } else if (auth.user.role === "ADMIN") {
+      if (auth.user.role === "ADMIN") {
         router.push("/admin");
       } else if (auth.user.role === "PARTNER") {
         router.push("/partner");
       } else if (auth.user.role === "PARTNER_STAFF") {
         router.push("/partner/redeem");
       } else {
-        router.push("/");
+        if (redirectPath) {
+          router.push(redirectPath);
+        } else {
+          router.push("/");
+        }
       }
     } finally {
       setLoading(false);
