@@ -41,13 +41,20 @@ export class OrdersService {
         FOR UPDATE
       `;
 
-      const cartItems = await tx.cartItem.findMany({
+      let cartItems = await tx.cartItem.findMany({
         where: { customerId },
         orderBy: { campaignId: 'asc' },
       });
 
+      const selectedIds = dto.cartItemIds;
+      if (selectedIds && selectedIds.length > 0) {
+        cartItems = cartItems.filter((item) =>
+          selectedIds.includes(item.cartItemId),
+        );
+      }
+
       if (cartItems.length === 0) {
-        throw new BadRequestException('Giỏ hàng của bạn đang trống.');
+        throw new BadRequestException('Giỏ hàng của bạn đang trống hoặc không có sản phẩm nào được chọn.');
       }
 
       let totalAmount = new Prisma.Decimal(0);
@@ -182,7 +189,10 @@ export class OrdersService {
       }
 
       await tx.cartItem.deleteMany({
-        where: { customerId },
+        where: {
+          customerId,
+          cartItemId: { in: cartItems.map((item) => item.cartItemId) },
+        },
       });
 
       return order;
@@ -302,9 +312,13 @@ export class OrdersService {
           );
         }
 
-        if (item.refundWindowHoursSnapshot && item.refundWindowHoursSnapshot > 0) {
+        if (
+          item.refundWindowHoursSnapshot &&
+          item.refundWindowHoursSnapshot > 0
+        ) {
           const refundDeadline = new Date(
-            order.createdAt.getTime() + item.refundWindowHoursSnapshot * 3600 * 1000,
+            order.createdAt.getTime() +
+              item.refundWindowHoursSnapshot * 3600 * 1000,
           );
           if (now > refundDeadline) {
             throw new BadRequestException(
@@ -322,15 +336,17 @@ export class OrdersService {
       }
 
       // 3. Tìm toàn bộ các mã voucher đã phát hành từ đơn hàng này
-      const voucherCodes = await tx.voucherCode.findMany({
+      const usedVoucherCode = await tx.voucherCode.findFirst({
         where: {
           orderItem: { orderId: order.orderId },
+          OR: [{ status: 'USED' }, { usageLogs: { some: {} } }],
         },
+        select: { codeId: true },
       });
 
-      // Ràng buộc (RB-14): Nếu có bất kỳ mã voucher nào đã dùng (status === USED), từ chối hoàn tiền
-      const hasUsedCode = voucherCodes.some((vc) => vc.status === 'USED');
-      if (hasUsedCode) {
+      // Multi-use vouchers remain AVAILABLE until their final use, therefore
+      // usage history is the authoritative signal for refund eligibility.
+      if (usedVoucherCode) {
         throw new BadRequestException(
           'Không thể hoàn tiền vì đã có ít nhất một mã voucher trong đơn hàng đã được sử dụng.',
         );
@@ -340,7 +356,7 @@ export class OrdersService {
       await tx.voucherCode.updateMany({
         where: {
           orderItem: { orderId: order.orderId },
-          status: 'AVAILABLE',
+          status: { in: ['AVAILABLE', 'LOCKED', 'EXPIRED'] },
         },
         data: { status: 'CANCELLED' },
       });
@@ -368,25 +384,35 @@ export class OrdersService {
 
       // 7. Hoàn lại số lượng tồn kho của voucher chiến dịch (giảm soldQuantity)
       for (const item of order.orderItems) {
-        await tx.voucherCampaign.update({
-          where: { campaignId: item.campaignId },
+        const restored = await tx.voucherCampaign.updateMany({
+          where: {
+            campaignId: item.campaignId,
+            soldQuantity: { gte: item.quantity },
+          },
           data: {
             soldQuantity: { decrement: item.quantity },
           },
         });
+        if (restored.count !== 1) {
+          throw new Error(
+            `Sold quantity is inconsistent for campaign ${item.campaignId}.`,
+          );
+        }
       }
 
-      return updatedOrder;
-    });
+      await this.auditService.logActivity(
+        {
+          actorUserId: customerId,
+          actorRoleSnapshot: 'CUSTOMER',
+          category: ActivityCategory.TRANSACTION,
+          actionType: 'REQUEST_REFUND',
+          targetEntity: 'Order',
+          targetId: orderId,
+        },
+        tx,
+      );
 
-    // 8. Ghi ActivityLog về việc hoàn tiền thành công
-    await this.auditService.logActivity({
-      actorUserId: customerId,
-      actorRoleSnapshot: 'CUSTOMER',
-      category: ActivityCategory.TRANSACTION,
-      actionType: 'REQUEST_REFUND',
-      targetEntity: 'Order',
-      targetId: orderId,
+      return updatedOrder;
     });
 
     return result;
@@ -472,14 +498,15 @@ export class OrdersService {
         );
       }
 
-      const voucherCodes = await tx.voucherCode.findMany({
+      const usedVoucherCode = await tx.voucherCode.findFirst({
         where: {
           orderItem: { orderId: order.orderId },
+          OR: [{ status: 'USED' }, { usageLogs: { some: {} } }],
         },
+        select: { codeId: true },
       });
 
-      const hasUsedCode = voucherCodes.some((vc) => vc.status === 'USED');
-      if (hasUsedCode) {
+      if (usedVoucherCode) {
         throw new BadRequestException(
           'Không thể hoàn tiền vì đã có ít nhất một mã voucher đã được sử dụng.',
         );
@@ -489,7 +516,7 @@ export class OrdersService {
       await tx.voucherCode.updateMany({
         where: {
           orderItem: { orderId: order.orderId },
-          status: 'AVAILABLE',
+          status: { in: ['AVAILABLE', 'LOCKED', 'EXPIRED'] },
         },
         data: { status: 'CANCELLED' },
       });
@@ -517,23 +544,32 @@ export class OrdersService {
 
       // Trả lại tồn kho
       for (const item of order.orderItems) {
-        await tx.voucherCampaign.update({
-          where: { campaignId: item.campaignId },
+        const restored = await tx.voucherCampaign.updateMany({
+          where: {
+            campaignId: item.campaignId,
+            soldQuantity: { gte: item.quantity },
+          },
           data: {
             soldQuantity: { decrement: item.quantity },
           },
         });
+        if (restored.count !== 1) {
+          throw new Error(
+            `Sold quantity is inconsistent for campaign ${item.campaignId}.`,
+          );
+        }
       }
+
+      await this.auditService.logAction(
+        adminId,
+        'ADMIN_REFUND_ORDER',
+        'Order',
+        orderId,
+        tx,
+      );
 
       return updatedOrder;
     });
-
-    await this.auditService.logAction(
-      adminId,
-      'ADMIN_REFUND_ORDER',
-      'Order',
-      orderId,
-    );
 
     return result;
   }

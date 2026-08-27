@@ -25,7 +25,7 @@ import {
 } from '@prisma/client';
 import { IsEnum } from 'class-validator';
 
-import { VnPayAdapter } from './adapters/vnpay.adapter';
+import { ZaloPayAdapter } from './adapters/zalopay.adapter';
 import { StripeAdapter } from './adapters/stripe.adapter';
 import { PaypalAdapter } from './adapters/paypal.adapter';
 import { MomoAdapter } from './adapters/momo.adapter';
@@ -40,7 +40,7 @@ type AuthenticatedRequest = Request & {
 
 export class CreatePaymentAttemptDto {
   @IsEnum(PaymentProviderType, {
-    message: 'Cổng thanh toán không hợp lệ (STRIPE, PAYPAL, VNPAY, MOMO).',
+    message: 'Cổng thanh toán không hợp lệ (STRIPE, PAYPAL, ZALOPAY, MOMO).',
   })
   provider: PaymentProviderType;
 }
@@ -54,7 +54,7 @@ export class PaymentsController {
   constructor(
     private paymentsService: PaymentsService,
     private paymentFinalizationService: PaymentFinalizationService,
-    private vnPayAdapter: VnPayAdapter,
+    private zaloPayAdapter: ZaloPayAdapter,
     private stripeAdapter: StripeAdapter,
     private paypalAdapter: PaypalAdapter,
     private momoAdapter: MomoAdapter,
@@ -82,13 +82,21 @@ export class PaymentsController {
 
     let paymentUrl = `/payments/return/mock?paymentId=${payment.paymentId}`;
 
-    if (payment.provider === PaymentProviderType.VNPAY) {
-      const res = await this.vnPayAdapter.createPayment(
-        payment,
-        payment.order.orderCode,
-        req.ip || req.socket?.remoteAddress,
-      );
-      await this.paymentsService.bindVnPayReference(
+    if (payment.provider === PaymentProviderType.ZALOPAY) {
+      let res;
+      try {
+        res = await this.zaloPayAdapter.createPayment(
+          payment,
+          payment.order.orderCode,
+        );
+      } catch (error: unknown) {
+        await this.paymentsService.markZaloPayFailed(
+          payment.paymentId,
+          'CREATE_FAILED',
+        );
+        throw new BadGatewayException('Không thể khởi tạo đơn hàng ZaloPay.');
+      }
+      await this.paymentsService.bindZaloPayReference(
         payment.paymentId,
         res.providerOrderId,
       );
@@ -190,13 +198,13 @@ export class PaymentsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CUSTOMER, UserRole.ADMIN)
   async mockSuccess(@Req() req: any, @Param('paymentId') paymentId: string) {
-    if (!this.stripeConfig.isSimulated()) {
+    const payment = await this.paymentsService.getPaymentDetailsForActor(paymentId, req.user);
+
+    if (!this.stripeConfig.isSimulated() && payment.provider !== PaymentProviderType.MOMO) {
       throw new ForbiddenException(
-        'Endpoint mô phỏng chỉ hoạt động khi PAYMENT_MODE=SIMULATED.',
+        'Endpoint mô phỏng chỉ hoạt động khi PAYMENT_MODE=SIMULATED (trừ MoMo Sandbox do thường xuyên bị lỗi IPN).',
       );
     }
-
-    await this.paymentsService.getPaymentDetailsForActor(paymentId, req.user);
 
     const providerTransactionId = `MOCK-TX-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const order = await this.paymentFinalizationService.finalizePayment(
@@ -213,141 +221,60 @@ export class PaymentsController {
   }
 
   /**
-   * Xác minh Return URL để hiển thị. Endpoint này tuyệt đối không hoàn tất đơn.
-   * GET /payments/vnpay/return
+   * ZaloPay callback. This is the only endpoint that finalizes a ZaloPay order;
+   * the browser redirect merely polls the authenticated payment-status endpoint.
+   * POST /payments/zalopay/callback
    */
-  @Get('vnpay/return')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.CUSTOMER, UserRole.ADMIN)
-  async verifyVnPayReturn(@Req() req: AuthenticatedRequest) {
-    const result = await this.vnPayAdapter.verifyAndParseNotification(
-      req.query,
-    );
-    if (!result.signatureValid || !result.transactionReference) {
-      return {
-        state: 'FAILED',
-        message: 'Chữ ký phản hồi VNPAY không hợp lệ.',
-      };
-    }
-
-    const payment = await this.paymentsService.getPaymentDetailsForActor(
-      result.transactionReference,
-      req.user,
-    );
-    if (
-      payment.provider !== PaymentProviderType.VNPAY ||
-      payment.providerOrderId !== result.transactionReference
-    ) {
-      throw new BadRequestException('Giao dịch không thuộc cổng VNPAY.');
-    }
-    if (
-      result.amountMinor !== payment.requestAmountMinor * 100n ||
-      result.currency !== payment.requestCurrency
-    ) {
-      return {
-        state: 'FAILED',
-        paymentId: payment.paymentId,
-        orderId: payment.orderId,
-        message: 'Số tiền hoặc loại tiền phản hồi từ VNPAY không hợp lệ.',
-      };
-    }
-
-    let state: 'SUCCESS' | 'FAILED' | 'CANCELLED' | 'PENDING' = 'PENDING';
-    if (payment.status === PaymentTransactionStatus.SUCCEEDED) {
-      state = 'SUCCESS';
-    } else if (
-      payment.status === PaymentTransactionStatus.CANCELLED ||
-      result.responseCode === '24'
-    ) {
-      state = 'CANCELLED';
-    } else if (payment.status === PaymentTransactionStatus.FAILED) {
-      state = 'FAILED';
-    } else if (
-      result.status === 'FAILED' &&
-      (result.responseCode !== '00' || result.transactionStatus !== '00')
-    ) {
-      state = 'FAILED';
-    }
-
-    return {
-      state,
-      paymentId: payment.paymentId,
-      orderId: payment.orderId,
-      paymentStatus: payment.status,
-      message:
-        state === 'PENDING' ? 'Đang chờ VNPAY gửi xác nhận IPN.' : undefined,
-    };
-  }
-
-  /**
-   * VNPay IPN (Instant Payment Notification) Callback.
-   * Cổng thanh toán gọi API này ẩn dưới nền để đồng bộ trạng thái thanh toán.
-   * GET /payments/vnpay/ipn
-   */
-  @Get('vnpay/ipn')
-  async handleVnPayIpn(@Req() req: Request) {
+  @Post('zalopay/callback')
+  @HttpCode(HttpStatus.OK)
+  async handleZaloPayCallback(@Body() body: Record<string, unknown>) {
     try {
-      const result = await this.vnPayAdapter.verifyAndParseNotification(
-        req.query,
-      );
-      if (!result.signatureValid) {
-        return { RspCode: '97', Message: 'Invalid signature' };
-      }
-      const paymentId = result.transactionReference;
-      if (!paymentId) {
-        return { RspCode: '01', Message: 'Order not found' };
+      const result = await this.zaloPayAdapter.verifyAndParseNotification(body);
+      if (!result.signatureValid || !result.transactionReference) {
+        return { return_code: -1, return_message: 'invalid mac' };
       }
 
       let payment;
       try {
-        payment = await this.paymentsService.getPaymentDetails(paymentId);
+        payment = await this.paymentsService.getPaymentByProviderOrderId(
+          result.transactionReference,
+        );
       } catch {
-        return { RspCode: '01', Message: 'Order not found' };
+        return { return_code: 2, return_message: 'order not found' };
       }
 
       if (
-        payment.provider !== PaymentProviderType.VNPAY ||
-        payment.providerOrderId !== paymentId
+        !payment ||
+        payment.provider !== PaymentProviderType.ZALOPAY ||
+        payment.providerOrderId !== result.transactionReference
       ) {
-        return { RspCode: '01', Message: 'Order not found' };
+        return { return_code: 2, return_message: 'order not found' };
       }
-
       if (
-        result.amountMinor !== payment.requestAmountMinor * 100n ||
+        result.amountMinor !== payment.requestAmountMinor ||
         result.currency !== payment.requestCurrency ||
-        result.currency !== 'VND'
+        !result.providerTransactionId
       ) {
-        return { RspCode: '04', Message: 'Invalid amount' };
+        return { return_code: 2, return_message: 'invalid amount' };
       }
-
+      if (payment.status === PaymentTransactionStatus.SUCCEEDED) {
+        return { return_code: 1, return_message: 'success' };
+      }
       if (
-        payment.status === PaymentTransactionStatus.SUCCEEDED ||
         payment.status === PaymentTransactionStatus.FAILED ||
         payment.status === PaymentTransactionStatus.CANCELLED
       ) {
-        return { RspCode: '02', Message: 'Order already confirmed' };
+        return { return_code: 2, return_message: 'payment is not payable' };
       }
 
-      if (
-        result.responseCode === '00' &&
-        result.transactionStatus === '00' &&
-        result.providerTransactionId
-      ) {
-        await this.paymentFinalizationService.finalizePayment(
-          paymentId,
-          result.providerTransactionId,
-        );
-        return { RspCode: '00', Message: 'Confirm Success' };
-      }
-
-      await this.paymentsService.markVnPayFailed(
-        paymentId,
-        result.responseCode || result.transactionStatus || 'UNKNOWN',
+      await this.paymentFinalizationService.finalizePayment(
+        payment.paymentId,
         result.providerTransactionId,
       );
-      return { RspCode: '00', Message: 'Confirm Success' };
+      return { return_code: 1, return_message: 'success' };
     } catch {
-      return { RspCode: '99', Message: 'Unknown error' };
+      // Returning 0 asks ZaloPay to retry a transient processing failure.
+      return { return_code: 0, return_message: 'temporary processing error' };
     }
   }
 

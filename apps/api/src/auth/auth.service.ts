@@ -3,7 +3,6 @@ import {
   BadRequestException,
   ConflictException,
   UnauthorizedException,
-  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
@@ -20,10 +19,15 @@ import {
   UserStatus,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import { createHash } from 'crypto';
+import { createHash, randomInt } from 'crypto';
 import { PasswordResetDeliveryService } from './password-reset-delivery.service';
 import { AuthSessionService } from './auth-session.service';
 import { AuthRequestContext } from './auth-session.constants';
+import { AccountVerificationDeliveryService } from './account-verification-delivery.service';
+import {
+  AccountVerificationRequestDto,
+  VerifyAccountDto,
+} from './dto/account-verification.dto';
 
 const PUBLIC_REGISTRATION_ROLES = new Set<UserRole>([
   UserRole.CUSTOMER,
@@ -33,6 +37,10 @@ const PASSWORD_RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
 const PASSWORD_RESET_RESPONSE = {
   message:
     'Nếu tài khoản tồn tại, hệ thống đã gửi hướng dẫn đặt lại mật khẩu qua email.',
+} as const;
+const ACCOUNT_VERIFICATION_CODE_TTL_MS = 10 * 60 * 1000;
+const ACCOUNT_VERIFICATION_RESPONSE = {
+  message: 'Nếu tài khoản đang chờ xác thực, hệ thống đã gửi mã xác nhận.',
 } as const;
 
 /**
@@ -47,6 +55,7 @@ export class AuthService {
     private prisma: PrismaService,
     private authSessions: AuthSessionService,
     private passwordResetDelivery?: PasswordResetDeliveryService,
+    private accountVerificationDelivery?: AccountVerificationDeliveryService,
   ) {}
 
   /**
@@ -332,20 +341,12 @@ export class AuthService {
     };
   }
 
-  /**
-   * Xác thực tài khoản mô phỏng (Simulated verification) bằng OTP/Mã xác nhận.
-   */
-  async verifyAccount(dto: { email?: string; phone?: string; code: string }) {
-    const { email, phone, code } = dto;
+  async requestAccountVerification(dto: AccountVerificationRequestDto) {
+    const { email, phone } = dto;
     if (!email && !phone) {
       throw new BadRequestException(
         'Vui lòng cung cấp email hoặc số điện thoại để xác thực.',
       );
-    }
-
-    // Mã mô phỏng mặc định là '123456'
-    if (!code || code !== '123456') {
-      throw new BadRequestException('Mã xác thực không chính xác hoặc đã hết hạn.');
     }
 
     const normalizedEmail = email?.trim().toLowerCase();
@@ -353,20 +354,83 @@ export class AuthService {
       ? await this.usersService.findByEmail(normalizedEmail)
       : await this.usersService.findByPhone(phone!);
 
-    if (!user) {
-      throw new NotFoundException('Không tìm thấy tài khoản tương ứng.');
+    if (!user || user.status !== UserStatus.PENDING_VERIFICATION) {
+      return ACCOUNT_VERIFICATION_RESPONSE;
     }
 
-    if (user.status === UserStatus.ACTIVE) {
-      return { message: 'Tài khoản đã được xác thực thành công từ trước.' };
-    }
+    const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
+    const expiresAt = new Date(Date.now() + ACCOUNT_VERIFICATION_CODE_TTL_MS);
 
     await this.prisma.user.update({
       where: { userId: user.userId },
-      data: { status: UserStatus.ACTIVE },
+      data: {
+        accountVerificationCodeHash: this.hashVerificationCode(
+          user.userId,
+          code,
+        ),
+        accountVerificationExpiresAt: expiresAt,
+      },
     });
 
-    return { message: 'Xác thực tài khoản thành công! Bạn hiện có thể đăng nhập.' };
+    this.accountVerificationDelivery?.deliver({
+      identifier: normalizedEmail ?? phone!,
+      code,
+      expiresAt,
+    });
+
+    return ACCOUNT_VERIFICATION_RESPONSE;
+  }
+
+  async verifyAccount(dto: VerifyAccountDto) {
+    const { email, phone, code } = dto;
+    if (!email && !phone) {
+      throw new BadRequestException(
+        'Vui lòng cung cấp email hoặc số điện thoại để xác thực.',
+      );
+    }
+
+    const normalizedEmail = email?.trim().toLowerCase();
+    const user = normalizedEmail
+      ? await this.usersService.findByEmail(normalizedEmail)
+      : await this.usersService.findByPhone(phone!);
+
+    if (!user || user.status !== UserStatus.PENDING_VERIFICATION) {
+      throw new BadRequestException(
+        'Mã xác thực không chính xác hoặc đã hết hạn.',
+      );
+    }
+
+    const verifiedAt = new Date();
+    const updated = await this.prisma.user.updateMany({
+      where: {
+        userId: user.userId,
+        status: UserStatus.PENDING_VERIFICATION,
+        accountVerificationCodeHash: this.hashVerificationCode(
+          user.userId,
+          code,
+        ),
+        accountVerificationExpiresAt: { gt: verifiedAt },
+      },
+      data: {
+        status: UserStatus.ACTIVE,
+        accountVerificationCodeHash: null,
+        accountVerificationExpiresAt: null,
+      },
+    });
+
+    if (updated.count !== 1) {
+      throw new BadRequestException(
+        'Mã xác thực không chính xác hoặc đã hết hạn.',
+      );
+    }
+
+    return {
+      message: 'Xác thực tài khoản thành công! Bạn hiện có thể đăng nhập.',
+    };
+  }
+
+  private hashVerificationCode(userId: string, code: string): string {
+    return this.hashToken(`${userId}:${code}`);
   }
 
   private hashToken(token: string): string {

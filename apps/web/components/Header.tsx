@@ -38,6 +38,7 @@ interface HeaderProps {
 }
 
 interface CartItem {
+  cartItemId?: string;
   quantity?: number;
 }
 
@@ -62,7 +63,19 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
       if (user?.role === 'CUSTOMER') {
         apiRequest<CartItem[]>('/cart')
           .then((data) => {
-            const count = Array.isArray(data) ? data.reduce((acc, item) => acc + (item.quantity || 1), 0) : 0;
+            let count = 0;
+            if (Array.isArray(data)) {
+              const isCheckout = pathname.startsWith('/checkout');
+              const urlParams = new URLSearchParams(window.location.search);
+              const checkoutItems = urlParams.get('items')?.split(',') || [];
+
+              data.forEach(item => {
+                if (isCheckout && item.cartItemId && checkoutItems.includes(item.cartItemId)) {
+                  return;
+                }
+                count += (item.quantity || 1);
+              });
+            }
             setCartItemCount(count);
           })
           .catch(() => {
@@ -77,7 +90,7 @@ export default function Header({ onSearch, initialKeyword = '' }: HeaderProps) {
 
     window.addEventListener('cart-updated', fetchCart);
     return () => window.removeEventListener('cart-updated', fetchCart);
-  }, [user]);
+  }, [user, pathname]);
 
   // Fetch suggestions with debounce
   useEffect(() => {

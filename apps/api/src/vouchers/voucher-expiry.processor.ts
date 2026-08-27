@@ -24,7 +24,9 @@ export class VoucherExpiryProcessor {
       // 1. Quét mã voucher hết hạn dựa theo hạn cá nhân (expiresAt < now)
       const expiredIndividual = await this.prisma.voucherCode.updateMany({
         where: {
-          status: VoucherCodeStatus.AVAILABLE,
+          status: {
+            in: [VoucherCodeStatus.AVAILABLE, VoucherCodeStatus.LOCKED],
+          },
           expiresAt: { lt: now },
         },
         data: {
@@ -41,7 +43,9 @@ export class VoucherExpiryProcessor {
       // 2. Quét mã voucher hết hạn dựa theo thời gian sử dụng của chiến dịch (usageEndTime < now)
       const expiredCampaign = await this.prisma.voucherCode.updateMany({
         where: {
-          status: VoucherCodeStatus.AVAILABLE,
+          status: {
+            in: [VoucherCodeStatus.AVAILABLE, VoucherCodeStatus.LOCKED],
+          },
           orderItem: {
             campaign: {
               usageEndTime: { lt: now },

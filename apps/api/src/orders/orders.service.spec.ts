@@ -80,3 +80,112 @@ describe('OrdersService checkout', () => {
     );
   });
 });
+
+describe('OrdersService refund integrity', () => {
+  const customerId = '00000000-0000-4000-8000-000000000001';
+  const orderId = '00000000-0000-4000-8000-000000000002';
+  const campaignId = '00000000-0000-4000-8000-000000000003';
+
+  function createRefundContext(usedVoucherCode: object | null) {
+    const order = {
+      orderId,
+      customerId,
+      orderStatus: 'CONFIRMED',
+      paymentStatus: 'PAID',
+      createdAt: new Date(),
+      orderItems: [
+        {
+          campaignId,
+          quantity: 1,
+          refundAllowedSnapshot: true,
+          refundWindowHoursSnapshot: 24,
+        },
+      ],
+      paymentTransactions: [
+        {
+          paymentId: '00000000-0000-4000-8000-000000000004',
+          requestAmountMinor: BigInt(1000),
+          requestCurrency: 'VND',
+        },
+      ],
+    };
+    const tx = {
+      $queryRaw: jest.fn(),
+      order: {
+        findFirst: jest.fn().mockResolvedValue(order),
+        update: jest
+          .fn()
+          .mockResolvedValue({ ...order, orderStatus: 'CANCELLED' }),
+      },
+      voucherCode: {
+        findFirst: jest.fn().mockResolvedValue(usedVoucherCode),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      paymentRefund: { create: jest.fn().mockResolvedValue({}) },
+      voucherCampaign: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    let transactionActive = false;
+    const prisma = {
+      $transaction: jest.fn(async (callback) => {
+        transactionActive = true;
+        try {
+          return await callback(tx);
+        } finally {
+          transactionActive = false;
+        }
+      }),
+    };
+    const audit = {
+      logActivity: jest.fn().mockImplementation(async () => {
+        expect(transactionActive).toBe(true);
+      }),
+    };
+    return { order, tx, prisma, audit };
+  }
+
+  it('rejects refund when a multi-use voucher has any usage history', async () => {
+    const { tx, prisma, audit } = createRefundContext({ codeId: 'used-once' });
+    const service = new OrdersService(prisma as any, audit as any);
+
+    await expect(service.requestRefund(customerId, orderId)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(tx.voucherCode.findFirst).toHaveBeenCalledWith({
+      where: {
+        orderItem: { orderId },
+        OR: [{ status: 'USED' }, { usageLogs: { some: {} } }],
+      },
+      select: { codeId: true },
+    });
+    expect(tx.paymentRefund.create).not.toHaveBeenCalled();
+    expect(audit.logActivity).not.toHaveBeenCalled();
+  });
+
+  it('cancels every unused status and writes audit inside the refund transaction', async () => {
+    const { tx, prisma, audit } = createRefundContext(null);
+    const service = new OrdersService(prisma as any, audit as any);
+
+    await service.requestRefund(customerId, orderId);
+
+    expect(tx.voucherCode.updateMany).toHaveBeenCalledWith({
+      where: {
+        orderItem: { orderId },
+        status: { in: ['AVAILABLE', 'LOCKED', 'EXPIRED'] },
+      },
+      data: { status: 'CANCELLED' },
+    });
+    expect(tx.voucherCampaign.updateMany).toHaveBeenCalledWith({
+      where: { campaignId, soldQuantity: { gte: 1 } },
+      data: { soldQuantity: { decrement: 1 } },
+    });
+    expect(audit.logActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: 'REQUEST_REFUND',
+        targetId: orderId,
+      }),
+      tx,
+    );
+  });
+});

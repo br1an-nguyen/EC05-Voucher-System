@@ -3,7 +3,7 @@ import { PaymentsService } from './payments.service';
 import { PaymentFinalizationService } from './payment-finalization.service';
 import { PaymentsController } from './payments.controller';
 import { PrismaModule } from '../prisma/prisma.module';
-import { VnPayAdapter } from './adapters/vnpay.adapter';
+import { ZaloPayAdapter } from './adapters/zalopay.adapter';
 import { StripeAdapter } from './adapters/stripe.adapter';
 import { PaypalAdapter } from './adapters/paypal.adapter';
 import { MomoAdapter } from './adapters/momo.adapter';
@@ -11,7 +11,7 @@ import { StripeConfigService } from './stripe.config';
 import { StripeWebhookService } from './stripe-webhook.service';
 import { StripeReconciliationProcessor } from './stripe-reconciliation.processor';
 import { EmailService } from './email.service';
-import { VnPayConfigService } from './vnpay.config';
+import { ZaloPayConfigService } from './zalopay.config';
 
 @Module({
   imports: [PrismaModule],
@@ -19,8 +19,8 @@ import { VnPayConfigService } from './vnpay.config';
   providers: [
     PaymentsService,
     PaymentFinalizationService,
-    VnPayAdapter,
-    VnPayConfigService,
+    ZaloPayAdapter,
+    ZaloPayConfigService,
     StripeConfigService,
     StripeAdapter,
     StripeWebhookService,
@@ -32,8 +32,8 @@ import { VnPayConfigService } from './vnpay.config';
   exports: [
     PaymentsService,
     PaymentFinalizationService,
-    VnPayAdapter,
-    VnPayConfigService,
+    ZaloPayAdapter,
+    ZaloPayConfigService,
     StripeConfigService,
     StripeAdapter,
     StripeWebhookService,

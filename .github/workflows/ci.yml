@@ -30,6 +30,10 @@ jobs:
         working-directory: apps/api
         run: npx prisma validate --config prisma.config.ts
 
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: npx prisma generate --config prisma.config.ts
+
       - name: Type-check API, tests, and seed
         working-directory: apps/api
         run: npx tsc --noEmit -p tsconfig.json

@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsEnum } from 'class-validator';
+import { IsString, IsNotEmpty, IsEnum, MaxLength } from 'class-validator';
 import { ComplaintStatus } from '@prisma/client';
 
 export class ReplyComplaintDto {
@@ -8,5 +8,6 @@ export class ReplyComplaintDto {
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(10000)
   resolutionResponse: string;
 }

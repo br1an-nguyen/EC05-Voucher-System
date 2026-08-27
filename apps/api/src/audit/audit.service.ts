@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ActivityCategory, UserRole } from '@prisma/client';
+import { ActivityCategory, Prisma, UserRole } from '@prisma/client';
 
 /**
  * Service ghi nhận nhật ký kiểm toán (Audit Logs) cho quản trị viên và nhật ký hoạt động (Activity Logs) cho toàn hệ thống.
@@ -20,16 +20,25 @@ export class AuditService {
    * @param targetEntity Tên thực thể bị tác động (vd: 'VoucherCampaign', 'User')
    * @param targetId ID của thực thể bị tác động
    */
-  async logAction(adminId: string, actionType: string, targetEntity: string, targetId: string | null) {
-    const admin = await this.prisma.user.findUnique({
+  async logAction(
+    adminId: string,
+    actionType: string,
+    targetEntity: string,
+    targetId: string | null,
+    tx?: Prisma.TransactionClient,
+  ) {
+    const db = tx ?? this.prisma;
+    const admin = await db.user.findUnique({
       where: { userId: adminId },
     });
 
     if (!admin) {
-      throw new NotFoundException(`Không tìm thấy tài khoản admin với ID: ${adminId}`);
+      throw new NotFoundException(
+        `Không tìm thấy tài khoản admin với ID: ${adminId}`,
+      );
     }
 
-    const log = await this.prisma.auditLog.create({
+    const log = await db.auditLog.create({
       data: {
         adminId,
         adminNameSnapshot: admin.fullName || 'Unknown Admin',
@@ -40,7 +49,9 @@ export class AuditService {
       },
     });
 
-    this.logger.log(`[AuditLog] Admin ${admin.fullName} (${admin.email}) thực hiện: ${actionType} trên ${targetEntity} (${targetId})`);
+    this.logger.log(
+      `[AuditLog] Admin ${admin.fullName} (${admin.email}) thực hiện: ${actionType} trên ${targetEntity} (${targetId})`,
+    );
     return log;
   }
 
@@ -48,18 +59,22 @@ export class AuditService {
    * Ghi nhận lịch sử hoạt động tổng thể của người dùng/hệ thống (ActivityLog).
    * @param data Thông tin hoạt động cần ghi nhận
    */
-  async logActivity(data: {
-    actorUserId?: string | null;
-    actorRoleSnapshot?: UserRole | null;
-    category: ActivityCategory;
-    actionType: string;
-    targetEntity: string;
-    targetId?: string | null;
-    metadata?: any;
-    ipAddress?: string | null;
-    userAgent?: string | null;
-  }) {
-    const log = await this.prisma.activityLog.create({
+  async logActivity(
+    data: {
+      actorUserId?: string | null;
+      actorRoleSnapshot?: UserRole | null;
+      category: ActivityCategory;
+      actionType: string;
+      targetEntity: string;
+      targetId?: string | null;
+      metadata?: Prisma.InputJsonValue;
+      ipAddress?: string | null;
+      userAgent?: string | null;
+    },
+    tx?: Prisma.TransactionClient,
+  ) {
+    const db = tx ?? this.prisma;
+    const log = await db.activityLog.create({
       data: {
         actorUserId: data.actorUserId || null,
         actorRoleSnapshot: data.actorRoleSnapshot || null,
@@ -73,7 +88,9 @@ export class AuditService {
       },
     });
 
-    this.logger.log(`[ActivityLog] [${data.category}] ${data.actionType} trên ${data.targetEntity} (${data.targetId})`);
+    this.logger.log(
+      `[ActivityLog] [${data.category}] ${data.actionType} trên ${data.targetEntity} (${data.targetId})`,
+    );
     return log;
   }
 

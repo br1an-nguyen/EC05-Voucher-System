@@ -74,9 +74,13 @@ export class UsersService {
    * @param status Trạng thái mới cần áp dụng
    * @returns Bản ghi User sau khi cập nhật
    */
-  async updateStatus(adminId: string | null, userId: string, status: UserStatus): Promise<User> {
+  async updateStatus(
+    adminId: string | null,
+    userId: string,
+    status: UserStatus,
+  ): Promise<User> {
     const changedAt = new Date();
-    const user = await this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx) => {
       const updated = await tx.user.update({
         where: { userId },
         data: { status },
@@ -87,19 +91,17 @@ export class UsersService {
           data: { revokedAt: changedAt },
         });
       }
+      if (adminId) {
+        await this.auditService.logAction(
+          adminId,
+          status === UserStatus.LOCKED ? 'LOCK_USER' : 'UNLOCK_USER',
+          'User',
+          userId,
+          tx,
+        );
+      }
       return updated;
     });
-
-    if (adminId) {
-      await this.auditService.logAction(
-        adminId,
-        status === UserStatus.LOCKED ? 'LOCK_USER' : 'UNLOCK_USER',
-        'User',
-        userId,
-      );
-    }
-
-    return user;
   }
 
   /**
@@ -202,17 +204,21 @@ export class UsersService {
    * Lấy danh sách tất cả các tài khoản người dùng trong hệ thống (chỉ ADMIN).
    * @param query Bộ lọc tìm kiếm và trạng thái
    */
-  async adminListUsers(query: { keyword?: string; role?: string; status?: string }) {
+  async adminListUsers(query: {
+    keyword?: string;
+    role?: string;
+    status?: string;
+  }) {
     const where: Prisma.UserWhereInput = {};
-    
+
     if (query.role) {
       where.role = query.role as UserRole;
     }
-    
+
     if (query.status) {
       where.status = query.status as UserStatus;
     }
-    
+
     if (query.keyword) {
       where.OR = [
         { fullName: { contains: query.keyword, mode: 'insensitive' } },
@@ -250,7 +256,8 @@ export class UsersService {
     }
 
     const changedAt = new Date();
-    const isPartnerRole = role === UserRole.PARTNER || role === UserRole.PARTNER_STAFF;
+    const isPartnerRole =
+      role === UserRole.PARTNER || role === UserRole.PARTNER_STAFF;
 
     const updatedUser = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.user.update({
@@ -274,10 +281,16 @@ export class UsersService {
         data: { revokedAt: changedAt },
       });
 
+      await this.auditService.logAction(
+        adminId,
+        'UPDATE_USER_ROLE',
+        'User',
+        userId,
+        tx,
+      );
+
       return updated;
     });
-
-    await this.auditService.logAction(adminId, 'UPDATE_USER_ROLE', 'User', userId);
 
     return updatedUser;
   }
