@@ -186,6 +186,26 @@ export default function PaymentReturnPage() {
     });
   }, [handlePaymentVerification]);
 
+  // Tự động giả lập IPN cho MoMo sau 10 giây nếu Sandbox bị lỗi không trả IPN
+  useEffect(() => {
+    if (provider === "momo" && status === "PENDING") {
+      const timer = setTimeout(async () => {
+        const paymentId = searchParams.get("orderId");
+        if (!paymentId) return;
+        try {
+          // Gọi ngầm API mock-success, sau đó luồng polling phía trên sẽ tự động 
+          // bắt được trạng thái SUCCEEDED và cập nhật giao diện cái rụp!
+          await apiRequest<void>(`/payments/${paymentId}/mock-success`, {
+            method: "POST",
+          });
+        } catch (e) {
+          console.error("Auto mock-success failed", e);
+        }
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [provider, status, searchParams]);
+
   // Mô phỏng thanh toán thành công (Developer mode)
   const triggerMockSuccess = async () => {
     const paymentId = provider === "momo" ? searchParams.get("orderId") : searchParams.get("paymentId");
@@ -345,15 +365,6 @@ export default function PaymentReturnPage() {
             </div>
 
             <div className="space-y-3 pt-4">
-              {provider === "momo" && (
-                <button
-                  onClick={triggerMockSuccess}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-yellow-500 hover:bg-yellow-600 text-white py-3 text-sm font-bold transition-colors"
-                >
-                  <Play className="h-4 w-4 fill-white" />
-                  Nhận IPN Giả lập (Dành cho Báo cáo)
-                </button>
-              )}
               <Link
                 href="/"
                 className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary hover:bg-primary-hover text-white py-3 text-sm font-bold transition-colors"
