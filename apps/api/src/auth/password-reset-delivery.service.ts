@@ -67,7 +67,46 @@ export class PasswordResetDeliveryService {
       </div>
     `;
 
-    // 1. NẾU CÓ RESEND_API_KEY -> Gửi qua API HTTP của Resend (Không bị chặn Port)
+    // 1. NẾU CÓ BREVO_API_KEY -> Gửi qua API HTTP của Brevo (Cho phép gửi đến mọi email)
+    if (process.env.BREVO_API_KEY) {
+      try {
+        const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+          method: 'POST',
+          headers: {
+            'accept': 'application/json',
+            'api-key': process.env.BREVO_API_KEY,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            sender: {
+              name: 'VoucherNow Support',
+              email: process.env.BREVO_SENDER_EMAIL || 'tonhannhan223@gmail.com', // Cố định luôn email này để lỡ GMAIL_USER khác email đăng ký Brevo
+            },
+            to: [
+              {
+                email: email, // Bây giờ có thể gửi cho BẤT KỲ AI!
+              },
+            ],
+            subject: 'Yêu cầu đặt lại mật khẩu - VoucherNow',
+            htmlContent: htmlContent,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.text();
+          this.logger.error(`Brevo API Error: ${errorData}`);
+          throw new Error('Lỗi từ Brevo API');
+        }
+
+        this.logger.log(`[Brevo] Đã gửi email khôi phục thành công đến: ${email}`);
+        return; // Gửi thành công, kết thúc hàm
+      } catch (error) {
+        this.logger.error(`[Brevo] Lỗi khi gửi email đến ${email}:`, error);
+        throw new Error('Không thể gửi email qua Brevo. Vui lòng thử lại sau.');
+      }
+    }
+
+    // 2. NẾU CÓ RESEND_API_KEY -> Gửi qua API HTTP của Resend (Dự phòng)
     if (process.env.RESEND_API_KEY) {
       try {
         const response = await fetch('https://api.resend.com/emails', {
@@ -98,12 +137,12 @@ export class PasswordResetDeliveryService {
       }
     }
 
-    // 2. NẾU KHÔNG CÓ RESEND_API_KEY -> Rơi về Nodemailer (Chạy Local)
+    // 3. NẾU KHÔNG CÓ CẢ 2 -> Rơi về Nodemailer (Chạy Local)
     const user = process.env.GMAIL_USER;
     const pass = process.env.GMAIL_APP_PASSWORD;
 
     if (!user || !pass) {
-      throw new Error('Tính năng gửi email chưa được cấu hình (Thiếu RESEND_API_KEY hoặc GMAIL_USER/GMAIL_APP_PASSWORD).');
+      throw new Error('Tính năng gửi email chưa được cấu hình (Thiếu BREVO_API_KEY hoặc GMAIL_USER/GMAIL_APP_PASSWORD).');
     }
 
     if (!this.transporter) {
