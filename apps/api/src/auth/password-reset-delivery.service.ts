@@ -43,8 +43,25 @@ export class PasswordResetDeliveryService {
     }
 
     if (!this.transporter) {
+      const dnsPromises = require('node:dns').promises;
+      let hostIp = 'smtp.gmail.com';
+      try {
+        const ips = await dnsPromises.resolve4('smtp.gmail.com');
+        if (ips && ips.length > 0) {
+          hostIp = ips[0];
+          this.logger.log(`[SMTP] Resolved smtp.gmail.com to IPv4: ${hostIp}`);
+        }
+      } catch (err) {
+        this.logger.warn(`[SMTP] Failed to resolve IPv4 for smtp.gmail.com`);
+      }
+
       this.transporter = nodemailer.createTransport({
-        service: 'gmail',
+        host: hostIp,
+        port: 465,
+        secure: true,
+        tls: {
+          servername: 'smtp.gmail.com', // Bắt buộc khi dùng IP
+        },
         auth: {
           user: user,
           pass: pass,
