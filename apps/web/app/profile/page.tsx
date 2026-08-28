@@ -288,11 +288,10 @@ export default function UserProfilePage() {
                     type="text"
                     {...register("fullName")}
                     disabled={user.role !== "CUSTOMER"}
-                    className={`block w-full rounded-lg border border-border py-2.5 pl-9 pr-3 text-xs text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all ${
-                      user.role !== "CUSTOMER"
-                        ? "bg-slate-50 text-muted cursor-not-allowed"
-                        : "bg-card"
-                    }`}
+                    className={`block w-full rounded-lg border border-border py-2.5 pl-9 pr-3 text-xs text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all ${user.role !== "CUSTOMER"
+                      ? "bg-slate-50 text-muted cursor-not-allowed"
+                      : "bg-card"
+                      }`}
                   />
                   <User className="absolute left-3 top-3.5 h-3.5 w-3.5 text-slate-400" />
                 </div>
@@ -373,7 +372,7 @@ export default function UserProfilePage() {
                 <div className="relative">
                   <input
                     type={showNew ? "text" : "password"}
-                    placeholder="Tối thiểu 6 ký tự"
+                    placeholder="Tối thiểu 8 ký tự"
                     {...register("newPassword")}
                     className="block w-full rounded-lg border border-border bg-card py-2.5 pl-9 pr-10 text-xs text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all"
                   />
