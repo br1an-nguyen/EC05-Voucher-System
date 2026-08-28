@@ -37,7 +37,7 @@ const MINUTE_MS = 60_000;
  */
 @Controller('auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(private authService: AuthService) { }
 
   /**
    * Endpoint đăng ký tài khoản.
