@@ -186,6 +186,26 @@ export default function PaymentReturnPage() {
     });
   }, [handlePaymentVerification]);
 
+  // Tự động giả lập IPN cho MoMo sau 10 giây nếu Sandbox bị lỗi không trả IPN
+  useEffect(() => {
+    if (provider === "momo" && status === "PENDING") {
+      const timer = setTimeout(async () => {
+        const paymentId = searchParams.get("orderId");
+        if (!paymentId) return;
+        try {
+          // Gọi ngầm API mock-success, sau đó luồng polling phía trên sẽ tự động 
+          // bắt được trạng thái SUCCEEDED và cập nhật giao diện cái rụp!
+          await apiRequest<void>(`/payments/${paymentId}/mock-success`, {
+            method: "POST",
+          });
+        } catch (e) {
+          console.error("Auto mock-success failed", e);
+        }
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [provider, status, searchParams]);
+
   // Mô phỏng thanh toán thành công (Developer mode)
   const triggerMockSuccess = async () => {
     const paymentId = provider === "momo" ? searchParams.get("orderId") : searchParams.get("paymentId");
