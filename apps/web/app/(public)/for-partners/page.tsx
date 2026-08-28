@@ -143,13 +143,13 @@ export default function PartnerLandingPage() {
                 Tài khoản và chiến dịch cần được Admin phê duyệt trước khi vận hành.
               </p>
 
-              <div className="mt-7 grid max-w-xl grid-cols-3 divide-x divide-white/20 rounded-2xl border border-white/15 bg-slate-950/15 px-2 py-3 backdrop-blur-sm">
+              <div className="mt-7 grid max-w-xl grid-cols-1 divide-y divide-white/20 rounded-2xl border border-white/15 bg-slate-950/15 px-2 py-2 backdrop-blur-sm min-[420px]:grid-cols-3 min-[420px]:divide-x min-[420px]:divide-y-0 min-[420px]:py-3">
                 {[
                   ['01', 'một dashboard'],
                   ['QR', 'xác thực tại quầy'],
                   ['24/7', 'nắm trạng thái'],
                 ].map(([value, label]) => (
-                  <div key={value} className="px-3 first:pl-2"><p className="font-black text-amber-200">{value}</p><p className="mt-0.5 text-[11px] font-semibold leading-tight text-orange-100">{label}</p></div>
+                  <div key={value} className="flex items-center justify-between gap-4 px-3 py-2 first:pl-2 min-[420px]:block min-[420px]:py-0"><p className="font-black text-amber-200">{value}</p><p className="text-xs font-semibold leading-tight text-orange-100 min-[420px]:mt-0.5">{label}</p></div>
                 ))}
               </div>
             </div>
@@ -246,52 +246,53 @@ export default function PartnerLandingPage() {
           </div>
         </section>
 
-        <section className="px-4 py-20 sm:px-6 lg:px-8" aria-labelledby="operations-title">
-          <div className="mx-auto grid w-full max-w-7xl gap-12 lg:grid-cols-2 lg:items-center">
-            <div className="rounded-3xl border border-slate-200 bg-slate-950 p-6 text-white shadow-xl shadow-slate-950/10 sm:p-8">
-              <div className="flex items-center justify-between border-b border-white/10 pb-5">
+        <section className="border-y border-border bg-surface-subtle px-4 py-14 sm:px-6 sm:py-16 lg:px-8 lg:py-20" aria-labelledby="operations-title">
+          <div className="mx-auto grid w-full max-w-7xl gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-start lg:gap-16">
+            <div className="border border-border bg-surface p-5 shadow-ui sm:p-7">
+              <div className="flex items-center justify-between gap-4 border-b border-border pb-5">
                 <div>
-                  <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-orange-300">Không gian vận hành</p>
-                  <p className="mt-2 text-xl font-black">Một nơi cho toàn bộ đội ngũ</p>
+                  <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-brand">Không gian vận hành</p>
+                  <p className="mt-2 font-black text-foreground">Một nơi cho toàn bộ đội ngũ</p>
                 </div>
-                <Store className="h-7 w-7 text-orange-300" aria-hidden="true" />
+                <Store className="h-6 w-6 shrink-0 text-brand" aria-hidden="true" />
               </div>
-              <div className="mt-6 grid gap-4 sm:grid-cols-2">
+              <div className="mt-5 grid gap-0 divide-y divide-border border-y border-border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
                 {[
                   ['Chủ doanh nghiệp', 'Chiến dịch, chi nhánh, báo cáo', Building2],
                   ['Nhân viên cửa hàng', 'Quét và xác thực voucher', Users],
-                ].map(([role, description, Icon]) => {
+                ].map(([role, description, Icon], index) => {
                   const RoleIcon = Icon as typeof Building2;
                   return (
-                    <article key={role as string} className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                      <RoleIcon className="h-6 w-6 text-orange-300" aria-hidden="true" />
-                      <h3 className="mt-4 font-extrabold text-white">{role as string}</h3>
-                      <p className="mt-2 text-sm leading-relaxed text-slate-400">{description as string}</p>
+                    <article key={role as string} className="min-w-0 py-5 sm:px-5 sm:py-1 first:sm:pl-0 last:sm:pr-0">
+                      <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-brand">0{index + 1}</p>
+                      <RoleIcon className="mt-3 h-6 w-6 text-brand" aria-hidden="true" />
+                      <h3 className="mt-3 font-extrabold text-foreground">{role as string}</h3>
+                      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{description as string}</p>
                     </article>
                   );
                 })}
               </div>
             </div>
 
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full bg-orange-50 px-3 py-1.5 text-xs font-extrabold uppercase tracking-[0.16em] text-primary">
+            <div className="max-w-xl lg:pt-2">
+              <div className="inline-flex items-center gap-2 rounded-ui-sm bg-brand-subtle px-3 py-1.5 text-xs font-extrabold uppercase tracking-[0.16em] text-brand">
                 <BadgeCheck className="h-4 w-4" aria-hidden="true" />
                 Phân quyền theo vai trò
               </div>
-              <h2 id="operations-title" className="mt-5 max-w-xl font-black tracking-tight text-slate-900">
+              <h2 id="operations-title" className="mt-5 font-black tracking-tight text-foreground">
                 Chủ doanh nghiệp quản lý, nhân viên tập trung phục vụ tại quầy
               </h2>
-              <p className="mt-4 max-w-xl text-sm leading-relaxed text-slate-500 sm:text-base">
+              <p className="mt-4 text-sm leading-relaxed text-muted-foreground sm:text-base">
                 Quyền truy cập được tách theo vai trò để mỗi thành viên nhìn thấy đúng công việc cần thực hiện.
               </p>
-              <ul className="mt-7 space-y-4">
+              <ul className="mt-7 space-y-3 border-t border-border pt-5">
                 {[
                   'Quản lý danh sách chi nhánh và tài khoản nhân viên.',
                   'Theo dõi chiến dịch theo trạng thái duyệt và mở bán.',
                   'Kiểm tra mã trước khi ghi nhận voucher đã sử dụng.',
                 ].map((item) => (
-                  <li key={item} className="flex items-start gap-3 text-sm font-semibold text-slate-700">
-                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
+                  <li key={item} className="flex items-start gap-3 text-sm font-semibold text-foreground">
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-brand" aria-hidden="true" />
                     {item}
                   </li>
                 ))}

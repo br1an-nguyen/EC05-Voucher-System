@@ -124,30 +124,31 @@ export default function CustomerLandingPage() {
           </div>
         </section>
 
-        <section className="bg-slate-950 px-4 py-20 text-white sm:px-6 lg:px-8" aria-labelledby="benefits-title">
-          <div className="mx-auto grid w-full max-w-7xl gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-xs font-extrabold uppercase tracking-[0.16em] text-emerald-300">
+        <section className="border-y border-border bg-surface-subtle px-4 py-14 sm:px-6 sm:py-16 lg:px-8 lg:py-20" aria-labelledby="benefits-title">
+          <div className="mx-auto grid w-full max-w-7xl gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:items-start lg:gap-16">
+            <div className="max-w-xl">
+              <div className="inline-flex items-center gap-2 rounded-ui-sm bg-brand-subtle px-3 py-1.5 text-xs font-extrabold uppercase tracking-[0.16em] text-brand">
                 <BadgeCheck className="h-4 w-4" aria-hidden="true" />
                 Rõ ràng trước khi mua
               </div>
-              <h2 id="benefits-title" className="mt-5 max-w-xl font-black tracking-tight text-white">
+              <h2 id="benefits-title" className="mt-5 font-black tracking-tight text-foreground">
                 Voucher dễ quản lý, dễ kiểm tra, dễ sử dụng
               </h2>
-              <p className="mt-4 max-w-xl text-sm leading-relaxed text-slate-300 sm:text-base">
+              <p className="mt-4 text-sm leading-relaxed text-muted-foreground sm:text-base">
                 VoucherNow tập trung những thông tin quan trọng để bạn biết mình đang mua gì và sẽ sử dụng ở đâu.
               </p>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
-              {customerBenefits.map(({ title, description, icon: Icon }) => (
-                <article key={title} className="flex gap-4 rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-500 text-white">
+            <div className="divide-y divide-border border-y border-border bg-surface">
+              {customerBenefits.map(({ title, description, icon: Icon }, index) => (
+                <article key={title} className="grid grid-cols-[auto_1fr] gap-4 py-5 first:pt-5 last:pb-5 sm:gap-5 sm:py-6">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-ui-md bg-brand-subtle text-brand">
                     <Icon className="h-5 w-5" aria-hidden="true" />
                   </span>
-                  <div>
-                    <h3 className="font-extrabold text-white">{title}</h3>
-                    <p className="mt-1.5 text-sm leading-relaxed text-slate-400">{description}</p>
+                  <div className="min-w-0">
+                    <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-brand">0{index + 1}</p>
+                    <h3 className="mt-1 font-extrabold text-foreground">{title}</h3>
+                    <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted-foreground">{description}</p>
                   </div>
                 </article>
               ))}
