@@ -2,7 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
+import * as dns from 'node:dns';
 dotenv.config({ path: path.join(__dirname, '../../.env') }); // Ensure exact path relative to this file
+
+// Force Node.js to prefer IPv4 over IPv6 for DNS resolution
+// This prevents ENETUNREACH errors on networks with broken IPv6 routing
+dns.setDefaultResultOrder('ipv4first');
 
 export interface PasswordResetDelivery {
   email: string;
