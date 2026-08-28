@@ -7,8 +7,17 @@ import {
   MaxLength,
   Min,
   IsIn,
+  IsInt,
+  Max,
 } from 'class-validator';
 import { VIETNAM_PROVINCE_CODES } from '../../common/constants/vietnam-provinces';
+
+export const CATALOG_VALIDITY_STATUSES = [
+  'ALL',
+  'AVAILABLE',
+  'UPCOMING',
+] as const;
+export type CatalogValidityStatus = (typeof CATALOG_VALIDITY_STATUSES)[number];
 
 export class PublicCatalogQueryDto {
   @IsOptional()
@@ -67,18 +76,19 @@ export class PublicCatalogQueryDto {
 
   @IsOptional()
   @IsString()
-  @IsIn(['AVAILABLE', 'UPCOMING'])
-  validityStatus?: string;
+  @IsIn(CATALOG_VALIDITY_STATUSES)
+  validityStatus?: CatalogValidityStatus;
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsInt()
   @Min(1)
   page?: number;
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsInt()
   @Min(1)
+  @Max(100)
   limit?: number;
 }

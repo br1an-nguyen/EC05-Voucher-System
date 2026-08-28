@@ -19,6 +19,34 @@ import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
 import * as bcrypt from 'bcrypt';
 import { VIETNAM_PROVINCES } from '../common/constants/vietnam-provinces';
+import {
+  AdminPartnerListQueryDto,
+  PartnerListQueryDto,
+  PartnerPerformanceQueryDto,
+  PartnerPerformanceSortField,
+  SortDirection,
+} from './dto/partner-list-query.dto';
+import { paginateResult } from '../common/pagination';
+
+interface PartnerDashboardRow {
+  partnerName: string;
+  totalCampaigns: bigint;
+  activeCampaigns: bigint;
+  soldVouchers: bigint;
+  customerCount: bigint;
+  revenue: Prisma.Decimal | null;
+  usedVouchers: bigint;
+}
+
+interface PartnerPerformanceRow {
+  partnerId: string;
+  companyName: string;
+  totalCampaigns: bigint;
+  vouchersSold: bigint;
+  revenue: Prisma.Decimal | null;
+  usageRate: Prisma.Decimal | null;
+  total: bigint;
+}
 
 /**
  * Service quản lý logic nghiệp vụ cho Đối tác (Partner) và Chi nhánh (Branch).
@@ -98,77 +126,63 @@ export class PartnersService {
    * Lấy thống kê dashboard theo tài khoản đối tác hiện tại.
    */
   async getDashboard(partnerId: string) {
-    const partner = await this.prisma.partner.findUnique({
-      where: { partnerId },
-      select: { companyName: true },
-    });
+    const [dashboard] = await this.prisma.$queryRaw<PartnerDashboardRow[]>`
+      SELECT
+        p.company_name AS "partnerName",
+        COUNT(DISTINCT c.campaign_id) AS "totalCampaigns",
+        COUNT(DISTINCT c.campaign_id) FILTER (
+          WHERE c.status::text = 'APPROVED'
+        ) AS "activeCampaigns",
+        COALESCE(DISTINCT_CAMPAIGNS.sold_quantity, 0) AS "soldVouchers",
+        COALESCE(SALES.customer_count, 0) AS "customerCount",
+        COALESCE(SALES.revenue, 0) AS revenue,
+        COALESCE(USED.used_vouchers, 0) AS "usedVouchers"
+      FROM "Partners" p
+      LEFT JOIN "Voucher_Campaigns" c ON c.partner_id = p.partner_id
+      LEFT JOIN LATERAL (
+        SELECT SUM(vc.sold_quantity) AS sold_quantity
+        FROM "Voucher_Campaigns" vc
+        WHERE vc.partner_id = p.partner_id
+      ) DISTINCT_CAMPAIGNS ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(DISTINCT o.customer_id) AS customer_count,
+          SUM(oi.quantity * oi.unit_price) AS revenue
+        FROM "Order_Items" oi
+        JOIN "Voucher_Campaigns" vc ON vc.campaign_id = oi.campaign_id
+        JOIN "Orders" o ON o.order_id = oi.order_id
+        WHERE vc.partner_id = p.partner_id
+      ) SALES ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS used_vouchers
+        FROM "Voucher_Codes" code
+        JOIN "Order_Items" oi ON oi.item_id = code.item_id
+        JOIN "Voucher_Campaigns" vc ON vc.campaign_id = oi.campaign_id
+        WHERE vc.partner_id = p.partner_id
+          AND code.status::text = 'USED'
+      ) USED ON TRUE
+      WHERE p.partner_id = ${partnerId}::uuid
+      GROUP BY
+        p.partner_id,
+        p.company_name,
+        DISTINCT_CAMPAIGNS.sold_quantity,
+        SALES.customer_count,
+        SALES.revenue,
+        USED.used_vouchers
+    `;
 
-    if (!partner) {
+    if (!dashboard) {
       throw new NotFoundException('Không tìm thấy đối tác để tải dashboard.');
     }
 
-    const campaigns = await this.prisma.voucherCampaign.findMany({
-      where: { partnerId },
-      select: {
-        campaignId: true,
-        status: true,
-        soldQuantity: true,
-      },
-    });
-
-    const orderItems = await this.prisma.orderItem.findMany({
-      where: {
-        campaign: {
-          partnerId,
-        },
-      },
-      select: {
-        quantity: true,
-        unitPrice: true,
-        order: {
-          select: {
-            customerId: true,
-          },
-        },
-      },
-    });
-
-    const totalCampaigns = campaigns.length;
-    const activeCampaigns = campaigns.filter(
-      (campaign) => campaign.status === 'APPROVED',
-    ).length;
-    const soldVouchers = campaigns.reduce(
-      (sum, campaign) => sum + campaign.soldQuantity,
-      0,
-    );
-    const customerIds = new Set(
-      orderItems.map((item) => item.order.customerId),
-    );
-    const customerCount = customerIds.size;
-    const revenue = orderItems.reduce(
-      (sum, item) => sum + Number(item.unitPrice) * item.quantity,
-      0,
-    );
-
-    const usedVouchers = await this.prisma.voucherCode.count({
-      where: {
-        status: 'USED',
-        orderItem: {
-          campaign: {
-            partnerId,
-          },
-        },
-      },
-    });
-
     return {
-      partnerName: partner.companyName,
-      totalCampaigns,
-      activeCampaigns,
-      soldVouchers,
-      customerCount,
-      revenue,
-      usedVouchers,
+      partnerName: dashboard.partnerName,
+      totalCampaigns: Number(dashboard.totalCampaigns),
+      activeCampaigns: Number(dashboard.activeCampaigns),
+      soldVouchers: Number(dashboard.soldVouchers),
+      customerCount: Number(dashboard.customerCount),
+      revenue: Number(dashboard.revenue ?? 0),
+      usedVouchers: Number(dashboard.usedVouchers),
     };
   }
 
@@ -178,8 +192,46 @@ export class PartnersService {
   async getBranches(partnerId: string) {
     return this.prisma.branch.findMany({
       where: { partnerId },
+      select: {
+        branchId: true,
+        name: true,
+        address: true,
+        provinceCode: true,
+      },
       orderBy: { name: 'asc' },
     });
+  }
+
+  async listBranches(partnerId: string, query: PartnerListQueryDto) {
+    const where: Prisma.BranchWhereInput = {
+      partnerId,
+      ...(query.keyword
+        ? {
+            OR: [
+              { name: { contains: query.keyword, mode: 'insensitive' } },
+              { address: { contains: query.keyword, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+    const skip = (query.page - 1) * query.limit;
+    const [items, total] = await Promise.all([
+      this.prisma.branch.findMany({
+        where,
+        select: {
+          branchId: true,
+          name: true,
+          address: true,
+          provinceCode: true,
+        },
+        orderBy: [{ name: 'asc' }, { branchId: 'asc' }],
+        skip,
+        take: query.limit,
+      }),
+      this.prisma.branch.count({ where }),
+    ]);
+
+    return paginateResult(items, total, query.page, query.limit);
   }
 
   /**
@@ -328,24 +380,50 @@ export class PartnersService {
   /**
    * Lấy danh sách nhân viên của đối tác.
    */
-  async listStaff(partnerId: string) {
-    return this.prisma.user.findMany({
-      where: { partnerId, role: 'PARTNER_STAFF' },
-      select: {
-        userId: true,
-        email: true,
-        phone: true,
-        fullName: true,
-        role: true,
-        status: true,
-        branchId: true,
-        createdAt: true,
-        branch: {
-          select: { name: true, branchId: true },
+  async listStaff(partnerId: string, query: PartnerListQueryDto) {
+    const where: Prisma.UserWhereInput = {
+      partnerId,
+      role: 'PARTNER_STAFF',
+      ...(query.keyword
+        ? {
+            OR: [
+              { fullName: { contains: query.keyword, mode: 'insensitive' } },
+              { email: { contains: query.keyword, mode: 'insensitive' } },
+              { phone: { contains: query.keyword, mode: 'insensitive' } },
+              {
+                branch: {
+                  name: { contains: query.keyword, mode: 'insensitive' },
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+    const skip = (query.page - 1) * query.limit;
+    const [items, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        select: {
+          userId: true,
+          email: true,
+          phone: true,
+          fullName: true,
+          role: true,
+          status: true,
+          branchId: true,
+          createdAt: true,
+          branch: {
+            select: { name: true, branchId: true },
+          },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+        orderBy: [{ createdAt: 'desc' }, { userId: 'desc' }],
+        skip,
+        take: query.limit,
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    return paginateResult(items, total, query.page, query.limit);
   }
 
   /**
@@ -438,141 +516,193 @@ export class PartnersService {
    * Admin: Lấy tổng quan dashboard hệ thống.
    */
   async getAdminDashboard() {
-    const [
-      partnerCount,
-      campaignCount,
-      successfulOrderCount,
-      revenueSummary,
-      customerCount,
-      adminCount,
-      staffCount,
-      approvedCount,
-      pendingCount,
-      draftCount,
-      rejectedCount,
-      expiredCount,
-      pausedCount,
-      soldOutCount,
-    ] = await Promise.all([
-      this.prisma.partner.count(),
-      this.prisma.voucherCampaign.count(),
-      this.prisma.order.count({
-        where: {
-          paymentStatus: 'PAID',
-        },
-      }),
-      this.prisma.order.aggregate({
-        _sum: { totalAmount: true },
-        where: {
-          paymentStatus: 'PAID',
-        },
-      }),
-      this.prisma.user.count({ where: { role: 'CUSTOMER' } }),
-      this.prisma.user.count({ where: { role: 'ADMIN' } }),
-      this.prisma.user.count({ where: { role: 'PARTNER_STAFF' } }),
-      this.prisma.voucherCampaign.count({ where: { status: 'APPROVED' } }),
-      this.prisma.voucherCampaign.count({
-        where: { status: 'PENDING_APPROVAL' },
-      }),
-      this.prisma.voucherCampaign.count({ where: { status: 'DRAFT' } }),
-      this.prisma.voucherCampaign.count({ where: { status: 'REJECTED' } }),
-      this.prisma.voucherCampaign.count({ where: { status: 'EXPIRED' } }),
-      this.prisma.voucherCampaign.count({ where: { status: 'PAUSED' } }),
-      this.prisma.voucherCampaign.count({ where: { status: 'SOLD_OUT' } }),
-    ]);
-
-    // Truy vấn dữ liệu để tính hiệu suất đối tác
-    const partnersData = await this.prisma.partner.findMany({
-      include: {
-        campaigns: {
-          include: {
-            orderItems: {
-              where: {
-                order: { paymentStatus: 'PAID' },
-              },
-              include: {
-                voucherCodes: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
-    const partnerPerformance = partnersData.map((p) => {
-      const totalCampaigns = p.campaigns.length;
-      let vouchersSold = 0;
-      let revenue = 0;
-      let usedCount = 0;
-
-      p.campaigns.forEach((camp) => {
-        camp.orderItems.forEach((item) => {
-          vouchersSold += item.quantity;
-          revenue += item.quantity * Number(item.unitPrice);
-          item.voucherCodes.forEach((code) => {
-            if (code.status === 'USED') {
-              usedCount++;
-            }
-          });
-        });
-      });
-
-      const usageRate = vouchersSold > 0 ? (usedCount / vouchersSold) * 100 : 0;
-
-      return {
-        partnerId: p.partnerId,
-        companyName: p.companyName,
-        totalCampaigns,
-        vouchersSold,
-        revenue,
-        usageRate: Math.round(usageRate * 10) / 10,
-      };
-    });
-
-    // Sắp xếp giảm dần theo doanh thu của đối tác
-    partnerPerformance.sort((a, b) => b.revenue - a.revenue);
+    const [partnerCount, orderSummary, userGroups, campaignGroups] =
+      await Promise.all([
+        this.prisma.partner.count(),
+        this.prisma.order.aggregate({
+          _count: true,
+          _sum: { totalAmount: true },
+          where: { paymentStatus: 'PAID' },
+        }),
+        this.prisma.user.groupBy({
+          by: ['role'],
+          _count: { _all: true },
+        }),
+        this.prisma.voucherCampaign.groupBy({
+          by: ['status'],
+          _count: { _all: true },
+        }),
+      ]);
+    const userCounts = Object.fromEntries(
+      userGroups.map((group) => [group.role, group._count._all]),
+    );
+    const campaignCounts = Object.fromEntries(
+      campaignGroups.map((group) => [group.status, group._count._all]),
+    );
+    const campaignCount = campaignGroups.reduce(
+      (sum, group) => sum + group._count._all,
+      0,
+    );
 
     return {
       totalPartners: partnerCount,
       totalCampaigns: campaignCount,
-      totalSuccessfulOrders: successfulOrderCount,
-      totalRevenue: Number(revenueSummary._sum.totalAmount ?? 0),
+      totalSuccessfulOrders: orderSummary._count,
+      totalRevenue: Number(orderSummary._sum.totalAmount ?? 0),
       userStats: {
-        totalCustomers: customerCount,
+        totalCustomers: userCounts.CUSTOMER ?? 0,
         totalPartners: partnerCount,
-        totalAdmins: adminCount,
-        totalStaffs: staffCount,
+        totalAdmins: userCounts.ADMIN ?? 0,
+        totalStaffs: userCounts.PARTNER_STAFF ?? 0,
       },
       campaignStats: {
-        approved: approvedCount,
-        pending: pendingCount,
-        draft: draftCount,
-        rejected: rejectedCount,
-        expired: expiredCount,
-        paused: pausedCount,
-        soldOut: soldOutCount,
+        approved: campaignCounts.APPROVED ?? 0,
+        pending: campaignCounts.PENDING_APPROVAL ?? 0,
+        draft: campaignCounts.DRAFT ?? 0,
+        rejected: campaignCounts.REJECTED ?? 0,
+        expired: campaignCounts.EXPIRED ?? 0,
+        paused: campaignCounts.PAUSED ?? 0,
+        soldOut: campaignCounts.SOLD_OUT ?? 0,
       },
-      partnerPerformance: partnerPerformance, // Lấy toàn bộ danh sách đối tác
     };
+  }
+
+  async getAdminPartnerPerformance(query: PartnerPerformanceQueryDto) {
+    const sortColumns: Record<PartnerPerformanceSortField, string> = {
+      [PartnerPerformanceSortField.COMPANY_NAME]: '"companyName"',
+      [PartnerPerformanceSortField.TOTAL_CAMPAIGNS]: '"totalCampaigns"',
+      [PartnerPerformanceSortField.VOUCHERS_SOLD]: '"vouchersSold"',
+      [PartnerPerformanceSortField.REVENUE]: 'revenue',
+      [PartnerPerformanceSortField.USAGE_RATE]: '"usageRate"',
+    };
+    const sortColumn = Prisma.raw(sortColumns[query.sortField]);
+    const sortDirection = Prisma.raw(
+      query.sortDirection === SortDirection.ASC ? 'ASC' : 'DESC',
+    );
+    const keywordFilter = query.keyword
+      ? Prisma.sql`WHERE p.company_name ILIKE ${`%${query.keyword}%`}`
+      : Prisma.empty;
+    const offset = (query.page - 1) * query.limit;
+
+    const rows = await this.prisma.$queryRaw<
+      PartnerPerformanceRow[]
+    >(Prisma.sql`
+      WITH campaign_stats AS (
+        SELECT partner_id, COUNT(*) AS total_campaigns
+        FROM "Voucher_Campaigns"
+        GROUP BY partner_id
+      ),
+      sales_stats AS (
+        SELECT
+          vc.partner_id,
+          SUM(oi.quantity) AS vouchers_sold,
+          SUM(oi.quantity * oi.unit_price) AS revenue
+        FROM "Order_Items" oi
+        JOIN "Voucher_Campaigns" vc ON vc.campaign_id = oi.campaign_id
+        JOIN "Orders" o ON o.order_id = oi.order_id
+        WHERE o.payment_status::text = 'PAID'
+        GROUP BY vc.partner_id
+      ),
+      usage_stats AS (
+        SELECT vc.partner_id, COUNT(*) AS used_count
+        FROM "Voucher_Codes" code
+        JOIN "Order_Items" oi ON oi.item_id = code.item_id
+        JOIN "Voucher_Campaigns" vc ON vc.campaign_id = oi.campaign_id
+        JOIN "Orders" o ON o.order_id = oi.order_id
+        WHERE o.payment_status::text = 'PAID'
+          AND code.status::text = 'USED'
+        GROUP BY vc.partner_id
+      )
+      SELECT
+        p.partner_id AS "partnerId",
+        p.company_name AS "companyName",
+        COALESCE(c.total_campaigns, 0) AS "totalCampaigns",
+        COALESCE(s.vouchers_sold, 0) AS "vouchersSold",
+        COALESCE(s.revenue, 0) AS revenue,
+        ROUND(
+          CASE
+            WHEN COALESCE(s.vouchers_sold, 0) = 0 THEN 0
+            ELSE COALESCE(u.used_count, 0)::numeric / s.vouchers_sold * 100
+          END,
+          1
+        ) AS "usageRate",
+        COUNT(*) OVER() AS total
+      FROM "Partners" p
+      LEFT JOIN campaign_stats c ON c.partner_id = p.partner_id
+      LEFT JOIN sales_stats s ON s.partner_id = p.partner_id
+      LEFT JOIN usage_stats u ON u.partner_id = p.partner_id
+      ${keywordFilter}
+      ORDER BY ${sortColumn} ${sortDirection}, p.partner_id ASC
+      LIMIT ${query.limit}
+      OFFSET ${offset}
+    `);
+    const total = rows.length > 0 ? Number(rows[0].total) : 0;
+    const items = rows.map((row) => ({
+      partnerId: row.partnerId,
+      companyName: row.companyName,
+      totalCampaigns: Number(row.totalCampaigns),
+      vouchersSold: Number(row.vouchersSold),
+      revenue: Number(row.revenue ?? 0),
+      usageRate: Number(row.usageRate ?? 0),
+    }));
+
+    return paginateResult(items, total, query.page, query.limit);
   }
 
   /**
    * Admin: Lấy danh sách toàn bộ đối tác trên hệ thống kèm thông tin tài khoản để kiểm tra duyệt.
    */
-  async adminListPartners() {
-    return this.prisma.partner.findMany({
-      include: {
-        user: {
-          select: {
-            email: true,
-            phone: true,
-            fullName: true,
-            status: true,
+  async adminListPartners(query: AdminPartnerListQueryDto) {
+    const where: Prisma.PartnerWhereInput = {
+      approvalStatus: query.approvalStatus,
+      accountStatus: query.accountStatus,
+      ...(query.keyword
+        ? {
+            OR: [
+              { companyName: { contains: query.keyword, mode: 'insensitive' } },
+              { taxCode: { contains: query.keyword, mode: 'insensitive' } },
+              {
+                representative: {
+                  contains: query.keyword,
+                  mode: 'insensitive',
+                },
+              },
+              {
+                user: {
+                  email: { contains: query.keyword, mode: 'insensitive' },
+                },
+              },
+              {
+                user: {
+                  phone: { contains: query.keyword, mode: 'insensitive' },
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+    const skip = (query.page - 1) * query.limit;
+    const [items, total] = await Promise.all([
+      this.prisma.partner.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              email: true,
+              phone: true,
+              fullName: true,
+              status: true,
+            },
           },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+        orderBy: [{ createdAt: 'desc' }, { partnerId: 'desc' }],
+        skip,
+        take: query.limit,
+      }),
+      this.prisma.partner.count({ where }),
+    ]);
+
+    return paginateResult(items, total, query.page, query.limit);
   }
 
   /**

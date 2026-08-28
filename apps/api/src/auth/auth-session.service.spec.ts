@@ -181,6 +181,7 @@ describe('AuthSessionService', () => {
           sessionId,
           userId: user.userId,
           revokedAt: null,
+          lastActivityAt: new Date('2026-08-25T09:00:00.000Z'),
           idleExpiresAt: new Date('2026-08-25T12:00:00.000Z'),
           absoluteExpiresAt: new Date('2026-08-25T12:00:00.000Z'),
           user,
@@ -234,6 +235,7 @@ describe('AuthSessionService', () => {
           sessionId,
           userId: user.userId,
           revokedAt: null,
+          lastActivityAt: new Date('2026-08-25T09:00:00.000Z'),
           idleExpiresAt: new Date('2026-08-25T11:00:00.000Z'),
           absoluteExpiresAt: new Date('2026-08-25T12:00:00.000Z'),
           user: currentUser,
@@ -260,6 +262,34 @@ describe('AuthSessionService', () => {
         }),
       }),
     );
+  });
+
+  it('does not write the session heartbeat again within one minute', async () => {
+    const prisma = {
+      authSession: {
+        findUnique: jest.fn().mockResolvedValue({
+          sessionId,
+          userId: user.userId,
+          revokedAt: null,
+          lastActivityAt: new Date('2026-08-25T09:59:30.000Z'),
+          idleExpiresAt: new Date('2026-08-25T11:00:00.000Z'),
+          absoluteExpiresAt: new Date('2026-08-25T12:00:00.000Z'),
+          user,
+        }),
+        updateMany: jest.fn(),
+      },
+    };
+    const { service } = createService({ prisma });
+
+    await expect(
+      service.validateAccess({
+        sub: user.userId,
+        sid: sessionId,
+        purpose: 'access',
+        iat: Math.floor(Date.now() / 1000),
+      }),
+    ).resolves.toEqual(expect.objectContaining({ sessionId }));
+    expect(prisma.authSession.updateMany).not.toHaveBeenCalled();
   });
 
   it('rejects a refresh token replay when atomic rotation loses the race', async () => {

@@ -9,6 +9,8 @@ import * as bcrypt from 'bcrypt';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 
 import { AuditService } from '../audit/audit.service';
+import { AdminUserQueryDto } from './dto/admin-user-query.dto';
+import { paginateResult } from '../common/pagination';
 
 /**
  * Service quản lý người dùng (Users), bao gồm các thao tác tìm kiếm,
@@ -204,20 +206,11 @@ export class UsersService {
    * Lấy danh sách tất cả các tài khoản người dùng trong hệ thống (chỉ ADMIN).
    * @param query Bộ lọc tìm kiếm và trạng thái
    */
-  async adminListUsers(query: {
-    keyword?: string;
-    role?: string;
-    status?: string;
-  }) {
-    const where: Prisma.UserWhereInput = {};
-
-    if (query.role) {
-      where.role = query.role as UserRole;
-    }
-
-    if (query.status) {
-      where.status = query.status as UserStatus;
-    }
+  async adminListUsers(query: AdminUserQueryDto) {
+    const where: Prisma.UserWhereInput = {
+      role: query.role,
+      status: query.status,
+    };
 
     if (query.keyword) {
       where.OR = [
@@ -227,19 +220,52 @@ export class UsersService {
       ];
     }
 
-    return this.prisma.user.findMany({
-      where,
-      select: {
-        userId: true,
-        email: true,
-        phone: true,
-        fullName: true,
-        role: true,
-        status: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const skip = (query.page - 1) * query.limit;
+    const summaryWhere: Prisma.UserWhereInput = { OR: where.OR };
+    const [items, total, roleGroups, statusGroups] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        select: {
+          userId: true,
+          email: true,
+          phone: true,
+          fullName: true,
+          role: true,
+          status: true,
+          createdAt: true,
+        },
+        orderBy: [{ createdAt: 'desc' }, { userId: 'desc' }],
+        skip,
+        take: query.limit,
+      }),
+      this.prisma.user.count({ where }),
+      this.prisma.user.groupBy({
+        by: ['role'],
+        where: summaryWhere,
+        _count: { _all: true },
+      }),
+      this.prisma.user.groupBy({
+        by: ['status'],
+        where: summaryWhere,
+        _count: { _all: true },
+      }),
+    ]);
+
+    const roleCounts = Object.fromEntries(
+      Object.values(UserRole).map((role) => [role, 0]),
+    ) as Record<UserRole, number>;
+    for (const group of roleGroups) roleCounts[group.role] = group._count._all;
+    const statusCounts = Object.fromEntries(
+      Object.values(UserStatus).map((status) => [status, 0]),
+    ) as Record<UserStatus, number>;
+    for (const group of statusGroups) {
+      statusCounts[group.status] = group._count._all;
+    }
+
+    return {
+      ...paginateResult(items, total, query.page, query.limit),
+      summary: { roleCounts, statusCounts },
+    };
   }
 
   /**

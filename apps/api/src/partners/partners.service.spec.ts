@@ -3,41 +3,24 @@ import { PartnersService } from './partners.service';
 describe('PartnersService dashboard', () => {
   it('should return metrics scoped to the current partner account', async () => {
     const prisma = {
-      partner: {
-        findUnique: jest.fn().mockResolvedValue({ companyName: 'Cửa hàng A' }),
-      },
-      voucherCampaign: {
-        findMany: jest.fn().mockResolvedValue([
-          { campaignId: 'c1', status: 'APPROVED', soldQuantity: 12 },
-          { campaignId: 'c2', status: 'DRAFT', soldQuantity: 3 },
-          { campaignId: 'c3', status: 'APPROVED', soldQuantity: 5 },
-        ]),
-      },
-      orderItem: {
-        findMany: jest.fn().mockResolvedValue([
-          { quantity: 2, unitPrice: '150000', order: { customerId: 'u-1' } },
-          { quantity: 3, unitPrice: '200000', order: { customerId: 'u-2' } },
-          { quantity: 1, unitPrice: '50000', order: { customerId: 'u-1' } },
-        ]),
-      },
-      voucherCode: {
-        count: jest.fn().mockResolvedValue(4),
-      },
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          partnerName: 'Cửa hàng A',
+          totalCampaigns: 3n,
+          activeCampaigns: 2n,
+          soldVouchers: 20n,
+          customerCount: 2n,
+          revenue: 950000,
+          usedVouchers: 4n,
+        },
+      ]),
     };
 
     const service = new PartnersService(prisma as any, {} as any);
 
     const result = await service.getDashboard('partner-1');
 
-    expect(prisma.partner.findUnique).toHaveBeenCalledWith({
-      where: { partnerId: 'partner-1' },
-      select: { companyName: true },
-    });
-    expect(prisma.voucherCampaign.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { partnerId: 'partner-1' },
-      }),
-    );
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
     expect(result.totalCampaigns).toBe(3);
     expect(result.activeCampaigns).toBe(2);
     expect(result.soldVouchers).toBe(20);
@@ -48,34 +31,32 @@ describe('PartnersService dashboard', () => {
   });
 
   it('returns every voucher campaign status in the admin dashboard', async () => {
-    const voucherCampaignCount = jest
-      .fn()
-      .mockResolvedValueOnce(65)
-      .mockResolvedValueOnce(35)
-      .mockResolvedValueOnce(6)
-      .mockResolvedValueOnce(5)
-      .mockResolvedValueOnce(5)
-      .mockResolvedValueOnce(5)
-      .mockResolvedValueOnce(4)
-      .mockResolvedValueOnce(5);
     const prisma = {
       partner: {
         count: jest.fn().mockResolvedValue(3),
-        findMany: jest.fn().mockResolvedValue([]),
       },
-      voucherCampaign: { count: voucherCampaignCount },
+      voucherCampaign: {
+        groupBy: jest.fn().mockResolvedValue([
+          { status: 'APPROVED', _count: { _all: 35 } },
+          { status: 'PENDING_APPROVAL', _count: { _all: 6 } },
+          { status: 'DRAFT', _count: { _all: 5 } },
+          { status: 'REJECTED', _count: { _all: 5 } },
+          { status: 'EXPIRED', _count: { _all: 5 } },
+          { status: 'PAUSED', _count: { _all: 4 } },
+          { status: 'SOLD_OUT', _count: { _all: 5 } },
+        ]),
+      },
       order: {
-        count: jest.fn().mockResolvedValue(12),
         aggregate: jest
           .fn()
-          .mockResolvedValue({ _sum: { totalAmount: 900000 } }),
+          .mockResolvedValue({ _count: 12, _sum: { totalAmount: 900000 } }),
       },
       user: {
-        count: jest
-          .fn()
-          .mockResolvedValueOnce(20)
-          .mockResolvedValueOnce(2)
-          .mockResolvedValueOnce(4),
+        groupBy: jest.fn().mockResolvedValue([
+          { role: 'CUSTOMER', _count: { _all: 20 } },
+          { role: 'ADMIN', _count: { _all: 2 } },
+          { role: 'PARTNER_STAFF', _count: { _all: 4 } },
+        ]),
       },
     };
     const service = new PartnersService(prisma as any, {} as any);
@@ -92,11 +73,9 @@ describe('PartnersService dashboard', () => {
       paused: 4,
       soldOut: 5,
     });
-    expect(voucherCampaignCount).toHaveBeenCalledWith({
-      where: { status: 'PAUSED' },
-    });
-    expect(voucherCampaignCount).toHaveBeenCalledWith({
-      where: { status: 'SOLD_OUT' },
+    expect(prisma.voucherCampaign.groupBy).toHaveBeenCalledWith({
+      by: ['status'],
+      _count: { _all: true },
     });
   });
 });

@@ -16,6 +16,8 @@ import {
 
 import { AuditService } from '../audit/audit.service';
 import { ActivityCategory } from '@prisma/client';
+import { AdminOrderQueryDto } from './dto/admin-order-query.dto';
+import { paginateResult } from '../common/pagination';
 
 @Injectable()
 export class OrdersService {
@@ -54,7 +56,9 @@ export class OrdersService {
       }
 
       if (cartItems.length === 0) {
-        throw new BadRequestException('Giỏ hàng của bạn đang trống hoặc không có sản phẩm nào được chọn.');
+        throw new BadRequestException(
+          'Giỏ hàng của bạn đang trống hoặc không có sản phẩm nào được chọn.',
+        );
       }
 
       let totalAmount = new Prisma.Decimal(0);
@@ -421,27 +425,60 @@ export class OrdersService {
   /**
    * Admin: Xem danh sách toàn bộ đơn hàng trên hệ thống.
    */
-  async adminListOrders() {
-    return this.prisma.order.findMany({
-      include: {
-        customer: {
-          select: {
-            fullName: true,
-            email: true,
+  async adminListOrders(query: AdminOrderQueryDto) {
+    const where: Prisma.OrderWhereInput = {
+      orderStatus: query.orderStatus,
+      paymentStatus: query.paymentStatus,
+      ...(query.keyword
+        ? {
+            OR: [
+              { orderCode: { contains: query.keyword, mode: 'insensitive' } },
+              {
+                customer: {
+                  fullName: {
+                    contains: query.keyword,
+                    mode: 'insensitive',
+                  },
+                },
+              },
+              {
+                customer: {
+                  email: { contains: query.keyword, mode: 'insensitive' },
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+    const skip = (query.page - 1) * query.limit;
+    const [items, total] = await Promise.all([
+      this.prisma.order.findMany({
+        where,
+        include: {
+          customer: {
+            select: {
+              fullName: true,
+              email: true,
+            },
           },
-        },
-        orderItems: {
-          include: {
-            campaign: {
-              select: {
-                title: true,
+          orderItems: {
+            include: {
+              campaign: {
+                select: {
+                  title: true,
+                },
               },
             },
           },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+        orderBy: [{ createdAt: 'desc' }, { orderId: 'desc' }],
+        skip,
+        take: query.limit,
+      }),
+      this.prisma.order.count({ where }),
+    ]);
+
+    return paginateResult(items, total, query.page, query.limit);
   }
 
   /**

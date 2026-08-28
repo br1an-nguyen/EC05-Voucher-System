@@ -192,6 +192,9 @@ model User {
   contentUpdated     ContentEntry[]     @relation("ContentEntryUpdatedBy")
 
   @@index([partnerId, branchId], map: "Users_partner_branch_idx")
+  @@index([role, status, createdAt(sort: Desc)], map: "Users_role_status_created_at_idx")
+  @@index([status, createdAt(sort: Desc)], map: "Users_status_created_at_idx")
+  @@index([partnerId, role, createdAt(sort: Desc)], map: "Users_partner_role_created_at_idx")
   @@map("Users")
 }
 
@@ -231,6 +234,8 @@ model Partner {
   campaigns  VoucherCampaign[]
   complaints Complaint[]
 
+  @@index([approvalStatus, accountStatus, createdAt(sort: Desc)], map: "Partners_approval_account_created_at_idx")
+  @@index([accountStatus, createdAt(sort: Desc)], map: "Partners_account_created_at_idx")
   @@map("Partners")
 }
 
@@ -254,6 +259,7 @@ model Branch {
   @@unique([partnerId, branchId])
   @@unique([externalSource, externalId])
   @@index([provinceCode], map: "Branches_province_code_idx")
+  @@index([partnerId, name], map: "Branches_partner_name_idx")
   @@map("Branches")
 }
 
@@ -305,6 +311,8 @@ model VoucherCampaign {
   @@unique([partnerId, campaignId])
   @@unique([externalSource, externalId])
   @@index([partnerId, createdAt(sort: Desc)], map: "Voucher_Campaigns_partner_created_at_idx")
+  @@index([status, createdAt(sort: Desc)], map: "Voucher_Campaigns_status_created_at_idx")
+  @@index([partnerId, status, createdAt(sort: Desc)], map: "Voucher_Campaigns_partner_status_created_at_idx")
   @@map("Voucher_Campaigns")
 }
 
@@ -414,6 +422,8 @@ model Order {
 
   @@index([customerId, createdAt(sort: Desc)], map: "Orders_customer_created_at_idx")
   @@index([createdAt(sort: Desc)], map: "Orders_created_at_idx")
+  @@index([paymentStatus, createdAt(sort: Desc)], map: "Orders_payment_status_created_at_idx")
+  @@index([orderStatus, createdAt(sort: Desc)], map: "Orders_order_status_created_at_idx")
   @@map("Orders")
 }
 
@@ -549,7 +559,7 @@ model VoucherCode {
 
   @@index([customerId, issuedAt(sort: Desc)], map: "Voucher_Codes_customer_issued_at_idx")
   @@index([status, expiresAt], map: "Voucher_Codes_status_expires_at_idx")
-  @@index([itemId], map: "Voucher_Codes_item_id_idx")
+  @@index([itemId, status], map: "Voucher_Codes_item_status_idx")
   @@map("Voucher_Codes")
 }
 
@@ -587,19 +597,19 @@ model AuditLog {
 }
 
 model ActivityLog {
-  activityId        String           @id @default(dbgenerated("gen_random_uuid()")) @map("activity_id") @db.Uuid
-  actorUserId       String?          @map("actor_user_id") @db.Uuid
-  actorRoleSnapshot UserRole?        @map("actor_role_snapshot")
-  actorNameSnapshot String?          @map("actor_name_snapshot") @db.VarChar(255)
-  actorEmailSnapshot String?         @map("actor_email_snapshot") @db.VarChar(255)
-  category          ActivityCategory @map("category")
-  actionType        String           @map("action_type") @db.VarChar(100)
-  targetEntity      String           @map("target_entity") @db.VarChar(100)
-  targetId          String?          @map("target_id") @db.VarChar(100)
-  metadata          Json?            @map("metadata") @db.JsonB
-  ipAddress         String?          @map("ip_address") @db.VarChar(64)
-  userAgent         String?          @map("user_agent") @db.VarChar(512)
-  occurredAt        DateTime         @default(now()) @map("occurred_at") @db.Timestamptz
+  activityId         String           @id @default(dbgenerated("gen_random_uuid()")) @map("activity_id") @db.Uuid
+  actorUserId        String?          @map("actor_user_id") @db.Uuid
+  actorRoleSnapshot  UserRole?        @map("actor_role_snapshot")
+  actorNameSnapshot  String?          @map("actor_name_snapshot") @db.VarChar(255)
+  actorEmailSnapshot String?          @map("actor_email_snapshot") @db.VarChar(255)
+  category           ActivityCategory @map("category")
+  actionType         String           @map("action_type") @db.VarChar(100)
+  targetEntity       String           @map("target_entity") @db.VarChar(100)
+  targetId           String?          @map("target_id") @db.VarChar(100)
+  metadata           Json?            @map("metadata") @db.JsonB
+  ipAddress          String?          @map("ip_address") @db.VarChar(64)
+  userAgent          String?          @map("user_agent") @db.VarChar(512)
+  occurredAt         DateTime         @default(now()) @map("occurred_at") @db.Timestamptz
 
   actor User? @relation("ActivityActor", fields: [actorUserId], references: [userId], onDelete: SetNull)
 

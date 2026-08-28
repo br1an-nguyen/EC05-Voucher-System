@@ -9,6 +9,7 @@ import {
   AuthSessionMetadata,
   SESSION_ABSOLUTE_TTL_MS,
   SESSION_IDLE_TTL_MS,
+  SESSION_TOUCH_INTERVAL_MS,
 } from './auth-session.constants';
 
 interface TokenPayload {
@@ -150,7 +151,24 @@ export class AuthSessionService {
     const now = new Date();
     const session = await this.prisma.authSession.findUnique({
       where: { sessionId: payload.sid },
-      include: { user: true },
+      select: {
+        sessionId: true,
+        userId: true,
+        lastActivityAt: true,
+        idleExpiresAt: true,
+        absoluteExpiresAt: true,
+        revokedAt: true,
+        user: {
+          select: {
+            userId: true,
+            role: true,
+            partnerId: true,
+            branchId: true,
+            status: true,
+            passwordChangedAt: true,
+          },
+        },
+      },
     });
     if (
       !session ||
@@ -176,19 +194,25 @@ export class AuthSessionService {
       );
     }
 
-    const idleExpiresAt = this.nextIdleExpiry(now, session.absoluteExpiresAt);
-    const touched = await this.prisma.authSession.updateMany({
-      where: {
-        sessionId: session.sessionId,
-        userId: session.userId,
-        revokedAt: null,
-        idleExpiresAt: { gt: now },
-        absoluteExpiresAt: { gt: now },
-      },
-      data: { lastActivityAt: now, idleExpiresAt },
-    });
-    if (touched.count !== 1) {
-      throw new UnauthorizedException('Phiên đăng nhập đã hết hiệu lực.');
+    let idleExpiresAt = session.idleExpiresAt;
+    if (
+      now.getTime() - session.lastActivityAt.getTime() >=
+      SESSION_TOUCH_INTERVAL_MS
+    ) {
+      idleExpiresAt = this.nextIdleExpiry(now, session.absoluteExpiresAt);
+      const touched = await this.prisma.authSession.updateMany({
+        where: {
+          sessionId: session.sessionId,
+          userId: session.userId,
+          revokedAt: null,
+          idleExpiresAt: { gt: now },
+          absoluteExpiresAt: { gt: now },
+        },
+        data: { lastActivityAt: now, idleExpiresAt },
+      });
+      if (touched.count !== 1) {
+        throw new UnauthorizedException('Phiên đăng nhập đã hết hiệu lực.');
+      }
     }
 
     return {

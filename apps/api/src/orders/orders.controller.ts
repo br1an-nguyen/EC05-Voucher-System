@@ -1,10 +1,20 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Req } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  UseGuards,
+  Req,
+  Query,
+} from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { CheckoutDto } from './dto/checkout.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '@prisma/client';
+import { AdminOrderQueryDto } from './dto/admin-order-query.dto';
 
 /**
  * Controller tiếp nhận REST API xử lý đơn đặt hàng của Khách hàng.
@@ -58,8 +68,8 @@ export class OrdersController {
    */
   @Get('admin/list')
   @Roles(UserRole.ADMIN)
-  async adminListOrders() {
-    return this.ordersService.adminListOrders();
+  async adminListOrders(@Query() query: AdminOrderQueryDto) {
+    return this.ordersService.adminListOrders(query);
   }
 
   /**

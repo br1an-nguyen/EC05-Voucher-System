@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, Req } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  Req,
+  Query,
+} from '@nestjs/common';
 import { PartnersService } from './partners.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
@@ -9,6 +20,11 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole, PartnerAccountStatus } from '@prisma/client';
 import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
+import {
+  AdminPartnerListQueryDto,
+  PartnerListQueryDto,
+  PartnerPerformanceQueryDto,
+} from './dto/partner-list-query.dto';
 
 /**
  * Controller tiếp nhận REST API cho các tác vụ liên quan đến Đối tác và Chi nhánh.
@@ -45,8 +61,14 @@ export class PartnersController {
    */
   @Patch('profile')
   @Roles(UserRole.PARTNER)
-  async updateProfile(@Req() req: any, @Body() updatePartnerDto: UpdatePartnerDto) {
-    return this.partnersService.updateProfile(req.user.userId, updatePartnerDto);
+  async updateProfile(
+    @Req() req: any,
+    @Body() updatePartnerDto: UpdatePartnerDto,
+  ) {
+    return this.partnersService.updateProfile(
+      req.user.userId,
+      updatePartnerDto,
+    );
   }
 
   /**
@@ -66,8 +88,21 @@ export class PartnersController {
   @Get('branches')
   @Roles(UserRole.PARTNER, UserRole.PARTNER_STAFF)
   async getBranches(@Req() req: any) {
-    const partnerId = req.user.role === UserRole.PARTNER_STAFF ? req.user.partnerId : req.user.userId;
+    const partnerId =
+      req.user.role === UserRole.PARTNER_STAFF
+        ? req.user.partnerId
+        : req.user.userId;
     return this.partnersService.getBranches(partnerId);
+  }
+
+  /**
+   * Lấy danh sách chi nhánh phân trang cho màn hình quản lý.
+   * GET /partners/branches/list
+   */
+  @Get('branches/list')
+  @Roles(UserRole.PARTNER)
+  async listBranches(@Req() req: any, @Query() query: PartnerListQueryDto) {
+    return this.partnersService.listBranches(req.user.userId, query);
   }
 
   /**
@@ -76,7 +111,10 @@ export class PartnersController {
    */
   @Post('branches')
   @Roles(UserRole.PARTNER)
-  async createBranch(@Req() req: any, @Body() createBranchDto: CreateBranchDto) {
+  async createBranch(
+    @Req() req: any,
+    @Body() createBranchDto: CreateBranchDto,
+  ) {
     return this.partnersService.createBranch(req.user.userId, createBranchDto);
   }
 
@@ -91,7 +129,11 @@ export class PartnersController {
     @Param('id') branchId: string,
     @Body() updateBranchDto: UpdateBranchDto,
   ) {
-    return this.partnersService.updateBranch(req.user.userId, branchId, updateBranchDto);
+    return this.partnersService.updateBranch(
+      req.user.userId,
+      branchId,
+      updateBranchDto,
+    );
   }
 
   /**
@@ -116,8 +158,8 @@ export class PartnersController {
 
   @Get('staff')
   @Roles(UserRole.PARTNER)
-  async listStaff(@Req() req: any) {
-    return this.partnersService.listStaff(req.user.userId);
+  async listStaff(@Req() req: any, @Query() query: PartnerListQueryDto) {
+    return this.partnersService.listStaff(req.user.userId, query);
   }
 
   /**
@@ -157,13 +199,23 @@ export class PartnersController {
   }
 
   /**
+   * Admin: Hiệu suất đối tác phân trang cho bảng dashboard.
+   * GET /partners/admin/dashboard/performance
+   */
+  @Get('admin/dashboard/performance')
+  @Roles(UserRole.ADMIN)
+  async adminDashboardPerformance(@Query() query: PartnerPerformanceQueryDto) {
+    return this.partnersService.getAdminPartnerPerformance(query);
+  }
+
+  /**
    * Admin: Xem danh sách đối tác chờ duyệt hoặc đã duyệt.
    * GET /partners/admin/list
    */
   @Get('admin/list')
   @Roles(UserRole.ADMIN)
-  async adminListPartners() {
-    return this.partnersService.adminListPartners();
+  async adminListPartners(@Query() query: AdminPartnerListQueryDto) {
+    return this.partnersService.adminListPartners(query);
   }
 
   /**
@@ -197,7 +249,11 @@ export class PartnersController {
     @Param('id') partnerId: string,
     @Body('status') status: PartnerAccountStatus,
   ) {
-    return this.partnersService.adminTogglePartnerStatus(req.user.userId, partnerId, status);
+    return this.partnersService.adminTogglePartnerStatus(
+      req.user.userId,
+      partnerId,
+      status,
+    );
   }
 
   /**

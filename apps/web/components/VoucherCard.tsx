@@ -3,7 +3,15 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { MapPin, Store, Flame, Plus, CheckCircle2, X } from "lucide-react";
+import {
+  MapPin,
+  Store,
+  Flame,
+  Plus,
+  CheckCircle2,
+  X,
+  Clock,
+} from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { apiRequest } from "../lib/api";
 
@@ -15,6 +23,9 @@ export interface VoucherCampaignCard {
   salePrice: number;
   capacity: number;
   soldQuantity: number;
+  reservedStock: number;
+  saleStartTime: string;
+  saleEndTime: string;
   thumbnailUrl?: string | null;
   thumbnail_url?: string | null;
   partner: { companyName: string };
@@ -31,6 +42,16 @@ export interface VoucherCardProps {
 type CartToast =
   { kind: "success"; message: string } | { kind: "error"; message: string };
 
+interface AddCartItemResponse {
+  cartItemId: string;
+}
+
+const upcomingDateFormatter = new Intl.DateTimeFormat("vi-VN", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+
 export default function VoucherCard({
   campaign: c,
   index = 0,
@@ -44,7 +65,10 @@ export default function VoucherCard({
       Number(c.originalPrice)) *
       100,
   );
-  const remaining = c.capacity - c.soldQuantity;
+  const remaining = Math.max(c.capacity - c.soldQuantity - c.reservedStock, 0);
+  const [renderedAt] = useState(() => Date.now());
+  const saleStartTime = new Date(c.saleStartTime);
+  const isUpcoming = saleStartTime.getTime() > renderedAt;
   const soldPercent = Math.min(
     Math.round((c.soldQuantity / c.capacity) * 100),
     100,
@@ -85,7 +109,7 @@ export default function VoucherCard({
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (isAdding || isBuying) return;
+    if (isUpcoming || isAdding || isBuying) return;
 
     setIsAdding(true);
     try {
@@ -116,7 +140,9 @@ export default function VoucherCard({
       );
       if (needsLogin) {
         window.setTimeout(() => {
-          const redirectPath = encodeURIComponent(`/?intent=add_to_cart&campaignId=${c.campaignId}`);
+          const redirectPath = encodeURIComponent(
+            `/?intent=add_to_cart&campaignId=${c.campaignId}`,
+          );
           router.push(`/login?redirect=${redirectPath}`);
         }, 900);
       }
@@ -128,11 +154,11 @@ export default function VoucherCard({
   const handleBuyNow = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (isAdding || isBuying) return;
+    if (isUpcoming || isAdding || isBuying) return;
 
     setIsBuying(true);
     try {
-      const data = await apiRequest<any>("/cart/items", {
+      const data = await apiRequest<AddCartItemResponse>("/cart/items", {
         method: "POST",
         body: JSON.stringify({
           campaignId: c.campaignId,
@@ -140,7 +166,7 @@ export default function VoucherCard({
         }),
       });
       window.dispatchEvent(new Event("cart-updated"));
-      
+
       const cartItemId = data.cartItemId;
       router.push(`/checkout?items=${cartItemId}`);
     } catch (error: unknown) {
@@ -158,7 +184,9 @@ export default function VoucherCard({
       );
       if (needsLogin) {
         window.setTimeout(() => {
-          const redirectPath = encodeURIComponent(`/?intent=buy_now&campaignId=${c.campaignId}`);
+          const redirectPath = encodeURIComponent(
+            `/?intent=buy_now&campaignId=${c.campaignId}`,
+          );
           router.push(`/login?redirect=${redirectPath}`);
         }, 900);
       }
@@ -315,30 +343,46 @@ export default function VoucherCard({
               </div>
             </div>
 
-            <div 
-              className="flex items-center gap-2 relative z-10" 
+            <div
+              className="flex items-center gap-2 relative z-10"
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
               }}
             >
-              <button
-                onClick={handleBuyNow}
-                disabled={isAdding || isBuying}
-                title="Mua ngay"
-                className="flex h-9 px-3 items-center justify-center rounded-lg bg-primary text-white text-[11px] font-bold shadow-sm transition-colors hover:bg-primary-hover disabled:cursor-wait disabled:opacity-70"
-              >
-                {isBuying ? <span className="animate-spin w-3 h-3 border-2 border-white border-t-transparent rounded-full mr-1.5"></span> : null}
-                Mua ngay
-              </button>
-              <button
-                onClick={handleAddToCart}
-                disabled={isAdding || isBuying}
-                title="Thêm vào giỏ hàng"
-                className="flex h-9 w-9 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary transition-colors hover:bg-primary hover:text-white disabled:cursor-wait disabled:opacity-70"
-              >
-                <Plus className={`h-4 w-4 ${isAdding ? "animate-spin" : ""}`} />
-              </button>
+              {isUpcoming ? (
+                <div
+                  className="flex h-9 items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 text-[11px] font-bold text-amber-800"
+                  title={`Mở bán ngày ${upcomingDateFormatter.format(saleStartTime)}`}
+                >
+                  <Clock className="h-3.5 w-3.5" />
+                  Sắp mở bán
+                </div>
+              ) : (
+                <>
+                  <button
+                    onClick={handleBuyNow}
+                    disabled={isAdding || isBuying}
+                    title="Mua ngay"
+                    className="flex h-9 px-3 items-center justify-center rounded-lg bg-primary text-white text-[11px] font-bold shadow-sm transition-colors hover:bg-primary-hover disabled:cursor-wait disabled:opacity-70"
+                  >
+                    {isBuying ? (
+                      <span className="animate-spin w-3 h-3 border-2 border-white border-t-transparent rounded-full mr-1.5"></span>
+                    ) : null}
+                    Mua ngay
+                  </button>
+                  <button
+                    onClick={handleAddToCart}
+                    disabled={isAdding || isBuying}
+                    title="Thêm vào giỏ hàng"
+                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary transition-colors hover:bg-primary hover:text-white disabled:cursor-wait disabled:opacity-70"
+                  >
+                    <Plus
+                      className={`h-4 w-4 ${isAdding ? "animate-spin" : ""}`}
+                    />
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -358,7 +402,6 @@ export default function VoucherCard({
           </div>
         </div>
       </Link>
-
     </motion.div>
   );
 }

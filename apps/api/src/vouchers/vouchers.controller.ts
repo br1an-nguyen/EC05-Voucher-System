@@ -26,6 +26,7 @@ import {
 } from './dto/admin-category.dto';
 import { PartnerVoucherCodesQueryDto } from './dto/partner-voucher-codes-query.dto';
 import { UpdatePartnerCampaignStatusDto } from './dto/update-partner-campaign-status.dto';
+import { CampaignListQueryDto } from './dto/campaign-list-query.dto';
 
 /**
  * Controller tiếp nhận REST API phục vụ việc khởi tạo, chỉnh sửa và phê duyệt các chiến dịch voucher.
@@ -144,8 +145,11 @@ export class VouchersController {
   @Get('partner/list')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.PARTNER)
-  async getPartnerCampaigns(@Req() req: any) {
-    return this.vouchersService.getPartnerCampaigns(req.user.userId);
+  async getPartnerCampaigns(
+    @Req() req: any,
+    @Query() query: CampaignListQueryDto,
+  ) {
+    return this.vouchersService.getPartnerCampaigns(req.user.userId, query);
   }
 
   /**
@@ -276,6 +280,17 @@ export class VouchersController {
   }
 
   /**
+   * Admin: Danh sách gọn dùng cho ô chọn danh mục cha.
+   * GET /vouchers/admin/categories/options
+   */
+  @Get('admin/categories/options')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async adminListCategoryOptions() {
+    return this.vouchersService.adminListCategoryOptions();
+  }
+
+  /**
    * Admin: Tạo danh mục voucher mới.
    * POST /vouchers/admin/categories
    */
@@ -329,11 +344,8 @@ export class VouchersController {
   @Get('admin/list')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-  async adminListCampaigns(
-    @Query('keyword') keyword?: string,
-    @Query('status') status?: string,
-  ) {
-    return this.vouchersService.adminListCampaigns({ keyword, status });
+  async adminListCampaigns(@Query() query: CampaignListQueryDto) {
+    return this.vouchersService.adminListCampaigns(query);
   }
 
   /**

@@ -1,22 +1,25 @@
-'use client';
+"use client";
 
-import React, { useCallback, useEffect, useState } from 'react';
-import { apiRequest } from '../../../../lib/api';
-import { getErrorMessage } from '../../../../lib/errors';
-import { 
-  FolderTree, 
-  Plus, 
-  Edit3, 
+import React, { useCallback, useEffect, useState } from "react";
+import { apiRequest } from "../../../../lib/api";
+import { getErrorMessage } from "../../../../lib/errors";
+import { PaginatedResponse } from "../../../../lib/pagination";
+import { useDebouncedValue } from "../../../../hooks/use-debounced-value";
+import { TablePagination } from "../../../../components/ui/table-pagination";
+import {
+  FolderTree,
+  Plus,
+  Edit3,
   Archive,
-  AlertCircle, 
+  AlertCircle,
   CheckCircle,
   Eye,
   EyeOff,
   Tag,
   ChevronRight,
   X,
-  Search
-} from 'lucide-react';
+  Search,
+} from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,7 +29,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '../../../../components/ui/alert-dialog';
+} from "../../../../components/ui/alert-dialog";
 
 interface Category {
   categoryId: string;
@@ -36,55 +39,101 @@ interface Category {
   displayOrder: number;
   isActive: boolean;
   campaignCount?: number;
+  parent?: { nameVi: string } | null;
 }
-interface CategoryResponse { items: Category[]; total: number; page: number; limit: number; totalPages: number; }
+type CategoryResponse = PaginatedResponse<Category>;
+type CategoryOption = Pick<Category, "categoryId" | "nameVi" | "parentId">;
 
 export default function AdminCategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [fetching, setFetching] = useState(false);
+  const debouncedSearch = useDebouncedValue(searchTerm);
 
   // Form states
   const [showFormModal, setShowFormModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
-  
-  const [formCode, setFormCode] = useState('');
-  const [formNameVi, setFormNameVi] = useState('');
-  const [formParentId, setFormParentId] = useState('');
-  const [formDisplayOrder, setFormDisplayOrder] = useState('0');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
+    null,
+  );
+
+  const [formCode, setFormCode] = useState("");
+  const [formNameVi, setFormNameVi] = useState("");
+  const [formParentId, setFormParentId] = useState("");
+  const [formDisplayOrder, setFormDisplayOrder] = useState("0");
   const [formIsActive, setFormIsActive] = useState(true);
 
   // Delete action state
-  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(
+    null,
+  );
 
-  const loadCategories = useCallback(async () => {
+  const loadCategories = useCallback(
+    async (signal?: AbortSignal) => {
+      setFetching(true);
+      try {
+        const params = new URLSearchParams({ page: String(page), limit: "20" });
+        if (debouncedSearch) params.set("keyword", debouncedSearch);
+        const data = await apiRequest<CategoryResponse>(
+          `/vouchers/admin/categories?${params}`,
+          { signal },
+        );
+        setCategories(data.items);
+        setTotal(data.total);
+        setTotalPages(data.totalPages);
+      } catch (error: unknown) {
+        if (error instanceof DOMException && error.name === "AbortError")
+          return;
+        setErrorMsg(
+          getErrorMessage(error, "Không thể tải danh sách danh mục."),
+        );
+      } finally {
+        if (!signal?.aborted) {
+          setLoading(false);
+          setFetching(false);
+        }
+      }
+    },
+    [page, debouncedSearch],
+  );
+
+  const loadCategoryOptions = useCallback(async () => {
     try {
-      const params = new URLSearchParams({ page: '1', limit: '100' });
-      if (searchTerm.trim()) params.set('keyword', searchTerm.trim());
-      const data = await apiRequest<CategoryResponse>(`/vouchers/admin/categories?${params}`);
-      setCategories(data.items);
+      const data = await apiRequest<CategoryOption[]>(
+        "/vouchers/admin/categories/options",
+      );
+      setCategoryOptions(data);
     } catch (error: unknown) {
-      setErrorMsg(getErrorMessage(error, 'Không thể tải danh sách danh mục.'));
-    } finally {
-      setLoading(false);
+      setErrorMsg(getErrorMessage(error, "Không thể tải danh mục cha."));
     }
-  }, [searchTerm]);
+  }, []);
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => { void loadCategories(); }, 250);
-    return () => window.clearTimeout(timeout);
+    const controller = new AbortController();
+    queueMicrotask(() => {
+      if (!controller.signal.aborted) void loadCategories(controller.signal);
+    });
+    return () => controller.abort();
   }, [loadCategories]);
+
+  useEffect(() => {
+    queueMicrotask(() => void loadCategoryOptions());
+  }, [loadCategoryOptions]);
 
   const openCreateModal = () => {
     setIsEditing(false);
     setSelectedCategoryId(null);
-    setFormCode('');
-    setFormNameVi('');
-    setFormParentId('');
-    setFormDisplayOrder('0');
+    setFormCode("");
+    setFormNameVi("");
+    setFormParentId("");
+    setFormDisplayOrder("0");
     setFormIsActive(true);
     setShowFormModal(true);
   };
@@ -94,7 +143,7 @@ export default function AdminCategoriesPage() {
     setSelectedCategoryId(cat.categoryId);
     setFormCode(cat.code);
     setFormNameVi(cat.nameVi);
-    setFormParentId(cat.parentId || '');
+    setFormParentId(cat.parentId || "");
     setFormDisplayOrder(String(cat.displayOrder));
     setFormIsActive(cat.isActive);
     setShowFormModal(true);
@@ -109,19 +158,22 @@ export default function AdminCategoriesPage() {
       nameVi: formNameVi.trim(),
       parentId: formParentId || null,
       displayOrder: parseInt(formDisplayOrder, 10) || 0,
-      isActive: formIsActive
+      isActive: formIsActive,
     };
 
     try {
       if (isEditing && selectedCategoryId) {
-        await apiRequest<void>(`/vouchers/admin/categories/${selectedCategoryId}`, {
-          method: 'PATCH',
-          body: JSON.stringify(commonData),
-        });
-        setSuccessMsg('Đã cập nhật danh mục thành công!');
+        await apiRequest<void>(
+          `/vouchers/admin/categories/${selectedCategoryId}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(commonData),
+          },
+        );
+        setSuccessMsg("Đã cập nhật danh mục thành công!");
       } else {
-        await apiRequest<void>('/vouchers/admin/categories', {
-          method: 'POST',
+        await apiRequest<void>("/vouchers/admin/categories", {
+          method: "POST",
           body: JSON.stringify({
             code: formCode.trim(),
             nameVi: commonData.nameVi,
@@ -129,13 +181,19 @@ export default function AdminCategoriesPage() {
             displayOrder: commonData.displayOrder,
           }),
         });
-        setSuccessMsg('Đã tạo danh mục mới thành công!');
+        setSuccessMsg("Đã tạo danh mục mới thành công!");
       }
       setShowFormModal(false);
       void loadCategories();
+      void loadCategoryOptions();
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (error: unknown) {
-      setErrorMsg(getErrorMessage(error, 'Không thể lưu danh mục. Vui lòng kiểm tra lại.'));
+      setErrorMsg(
+        getErrorMessage(
+          error,
+          "Không thể lưu danh mục. Vui lòng kiểm tra lại.",
+        ),
+      );
     }
   };
 
@@ -144,28 +202,26 @@ export default function AdminCategoriesPage() {
     setSuccessMsg(null);
     try {
       await apiRequest<void>(`/vouchers/admin/categories/${categoryId}`, {
-        method: 'DELETE',
+        method: "DELETE",
       });
-      setSuccessMsg('Đã ngừng hoạt động danh mục thành công!');
+      setSuccessMsg("Đã ngừng hoạt động danh mục thành công!");
       void loadCategories();
+      void loadCategoryOptions();
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (error: unknown) {
-      setErrorMsg(getErrorMessage(error, 'Không thể xóa danh mục này.'));
+      setErrorMsg(getErrorMessage(error, "Không thể xóa danh mục này."));
     }
   };
 
   const filteredCategories = categories;
-
-  // Sắp xếp danh mục cha lên trước, sau đó là danh mục con thụt lề
-  const rootCategories = searchTerm 
-    ? filteredCategories 
-    : filteredCategories.filter(c => !c.parentId);
-  const getSubCategories = (parentId: string) => 
-    searchTerm ? [] : filteredCategories.filter(c => c.parentId === parentId);
+  const rootCategories = categories;
+  const getSubCategories = (parentId: string) => {
+    void parentId;
+    return [] as Category[];
+  };
 
   return (
     <div className="space-y-6">
-      
       {/* BREADCRUMB */}
       <div className="flex items-center gap-2 text-xs text-muted">
         <span>Admin Portal</span>
@@ -180,7 +236,10 @@ export default function AdminCategoriesPage() {
             <FolderTree className="h-6 w-6 text-primary" />
             Danh sách danh mục voucher
           </h1>
-          <p className="text-xs text-muted mt-1">Phân loại voucher chuẩn hóa để khách hàng dễ dàng tìm kiếm theo lĩnh vực dịch vụ.</p>
+          <p className="text-xs text-muted mt-1">
+            Phân loại voucher chuẩn hóa để khách hàng dễ dàng tìm kiếm theo lĩnh
+            vực dịch vụ.
+          </p>
         </div>
         <div className="flex items-center gap-2 max-w-md w-full sm:justify-end">
           <div className="relative flex-1 max-w-xs">
@@ -189,7 +248,10 @@ export default function AdminCategoriesPage() {
               type="text"
               placeholder="Tìm theo tên danh mục, mã..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setPage(1);
+              }}
               className="block w-full rounded-lg border border-border bg-card py-2 pl-9 pr-3 text-xs text-foreground placeholder-slate-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all"
             />
           </div>
@@ -225,8 +287,12 @@ export default function AdminCategoriesPage() {
       ) : filteredCategories.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border p-12 text-center space-y-3">
           <Tag className="h-10 w-10 text-muted mx-auto" />
-          <h3 className="text-sm font-bold text-foreground">Không tìm thấy danh mục</h3>
-          <p className="text-xs text-muted">Hệ thống chưa ghi nhận danh mục nào khớp với bộ lọc tìm kiếm.</p>
+          <h3 className="text-sm font-bold text-foreground">
+            Không tìm thấy danh mục
+          </h3>
+          <p className="text-xs text-muted">
+            Hệ thống chưa ghi nhận danh mục nào khớp với bộ lọc tìm kiếm.
+          </p>
         </div>
       ) : (
         <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
@@ -251,13 +317,21 @@ export default function AdminCategoriesPage() {
                       {/* Danh mục cấp cha */}
                       <tr className="hover:bg-slate-50 font-semibold text-foreground transition-colors">
                         <td className="p-4 flex items-center gap-2">
-                          <Tag className="h-4 w-4 text-primary shrink-0" />
+                          {root.parentId ? (
+                            <ChevronRight className="h-4 w-4 text-muted shrink-0" />
+                          ) : (
+                            <Tag className="h-4 w-4 text-primary shrink-0" />
+                          )}
                           <span>{root.nameVi}</span>
                         </td>
-                        <td className="p-4 font-mono text-xs text-muted">{root.code}</td>
+                        <td className="p-4 font-mono text-xs text-muted">
+                          {root.code}
+                        </td>
                         <td className="p-4">
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-primary/10 text-primary font-bold uppercase">
-                            Cấp Cha
+                            {root.parentId
+                              ? `Thuộc ${root.parent?.nameVi ?? "danh mục khác"}`
+                              : "Cấp Cha"}
                           </span>
                         </td>
                         <td className="p-4 text-muted">{root.displayOrder}</td>
@@ -297,18 +371,25 @@ export default function AdminCategoriesPage() {
 
                       {/* Danh mục con (nếu có) */}
                       {children.map((child) => (
-                        <tr key={child.categoryId} className="hover:bg-slate-50 font-medium text-foreground bg-secondary/5 transition-colors">
+                        <tr
+                          key={child.categoryId}
+                          className="hover:bg-slate-50 font-medium text-foreground bg-secondary/5 transition-colors"
+                        >
                           <td className="p-4 pl-8 flex items-center gap-1.5">
                             <ChevronRight className="h-4 w-4 text-muted shrink-0" />
                             <span>{child.nameVi}</span>
                           </td>
-                          <td className="p-4 font-mono text-xs text-muted pl-4">{child.code}</td>
+                          <td className="p-4 font-mono text-xs text-muted pl-4">
+                            {child.code}
+                          </td>
                           <td className="p-4">
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-slate-100 text-slate-700 font-bold uppercase">
                               Danh mục Con
                             </span>
                           </td>
-                          <td className="p-4 text-muted">{child.displayOrder}</td>
+                          <td className="p-4 text-muted">
+                            {child.displayOrder}
+                          </td>
                           <td className="p-4 text-muted">
                             {child.campaignCount ?? 0} chiến dịch
                           </td>
@@ -349,6 +430,14 @@ export default function AdminCategoriesPage() {
               </tbody>
             </table>
           </div>
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            itemLabel="danh mục"
+            disabled={fetching}
+            onPageChange={setPage}
+          />
         </div>
       )}
 
@@ -359,16 +448,16 @@ export default function AdminCategoriesPage() {
             <div className="p-6 border-b border-border flex items-center justify-between">
               <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
                 <Tag className="h-5 w-5 text-primary" />
-                {isEditing ? 'Chỉnh sửa danh mục' : 'Thêm danh mục mới'}
+                {isEditing ? "Chỉnh sửa danh mục" : "Thêm danh mục mới"}
               </h3>
-              <button 
+              <button
                 onClick={() => setShowFormModal(false)}
                 className="p-1.5 rounded-md hover:bg-secondary/20 transition-colors text-muted"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            
+
             <form onSubmit={handleSubmit}>
               <div className="p-6 space-y-4">
                 {/* Code */}
@@ -385,7 +474,10 @@ export default function AdminCategoriesPage() {
                     onChange={(e) => setFormCode(e.target.value)}
                     className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />
-                  <p className="text-[10px] text-muted mt-1">Dùng để định danh duy nhất (không trùng lặp, không sửa sau khi tạo).</p>
+                  <p className="text-[10px] text-muted mt-1">
+                    Dùng để định danh duy nhất (không trùng lặp, không sửa sau
+                    khi tạo).
+                  </p>
                 </div>
 
                 {/* Name */}
@@ -414,9 +506,12 @@ export default function AdminCategoriesPage() {
                     className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                   >
                     <option value="">Không có (Danh mục gốc)</option>
-                    {categories
-                      .filter(c => !c.parentId && c.categoryId !== selectedCategoryId)
-                      .map(c => (
+                    {categoryOptions
+                      .filter(
+                        (c) =>
+                          !c.parentId && c.categoryId !== selectedCategoryId,
+                      )
+                      .map((c) => (
                         <option key={c.categoryId} value={c.categoryId}>
                           {c.nameVi}
                         </option>
@@ -448,7 +543,9 @@ export default function AdminCategoriesPage() {
                         onChange={(e) => setFormIsActive(e.target.checked)}
                         className="rounded border-border text-primary focus:ring-primary/20 h-4 w-4"
                       />
-                      <span className="text-sm font-semibold text-foreground">Cho phép hiển thị</span>
+                      <span className="text-sm font-semibold text-foreground">
+                        Cho phép hiển thị
+                      </span>
                     </label>
                   </div>
                 </div>
@@ -489,7 +586,9 @@ export default function AdminCategoriesPage() {
                 Xác nhận ngừng hoạt động?
               </AlertDialogTitle>
               <AlertDialogDescription>
-                Danh mục <strong>&quot;{categoryToDelete.nameVi}&quot;</strong> và các danh mục con trực tiếp sẽ được ẩn. Dữ liệu và liên kết voucher vẫn được giữ lại.
+                Danh mục <strong>&quot;{categoryToDelete.nameVi}&quot;</strong>{" "}
+                và các danh mục con trực tiếp sẽ được ẩn. Dữ liệu và liên kết
+                voucher vẫn được giữ lại.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

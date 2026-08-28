@@ -1,21 +1,41 @@
-'use client';
+"use client";
 
-import React, { Suspense, useEffect, useState, useCallback } from 'react';
-import { apiRequest } from '../lib/api';
-import { getErrorMessage } from '../lib/errors';
-import Header from '../components/Header';
-import FilterSidebar from '../components/FilterSidebar';
-import VoucherCard, { type VoucherCampaignCard } from '../components/VoucherCard';
-import { ArrowRight, ShieldAlert, Ticket, Grid, ArrowUpNarrowWide, ArrowDownWideNarrow, ArrowUpDown, Filter } from 'lucide-react';
+import React, {
+  Suspense,
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+} from "react";
+import { apiRequest } from "../lib/api";
+import { getErrorMessage } from "../lib/errors";
+import Header from "../components/Header";
+import FilterSidebar, {
+  type CatalogValidityStatus,
+} from "../components/FilterSidebar";
+import VoucherCard, {
+  type VoucherCampaignCard,
+} from "../components/VoucherCard";
+import {
+  ArrowRight,
+  ShieldAlert,
+  Ticket,
+  Grid,
+  ArrowUpNarrowWide,
+  ArrowDownWideNarrow,
+  ArrowUpDown,
+  Filter,
+} from "lucide-react";
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from '../components/ui/sheet';
-import Link from 'next/link';
-import { useSearchParams, useRouter } from 'next/navigation';
+} from "../components/ui/sheet";
+import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
+import { useDebouncedValue } from "../hooks/use-debounced-value";
 
 interface CatalogCategory {
   code: string;
@@ -33,10 +53,10 @@ interface CatalogFilters {
   categoryCode: string;
   provinceCode: string;
   maxPrice: string;
-  sortPrice?: 'asc' | 'desc' | '';
-  sortDiscount?: 'asc' | 'desc' | '';
+  sortPrice?: "asc" | "desc" | "";
+  sortDiscount?: "asc" | "desc" | "";
   partnerId?: string;
-  validityStatus?: string;
+  validityStatus?: CatalogValidityStatus;
   minDiscount?: string;
   page?: number;
   limit?: number;
@@ -55,6 +75,10 @@ interface CatalogResponse {
     limit: number;
     totalPages: number;
   };
+  facets: {
+    totalCampaignCount: number;
+    categories: CatalogCategory[];
+  };
 }
 
 interface CatalogProvince {
@@ -63,155 +87,263 @@ interface CatalogProvince {
   campaignCount: number;
 }
 
-interface CatalogCategoryResponse {
-  categories: CatalogCategory[];
-  totalCampaignCount: number;
-}
-
 function buildCatalogUrl(filters: CatalogFilters) {
   const params = new URLSearchParams();
-  if (filters.keyword) params.set('keyword', filters.keyword);
-  if (filters.categoryCode) params.set('categoryCode', filters.categoryCode);
-  if (filters.provinceCode) params.set('provinceCode', filters.provinceCode);
-  
+  if (filters.keyword) params.set("keyword", filters.keyword);
+  if (filters.categoryCode) params.set("categoryCode", filters.categoryCode);
+  if (filters.provinceCode) params.set("provinceCode", filters.provinceCode);
+
   if (filters.maxPrice) {
-    const rawMaxPrice = filters.maxPrice.replace(/\D/g, '');
-    if (rawMaxPrice) params.set('maxPrice', rawMaxPrice);
+    const rawMaxPrice = filters.maxPrice.replace(/\D/g, "");
+    if (rawMaxPrice) params.set("maxPrice", rawMaxPrice);
   }
-  
-  if (filters.sortPrice) params.set('sortPrice', filters.sortPrice);
-  if (filters.sortDiscount) params.set('sortDiscount', filters.sortDiscount);
-  if (filters.partnerId) params.set('partnerId', filters.partnerId);
-  if (filters.validityStatus) params.set('validityStatus', filters.validityStatus);
-  if (filters.minDiscount) params.set('minDiscount', filters.minDiscount);
-  
-  params.set('page', (filters.page || 1).toString());
-  params.set('limit', (filters.limit || 12).toString());
+
+  if (filters.sortPrice) params.set("sortPrice", filters.sortPrice);
+  if (filters.sortDiscount) params.set("sortDiscount", filters.sortDiscount);
+  if (filters.partnerId) params.set("partnerId", filters.partnerId);
+  if (filters.validityStatus)
+    params.set("validityStatus", filters.validityStatus);
+  if (filters.minDiscount) params.set("minDiscount", filters.minDiscount);
+
+  params.set("page", (filters.page || 1).toString());
+  params.set("limit", (filters.limit || 12).toString());
 
   const queryString = params.toString();
-  return `/vouchers${queryString ? `?${queryString}` : ''}`;
+  return `/vouchers${queryString ? `?${queryString}` : ""}`;
 }
 
 function HomePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [initialFilters] = useState<CatalogFilters>(() => {
-    const rawMaxPrice = searchParams.get('maxPrice');
+    const rawMaxPrice = searchParams.get("maxPrice");
+    const requestedValidityStatus = searchParams.get("validityStatus");
+    const validityStatus: CatalogValidityStatus =
+      requestedValidityStatus === "ALL" ||
+      requestedValidityStatus === "UPCOMING"
+        ? requestedValidityStatus
+        : "AVAILABLE";
     return {
-      keyword: searchParams.get('keyword') || '',
-      categoryCode: searchParams.get('category') || '',
-      provinceCode: searchParams.get('province') || '',
-      maxPrice: rawMaxPrice ? Number(rawMaxPrice).toLocaleString('vi-VN') : '',
-      sortPrice: (searchParams.get('sortPrice') as 'asc'|'desc'|'') || '',
-      sortDiscount: (searchParams.get('sortDiscount') as 'asc'|'desc'|'') || '',
-      partnerId: searchParams.get('partnerId') || '',
-      validityStatus: searchParams.get('validityStatus') || 'AVAILABLE',
-      minDiscount: searchParams.get('minDiscount') || '',
-      page: Number(searchParams.get('page')) || 1,
-      limit: Number(searchParams.get('limit')) || 12,
+      keyword: searchParams.get("keyword") || "",
+      categoryCode: searchParams.get("category") || "",
+      provinceCode: searchParams.get("province") || "",
+      maxPrice: rawMaxPrice ? Number(rawMaxPrice).toLocaleString("vi-VN") : "",
+      sortPrice: (searchParams.get("sortPrice") as "asc" | "desc" | "") || "",
+      sortDiscount:
+        (searchParams.get("sortDiscount") as "asc" | "desc" | "") || "",
+      partnerId: searchParams.get("partnerId") || "",
+      validityStatus,
+      minDiscount: searchParams.get("minDiscount") || "",
+      page: Number(searchParams.get("page")) || 1,
+      limit: Number(searchParams.get("limit")) || 12,
     };
   });
-  
+
   const [campaigns, setCampaigns] = useState<VoucherCampaignCard[]>([]);
   const [categories, setCategories] = useState<CatalogCategory[]>([]);
   const [provinces, setProvinces] = useState<CatalogProvince[]>([]);
   const [partners, setPartners] = useState<PartnerFilterOption[]>([]);
   const [totalCampaigns, setTotalCampaigns] = useState(0);
-  const [paginationMeta, setPaginationMeta] = useState<CatalogResponse['meta'] | null>(null);
+  const [paginationMeta, setPaginationMeta] = useState<
+    CatalogResponse["meta"] | null
+  >(null);
   const [loading, setLoading] = useState(true);
-  
+
   // States for filtering
   const [keyword, setKeyword] = useState(initialFilters.keyword);
   const [category, setCategory] = useState(initialFilters.categoryCode);
   const [province, setProvince] = useState(initialFilters.provinceCode);
   const [maxPrice, setMaxPrice] = useState(initialFilters.maxPrice);
-  const [sortPrice, setSortPrice] = useState<'asc'|'desc'|''>(initialFilters.sortPrice || '');
-  const [sortDiscount, setSortDiscount] = useState<'asc'|'desc'|''>(initialFilters.sortDiscount || '');
-  const [partnerId, setPartnerId] = useState(initialFilters.partnerId || '');
-  const [validityStatus, setValidityStatus] = useState(initialFilters.validityStatus || 'AVAILABLE');
-  const [minDiscount, setMinDiscount] = useState(initialFilters.minDiscount || '');
+  const [sortPrice, setSortPrice] = useState<"asc" | "desc" | "">(
+    initialFilters.sortPrice || "",
+  );
+  const [sortDiscount, setSortDiscount] = useState<"asc" | "desc" | "">(
+    initialFilters.sortDiscount || "",
+  );
+  const [partnerId, setPartnerId] = useState(initialFilters.partnerId || "");
+  const [validityStatus, setValidityStatus] = useState<CatalogValidityStatus>(
+    initialFilters.validityStatus || "AVAILABLE",
+  );
+  const [minDiscount, setMinDiscount] = useState(
+    initialFilters.minDiscount || "",
+  );
   const [page, setPage] = useState(initialFilters.page || 1);
+  const debouncedKeyword = useDebouncedValue(keyword, 300);
+  const lastExecutedKeywordRef = useRef(initialFilters.keyword.trim());
+  const [appliedKeyword, setAppliedKeyword] = useState(
+    initialFilters.keyword.trim(),
+  );
   const limit = 12; // Cố định limit mỗi trang
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const catalogRequestRef = useRef<AbortController | null>(null);
 
   const fetchCatalog = useCallback(async (filters: CatalogFilters) => {
+    catalogRequestRef.current?.abort();
+    const controller = new AbortController();
+    catalogRequestRef.current = controller;
     setLoading(true);
     setErrorMsg(null);
     try {
-      const result = await apiRequest<CatalogResponse>(buildCatalogUrl(filters));
+      const result = await apiRequest<CatalogResponse>(
+        buildCatalogUrl(filters),
+        {
+          signal: controller.signal,
+        },
+      );
+      if (controller.signal.aborted) return;
       setCampaigns(result.data);
       setPaginationMeta(result.meta);
+      setCategories(result.facets.categories);
+      setTotalCampaigns(result.facets.totalCampaignCount);
+      setAppliedKeyword(filters.keyword.trim().replace(/\s+/g, " "));
     } catch (error: unknown) {
-      setErrorMsg(getErrorMessage(error, 'Không thể tải danh sách voucher.'));
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setErrorMsg(getErrorMessage(error, "Không thể tải danh sách voucher."));
     } finally {
-      setLoading(false);
+      if (catalogRequestRef.current === controller) {
+        catalogRequestRef.current = null;
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    async function loadInitialCatalog() {
-      setLoading(true);
-      setErrorMsg(null);
+    let disposed = false;
+    queueMicrotask(() => {
+      if (!disposed) void fetchCatalog(initialFilters);
+    });
+
+    async function loadFilterOptions() {
       try {
-        const [catalogResult, categoryData, provinceData, partnerData] = await Promise.all([
-          apiRequest<CatalogResponse>(buildCatalogUrl(initialFilters)),
-          apiRequest<CatalogCategoryResponse>('/vouchers/categories'),
-          apiRequest<CatalogProvince[]>('/vouchers/provinces'),
-          apiRequest<PartnerFilterOption[]>('/vouchers/partners'),
+        const [provinceData, partnerData] = await Promise.all([
+          apiRequest<CatalogProvince[]>("/vouchers/provinces"),
+          apiRequest<PartnerFilterOption[]>("/vouchers/partners"),
         ]);
-        setCampaigns(catalogResult.data);
-        setPaginationMeta(catalogResult.meta);
-        setCategories(categoryData.categories);
         setProvinces(provinceData);
         setPartners(partnerData);
-        setTotalCampaigns(categoryData.totalCampaignCount);
       } catch (error: unknown) {
-        setErrorMsg(getErrorMessage(error, 'Không thể tải catalog voucher.'));
-      } finally {
-        setLoading(false);
+        setErrorMsg(getErrorMessage(error, "Không thể tải bộ lọc voucher."));
       }
     }
 
-    void loadInitialCatalog();
-  }, [initialFilters]);
+    void loadFilterOptions();
+    return () => {
+      disposed = true;
+      catalogRequestRef.current?.abort();
+    };
+  }, [fetchCatalog, initialFilters]);
 
-  const updateBrowserFilters = (filters: CatalogFilters) => {
-    const params = new URLSearchParams();
-    if (filters.keyword) params.set('keyword', filters.keyword);
-    if (filters.categoryCode) params.set('category', filters.categoryCode);
-    if (filters.provinceCode) params.set('province', filters.provinceCode);
-    
-    if (filters.maxPrice) {
-      const rawMaxPrice = filters.maxPrice.replace(/\D/g, '');
-      if (rawMaxPrice) params.set('maxPrice', rawMaxPrice);
+  const updateBrowserFilters = useCallback(
+    (filters: CatalogFilters, replace = false) => {
+      const params = new URLSearchParams();
+      if (filters.keyword) params.set("keyword", filters.keyword);
+      if (filters.categoryCode) params.set("category", filters.categoryCode);
+      if (filters.provinceCode) params.set("province", filters.provinceCode);
+
+      if (filters.maxPrice) {
+        const rawMaxPrice = filters.maxPrice.replace(/\D/g, "");
+        if (rawMaxPrice) params.set("maxPrice", rawMaxPrice);
+      }
+
+      if (filters.sortPrice) params.set("sortPrice", filters.sortPrice);
+      if (filters.sortDiscount)
+        params.set("sortDiscount", filters.sortDiscount);
+      if (filters.partnerId) params.set("partnerId", filters.partnerId);
+      if (filters.validityStatus)
+        params.set("validityStatus", filters.validityStatus);
+      if (filters.minDiscount) params.set("minDiscount", filters.minDiscount);
+      params.set("page", (filters.page || 1).toString());
+
+      const destination = params.size > 0 ? `/?${params.toString()}` : "/";
+      if (replace) {
+        router.replace(destination, { scroll: false });
+      } else {
+        router.push(destination, { scroll: false });
+      }
+    },
+    [router],
+  );
+
+  const currentFilters = useCallback(
+    (): CatalogFilters => ({
+      keyword: appliedKeyword,
+      categoryCode: category,
+      provinceCode: province,
+      maxPrice,
+      sortPrice,
+      sortDiscount,
+      partnerId,
+      validityStatus,
+      minDiscount,
+      page,
+      limit,
+    }),
+    [
+      category,
+      appliedKeyword,
+      maxPrice,
+      minDiscount,
+      page,
+      partnerId,
+      province,
+      sortDiscount,
+      sortPrice,
+      validityStatus,
+    ],
+  );
+
+  useEffect(() => {
+    const normalizedKeyword = debouncedKeyword.trim().replace(/\s+/g, " ");
+    if (
+      normalizedKeyword === lastExecutedKeywordRef.current ||
+      normalizedKeyword.length === 1
+    ) {
+      return;
     }
-    
-    if (filters.sortPrice) params.set('sortPrice', filters.sortPrice);
-    if (filters.sortDiscount) params.set('sortDiscount', filters.sortDiscount);
-    if (filters.partnerId) params.set('partnerId', filters.partnerId);
-    if (filters.validityStatus) params.set('validityStatus', filters.validityStatus);
-    if (filters.minDiscount) params.set('minDiscount', filters.minDiscount);
-    params.set('page', (filters.page || 1).toString());
-    
-    const queryString = params.toString();
-    router.push(queryString ? `/?${queryString}` : '/', { scroll: false });
-  };
 
-  const currentFilters = (): CatalogFilters => ({
-    keyword, categoryCode: category, provinceCode: province, maxPrice, sortPrice, sortDiscount, partnerId, validityStatus, minDiscount, page, limit
-  });
+    lastExecutedKeywordRef.current = normalizedKeyword;
+    const filters = {
+      ...currentFilters(),
+      keyword: normalizedKeyword,
+      page: 1,
+    };
+    queueMicrotask(() => {
+      setPage(1);
+      updateBrowserFilters(filters, true);
+      void fetchCatalog(filters);
+    });
+  }, [currentFilters, debouncedKeyword, fetchCatalog, updateBrowserFilters]);
 
   const scrollToProducts = () => {
-    document.getElementById('product-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document
+      .getElementById("product-section")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const handleHeaderSearch = (newKeyword: string) => {
+    const normalizedKeyword = newKeyword.trim().replace(/\s+/g, " ");
+    lastExecutedKeywordRef.current = normalizedKeyword;
     setKeyword(newKeyword);
     setPage(1);
-    const filters = { ...currentFilters(), keyword: newKeyword, page: 1 };
+    const filters = {
+      ...currentFilters(),
+      keyword: normalizedKeyword,
+      page: 1,
+    };
     updateBrowserFilters(filters);
     void fetchCatalog(filters);
     setTimeout(scrollToProducts, 50);
+  };
+
+  const handleKeywordChange = (value: string) => {
+    setKeyword(value);
+    if (value.trim() || lastExecutedKeywordRef.current === "") return;
+
+    lastExecutedKeywordRef.current = "";
+    setPage(1);
+    const filters = { ...currentFilters(), keyword: "", page: 1 };
+    updateBrowserFilters(filters, true);
+    void fetchCatalog(filters);
   };
 
   const handleSidebarFilter = () => {
@@ -249,11 +381,32 @@ function HomePageContent() {
   };
 
   const handleClearFilters = () => {
-    setKeyword(''); setCategory(''); setProvince(''); setMaxPrice('');
-    setSortPrice(''); setSortDiscount(''); setPartnerId(''); setValidityStatus('AVAILABLE'); setMinDiscount(''); setPage(1);
-    router.push('/', { scroll: false });
-    
-    void fetchCatalog({ keyword: '', categoryCode: '', provinceCode: '', maxPrice: '', sortPrice: '', sortDiscount: '', partnerId: '', validityStatus: 'AVAILABLE', minDiscount: '', page: 1, limit });
+    setKeyword("");
+    lastExecutedKeywordRef.current = "";
+    setCategory("");
+    setProvince("");
+    setMaxPrice("");
+    setSortPrice("");
+    setSortDiscount("");
+    setPartnerId("");
+    setValidityStatus("AVAILABLE");
+    setMinDiscount("");
+    setPage(1);
+    router.push("/", { scroll: false });
+
+    void fetchCatalog({
+      keyword: "",
+      categoryCode: "",
+      provinceCode: "",
+      maxPrice: "",
+      sortPrice: "",
+      sortDiscount: "",
+      partnerId: "",
+      validityStatus: "AVAILABLE",
+      minDiscount: "",
+      page: 1,
+      limit,
+    });
     setTimeout(scrollToProducts, 50);
   };
 
@@ -264,18 +417,42 @@ function HomePageContent() {
 
   return (
     <div className="min-h-screen bg-background font-sans flex flex-col">
-      
-      <Header onSearch={handleHeaderSearch} initialKeyword={keyword} />
+      <Header
+        onSearch={handleHeaderSearch}
+        onKeywordChange={handleKeywordChange}
+        initialKeyword={keyword}
+        suggestions={
+          keyword.trim() === appliedKeyword && appliedKeyword
+            ? campaigns.slice(0, 5).map((campaign) => ({
+                campaignId: campaign.campaignId,
+                title: campaign.title,
+                salePrice: Number(campaign.salePrice),
+                originalPrice: Number(campaign.originalPrice),
+                thumbnailUrl: campaign.thumbnailUrl,
+              }))
+            : []
+        }
+        searchLoading={loading && keyword.trim().length >= 2}
+      />
 
-      <section className="mx-auto w-full max-w-7xl px-4 pt-6 sm:px-6 lg:px-8" aria-labelledby="catalog-title">
+      <section
+        className="mx-auto w-full max-w-7xl px-4 pt-6 sm:px-6 lg:px-8"
+        aria-labelledby="catalog-title"
+      >
         <div className="flex flex-col gap-5 rounded-2xl border border-slate-200 bg-white px-6 py-6 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-8">
           <div>
-            <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-primary">Kho voucher</p>
-            <h1 id="catalog-title" className="mt-2 font-black tracking-tight text-slate-900">
+            <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-primary">
+              Kho voucher
+            </p>
+            <h1
+              id="catalog-title"
+              className="mt-2 font-black tracking-tight text-slate-900"
+            >
               Tìm ưu đãi phù hợp với bạn
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-500">
-              Tìm kiếm, lọc theo danh mục và so sánh các voucher đang mở bán trên hệ thống.
+              Tìm kiếm, lọc theo danh mục và so sánh các voucher đang mở bán
+              trên hệ thống.
             </p>
           </div>
           <Link
@@ -288,8 +465,10 @@ function HomePageContent() {
         </div>
       </section>
 
-      <main id="product-section" className="flex-grow max-w-7xl w-full mx-auto py-8 px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-4 gap-8">
-        
+      <main
+        id="product-section"
+        className="flex-grow max-w-7xl w-full mx-auto py-8 px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-4 gap-8"
+      >
         {/* Sidebar (Desktop) */}
         <div className="hidden lg:block lg:col-span-1">
           <FilterSidebar
@@ -314,7 +493,11 @@ function HomePageContent() {
             onValidityChange={(s) => {
               setValidityStatus(s);
               setPage(1);
-              const filters = { ...currentFilters(), validityStatus: s, page: 1 };
+              const filters = {
+                ...currentFilters(),
+                validityStatus: s,
+                page: 1,
+              };
               updateBrowserFilters(filters);
               void fetchCatalog(filters);
               setTimeout(scrollToProducts, 50);
@@ -335,7 +518,11 @@ function HomePageContent() {
             onQuickPrice={(newPrice) => {
               setMaxPrice(newPrice);
               setPage(1);
-              const filters = { ...currentFilters(), maxPrice: newPrice, page: 1 };
+              const filters = {
+                ...currentFilters(),
+                maxPrice: newPrice,
+                page: 1,
+              };
               updateBrowserFilters(filters);
               void fetchCatalog(filters);
               scrollToProducts();
@@ -361,8 +548,8 @@ function HomePageContent() {
               <div className="lg:hidden shrink-0">
                 <Sheet>
                   <SheetTrigger className="flex items-center gap-2 px-3 py-2 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-bold text-sm border border-primary/20">
-                      <Filter className="h-4 w-4" />
-                      Lọc & Sắp xếp
+                    <Filter className="h-4 w-4" />
+                    Lọc & Sắp xếp
                   </SheetTrigger>
                   <SheetContent side="left" className="w-[min(22rem,88vw)] p-0">
                     <SheetHeader className="p-0 border-0 hidden">
@@ -382,7 +569,11 @@ function HomePageContent() {
                         onPartnerChange={(p) => {
                           setPartnerId(p);
                           setPage(1);
-                          const filters = { ...currentFilters(), partnerId: p, page: 1 };
+                          const filters = {
+                            ...currentFilters(),
+                            partnerId: p,
+                            page: 1,
+                          };
                           updateBrowserFilters(filters);
                           void fetchCatalog(filters);
                           setTimeout(scrollToProducts, 50);
@@ -391,7 +582,11 @@ function HomePageContent() {
                         onValidityChange={(s) => {
                           setValidityStatus(s);
                           setPage(1);
-                          const filters = { ...currentFilters(), validityStatus: s, page: 1 };
+                          const filters = {
+                            ...currentFilters(),
+                            validityStatus: s,
+                            page: 1,
+                          };
                           updateBrowserFilters(filters);
                           void fetchCatalog(filters);
                           setTimeout(scrollToProducts, 50);
@@ -400,7 +595,11 @@ function HomePageContent() {
                         onMinDiscountChange={(d) => {
                           setMinDiscount(d);
                           setPage(1);
-                          const filters = { ...currentFilters(), minDiscount: d, page: 1 };
+                          const filters = {
+                            ...currentFilters(),
+                            minDiscount: d,
+                            page: 1,
+                          };
                           updateBrowserFilters(filters);
                           void fetchCatalog(filters);
                           setTimeout(scrollToProducts, 50);
@@ -412,7 +611,11 @@ function HomePageContent() {
                         onQuickPrice={(newPrice) => {
                           setMaxPrice(newPrice);
                           setPage(1);
-                          const filters = { ...currentFilters(), maxPrice: newPrice, page: 1 };
+                          const filters = {
+                            ...currentFilters(),
+                            maxPrice: newPrice,
+                            page: 1,
+                          };
                           updateBrowserFilters(filters);
                           void fetchCatalog(filters);
                           scrollToProducts();
@@ -425,43 +628,75 @@ function HomePageContent() {
 
               {/* Sort Buttons */}
               <div className="flex items-center bg-slate-100 p-1 rounded-xl shrink-0 gap-1">
-              <button
-                onClick={() => {
-                  const val = (sortPrice === '' ? 'asc' : sortPrice === 'asc' ? 'desc' : '') as 'asc' | 'desc' | '';
-                  setSortPrice(val);
-                  setSortDiscount(''); // clear other sort
-                  const filters = { ...currentFilters(), sortPrice: val, sortDiscount: '' as 'asc' | 'desc' | '' };
-                  updateBrowserFilters(filters);
-                  void fetchCatalog(filters);
-                }}
-                className={`flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
-                  sortPrice !== ''
-                    ? 'bg-white text-primary shadow-sm ring-1 ring-slate-200/50'
-                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
-                }`}
-              >
-                {sortPrice === 'asc' ? <ArrowUpNarrowWide className="h-4 w-4 text-primary" /> : sortPrice === 'desc' ? <ArrowDownWideNarrow className="h-4 w-4 text-primary" /> : <ArrowUpDown className="h-4 w-4 text-slate-400" />}
-                <span className="whitespace-nowrap">Giá</span>
-              </button>
-              <button
-                onClick={() => {
-                  const val = (sortDiscount === '' ? 'desc' : sortDiscount === 'desc' ? 'asc' : '') as 'asc' | 'desc' | '';
-                  setSortDiscount(val);
-                  setSortPrice(''); // clear other sort
-                  const filters = { ...currentFilters(), sortPrice: '' as 'asc' | 'desc' | '', sortDiscount: val };
-                  updateBrowserFilters(filters);
-                  void fetchCatalog(filters);
-                }}
-                className={`flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
-                  sortDiscount !== ''
-                    ? 'bg-white text-primary shadow-sm ring-1 ring-slate-200/50'
-                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
-                }`}
-              >
-                {sortDiscount === 'asc' ? <ArrowUpNarrowWide className="h-4 w-4 text-primary" /> : sortDiscount === 'desc' ? <ArrowDownWideNarrow className="h-4 w-4 text-primary" /> : <ArrowUpDown className="h-4 w-4 text-slate-400" />}
-                <span className="whitespace-nowrap">% Giảm</span>
-              </button>
-            </div>
+                <button
+                  onClick={() => {
+                    const val = (
+                      sortPrice === ""
+                        ? "asc"
+                        : sortPrice === "asc"
+                          ? "desc"
+                          : ""
+                    ) as "asc" | "desc" | "";
+                    setSortPrice(val);
+                    setSortDiscount(""); // clear other sort
+                    const filters = {
+                      ...currentFilters(),
+                      sortPrice: val,
+                      sortDiscount: "" as "asc" | "desc" | "",
+                    };
+                    updateBrowserFilters(filters);
+                    void fetchCatalog(filters);
+                  }}
+                  className={`flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+                    sortPrice !== ""
+                      ? "bg-white text-primary shadow-sm ring-1 ring-slate-200/50"
+                      : "text-slate-500 hover:text-slate-800 hover:bg-slate-200/50"
+                  }`}
+                >
+                  {sortPrice === "asc" ? (
+                    <ArrowUpNarrowWide className="h-4 w-4 text-primary" />
+                  ) : sortPrice === "desc" ? (
+                    <ArrowDownWideNarrow className="h-4 w-4 text-primary" />
+                  ) : (
+                    <ArrowUpDown className="h-4 w-4 text-slate-400" />
+                  )}
+                  <span className="whitespace-nowrap">Giá</span>
+                </button>
+                <button
+                  onClick={() => {
+                    const val = (
+                      sortDiscount === ""
+                        ? "desc"
+                        : sortDiscount === "desc"
+                          ? "asc"
+                          : ""
+                    ) as "asc" | "desc" | "";
+                    setSortDiscount(val);
+                    setSortPrice(""); // clear other sort
+                    const filters = {
+                      ...currentFilters(),
+                      sortPrice: "" as "asc" | "desc" | "",
+                      sortDiscount: val,
+                    };
+                    updateBrowserFilters(filters);
+                    void fetchCatalog(filters);
+                  }}
+                  className={`flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+                    sortDiscount !== ""
+                      ? "bg-white text-primary shadow-sm ring-1 ring-slate-200/50"
+                      : "text-slate-500 hover:text-slate-800 hover:bg-slate-200/50"
+                  }`}
+                >
+                  {sortDiscount === "asc" ? (
+                    <ArrowUpNarrowWide className="h-4 w-4 text-primary" />
+                  ) : sortDiscount === "desc" ? (
+                    <ArrowDownWideNarrow className="h-4 w-4 text-primary" />
+                  ) : (
+                    <ArrowUpDown className="h-4 w-4 text-slate-400" />
+                  )}
+                  <span className="whitespace-nowrap">% Giảm</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -478,16 +713,21 @@ function HomePageContent() {
                 <div className="absolute top-0 left-0 w-full h-full border-4 border-primary/20 rounded-full"></div>
                 <div className="absolute top-0 left-0 w-full h-full border-4 border-primary rounded-full border-t-transparent animate-spin"></div>
               </div>
-              <p className="mt-4 text-sm font-medium text-slate-500">Đang tìm kiếm deal hot...</p>
+              <p className="mt-4 text-sm font-medium text-slate-500">
+                Đang tìm kiếm deal hot...
+              </p>
             </div>
           ) : campaigns.length === 0 ? (
             <div className="text-center py-24 bg-white rounded-2xl border border-slate-100 shadow-sm">
               <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Ticket className="h-10 w-10 text-slate-300" />
               </div>
-              <h3 className="text-base font-bold text-slate-800">Không tìm thấy voucher phù hợp</h3>
+              <h3 className="text-base font-bold text-slate-800">
+                Không tìm thấy voucher phù hợp
+              </h3>
               <p className="text-sm text-slate-500 mt-2 max-w-sm mx-auto leading-relaxed">
-                Thử thay đổi từ khóa tìm kiếm hoặc lọc khoảng giá rộng hơn để săn nhiều khuyến mãi cực hot khác.
+                Thử thay đổi từ khóa tìm kiếm hoặc lọc khoảng giá rộng hơn để
+                săn nhiều khuyến mãi cực hot khác.
               </p>
             </div>
           ) : (
@@ -508,37 +748,50 @@ function HomePageContent() {
                     Trước
                   </button>
                   <div className="flex items-center gap-1">
-                    {Array.from({ length: paginationMeta.totalPages }).map((_, i) => {
-                      const pageNum = i + 1;
-                      const isActive = pageNum === page;
-                      // Display only a window of pages
-                      if (
-                        pageNum === 1 || 
-                        pageNum === paginationMeta.totalPages || 
-                        Math.abs(pageNum - page) <= 1
-                      ) {
-                        return (
-                          <button
-                            key={pageNum}
-                            onClick={() => handlePageChange(pageNum)}
-                            className={`w-10 h-10 rounded-xl text-sm font-bold transition-all ${
-                              isActive 
-                                ? 'bg-primary text-white shadow-sm ring-1 ring-primary/20' 
-                                : 'bg-transparent text-slate-600 hover:bg-slate-100'
-                            }`}
-                          >
-                            {pageNum}
-                          </button>
-                        );
-                      }
-                      if (Math.abs(pageNum - page) === 2) {
-                        return <span key={pageNum} className="text-slate-400 font-bold px-1">...</span>;
-                      }
-                      return null;
-                    })}
+                    {Array.from({ length: paginationMeta.totalPages }).map(
+                      (_, i) => {
+                        const pageNum = i + 1;
+                        const isActive = pageNum === page;
+                        // Display only a window of pages
+                        if (
+                          pageNum === 1 ||
+                          pageNum === paginationMeta.totalPages ||
+                          Math.abs(pageNum - page) <= 1
+                        ) {
+                          return (
+                            <button
+                              key={pageNum}
+                              onClick={() => handlePageChange(pageNum)}
+                              className={`w-10 h-10 rounded-xl text-sm font-bold transition-all ${
+                                isActive
+                                  ? "bg-primary text-white shadow-sm ring-1 ring-primary/20"
+                                  : "bg-transparent text-slate-600 hover:bg-slate-100"
+                              }`}
+                            >
+                              {pageNum}
+                            </button>
+                          );
+                        }
+                        if (Math.abs(pageNum - page) === 2) {
+                          return (
+                            <span
+                              key={pageNum}
+                              className="text-slate-400 font-bold px-1"
+                            >
+                              ...
+                            </span>
+                          );
+                        }
+                        return null;
+                      },
+                    )}
                   </div>
                   <button
-                    onClick={() => handlePageChange(Math.min(paginationMeta.totalPages, page + 1))}
+                    onClick={() =>
+                      handlePageChange(
+                        Math.min(paginationMeta.totalPages, page + 1),
+                      )
+                    }
                     disabled={page === paginationMeta.totalPages}
                     className="px-4 py-2 rounded-xl text-sm font-bold transition-all border border-slate-200 bg-white text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 hover:border-slate-300"
                   >
@@ -555,11 +808,17 @@ function HomePageContent() {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-2 opacity-50 grayscale">
             <Ticket className="h-6 w-6 text-slate-800" />
-            <span className="text-xl font-black text-slate-800 tracking-tight">VoucherNow</span>
+            <span className="text-xl font-black text-slate-800 tracking-tight">
+              VoucherNow
+            </span>
           </div>
           <div className="text-center md:text-right">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Hệ thống phân phối Voucher Điện Tử</p>
-            <p className="text-[10px] text-slate-400 mt-1">Đồ án môn học Thương mại điện tử EC05 - HCMUS © 2026</p>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              Hệ thống phân phối Voucher Điện Tử
+            </p>
+            <p className="text-[10px] text-slate-400 mt-1">
+              Đồ án môn học Thương mại điện tử EC05 - HCMUS © 2026
+            </p>
           </div>
         </div>
       </footer>

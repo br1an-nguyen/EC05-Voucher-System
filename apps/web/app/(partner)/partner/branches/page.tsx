@@ -1,13 +1,25 @@
-'use client';
+"use client";
 
-import React, { useEffect, useState, useMemo } from 'react';
-import { apiRequest } from '../../../../lib/api';
-import { getErrorMessage } from '../../../../lib/errors';
-import { MapPin, Plus, Edit2, Trash2, AlertCircle, CheckCircle, ChevronRight, Search } from 'lucide-react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { Button } from '../../../../components/ui/button';
+import React, { useCallback, useEffect, useState, useMemo } from "react";
+import { apiRequest } from "../../../../lib/api";
+import { getErrorMessage } from "../../../../lib/errors";
+import { PaginatedResponse } from "../../../../lib/pagination";
+import { useDebouncedValue } from "../../../../hooks/use-debounced-value";
+import { TablePagination } from "../../../../components/ui/table-pagination";
+import {
+  MapPin,
+  Plus,
+  Edit2,
+  Trash2,
+  AlertCircle,
+  CheckCircle,
+  ChevronRight,
+  Search,
+} from "lucide-react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { Button } from "../../../../components/ui/button";
 import {
   Dialog,
   DialogClose,
@@ -16,7 +28,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '../../../../components/ui/dialog';
+} from "../../../../components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,12 +38,12 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '../../../../components/ui/alert-dialog';
+} from "../../../../components/ui/alert-dialog";
 
 const branchSchema = z.object({
-  name: z.string().min(1, 'Tên chi nhánh không được để trống.'),
-  address: z.string().min(1, 'Địa chỉ không được để trống.'),
-  provinceCode: z.string().min(1, 'Vui lòng chọn tỉnh/thành phố.'),
+  name: z.string().min(1, "Tên chi nhánh không được để trống."),
+  address: z.string().min(1, "Địa chỉ không được để trống."),
+  provinceCode: z.string().min(1, "Vui lòng chọn tỉnh/thành phố."),
 });
 
 type BranchSchemaType = z.infer<typeof branchSchema>;
@@ -58,7 +70,12 @@ export default function PartnerBranchesPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [fetching, setFetching] = useState(false);
+  const debouncedSearch = useDebouncedValue(searchTerm);
 
   const {
     register,
@@ -70,33 +87,59 @@ export default function PartnerBranchesPage() {
     resolver: zodResolver(branchSchema),
   });
 
-  const loadBranches = async () => {
-    try {
-      const [branchData, provinceData] = await Promise.all([
-        apiRequest<Branch[]>('/partners/branches'),
-        apiRequest<Province[]>('/partners/provinces'),
-      ]);
-      setBranches(branchData);
-      setProvinces(provinceData);
-    } catch (error: unknown) {
-      setErrorMsg(getErrorMessage(error, 'Không thể tải danh sách chi nhánh.'));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loadBranches = useCallback(
+    async (signal?: AbortSignal) => {
+      setFetching(true);
+      try {
+        const params = new URLSearchParams({ page: String(page), limit: "20" });
+        if (debouncedSearch) params.set("keyword", debouncedSearch);
+        const data = await apiRequest<PaginatedResponse<Branch>>(
+          `/partners/branches/list?${params.toString()}`,
+          { signal },
+        );
+        setBranches(data.items);
+        setTotal(data.total);
+        setTotalPages(data.totalPages);
+      } catch (error: unknown) {
+        if (error instanceof DOMException && error.name === "AbortError")
+          return;
+        setErrorMsg(
+          getErrorMessage(error, "Không thể tải danh sách chi nhánh."),
+        );
+      } finally {
+        if (!signal?.aborted) {
+          setLoading(false);
+          setFetching(false);
+        }
+      }
+    },
+    [page, debouncedSearch],
+  );
 
   useEffect(() => {
+    const controller = new AbortController();
     queueMicrotask(() => {
-      void loadBranches();
+      if (!controller.signal.aborted) void loadBranches(controller.signal);
     });
+    return () => controller.abort();
+  }, [loadBranches]);
+
+  useEffect(() => {
+    void apiRequest<Province[]>("/partners/provinces")
+      .then(setProvinces)
+      .catch((error: unknown) => {
+        setErrorMsg(
+          getErrorMessage(error, "Không thể tải danh mục tỉnh thành."),
+        );
+      });
   }, []);
 
   const openAddModal = () => {
     setEditingBranch(null);
     reset({
-      name: '',
-      address: '',
-      provinceCode: '',
+      name: "",
+      address: "",
+      provinceCode: "",
     });
     setErrorMsg(null);
     setModalOpen(true);
@@ -104,9 +147,9 @@ export default function PartnerBranchesPage() {
 
   const openEditModal = (branch: Branch) => {
     setEditingBranch(branch);
-    setValue('name', branch.name);
-    setValue('address', branch.address || '');
-    setValue('provinceCode', branch.provinceCode || '');
+    setValue("name", branch.name);
+    setValue("address", branch.address || "");
+    setValue("provinceCode", branch.provinceCode || "");
     setErrorMsg(null);
     setModalOpen(true);
   };
@@ -121,22 +164,22 @@ export default function PartnerBranchesPage() {
     try {
       if (editingBranch) {
         await apiRequest<void>(`/partners/branches/${editingBranch.branchId}`, {
-          method: 'PATCH',
+          method: "PATCH",
           body: JSON.stringify(payload),
         });
-        setSuccessMsg('Cập nhật chi nhánh thành công!');
+        setSuccessMsg("Cập nhật chi nhánh thành công!");
       } else {
-        await apiRequest<void>('/partners/branches', {
-          method: 'POST',
+        await apiRequest<void>("/partners/branches", {
+          method: "POST",
           body: JSON.stringify(payload),
         });
-        setSuccessMsg('Thêm chi nhánh mới thành công!');
+        setSuccessMsg("Thêm chi nhánh mới thành công!");
       }
       setModalOpen(false);
       loadBranches();
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (error: unknown) {
-      setErrorMsg(getErrorMessage(error, 'Có lỗi xảy ra.'));
+      setErrorMsg(getErrorMessage(error, "Có lỗi xảy ra."));
     }
   };
 
@@ -145,22 +188,15 @@ export default function PartnerBranchesPage() {
     setSuccessMsg(null);
     try {
       await apiRequest<void>(`/partners/branches/${branchId}`, {
-        method: 'DELETE',
+        method: "DELETE",
       });
-      setSuccessMsg('Xóa chi nhánh thành công!');
+      setSuccessMsg("Xóa chi nhánh thành công!");
       loadBranches();
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (error: unknown) {
-      setErrorMsg(getErrorMessage(error, 'Không thể xóa chi nhánh này.'));
+      setErrorMsg(getErrorMessage(error, "Không thể xóa chi nhánh này."));
     }
   };
-
-  const filteredBranches = useMemo(() => {
-    return branches.filter(b => 
-      b.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (b.address && b.address.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
-  }, [branches, searchTerm]);
 
   const provinceNameByCode = useMemo(
     () => new Map(provinces.map((province) => [province.code, province.name])),
@@ -177,12 +213,13 @@ export default function PartnerBranchesPage() {
 
   return (
     <div className="space-y-6">
-      
       {/* BREADCRUMB */}
       <div className="flex items-center gap-2 text-xs text-muted">
         <span>Partner Portal</span>
         <ChevronRight className="h-3.5 w-3.5" />
-        <span className="font-semibold text-foreground">Chi nhánh cửa hàng</span>
+        <span className="font-semibold text-foreground">
+          Chi nhánh cửa hàng
+        </span>
       </div>
 
       {/* TIÊU ĐỀ & TÌM KIẾM */}
@@ -204,7 +241,10 @@ export default function PartnerBranchesPage() {
               type="text"
               placeholder="Tìm chi nhánh..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setPage(1);
+              }}
               className="block w-full rounded-lg border border-border bg-card py-2 pl-9 pr-3 text-xs text-foreground placeholder-slate-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all"
             />
           </div>
@@ -233,11 +273,16 @@ export default function PartnerBranchesPage() {
       )}
 
       {/* DANH SÁCH CHI NHÁNH */}
-      {filteredBranches.length === 0 ? (
+      {branches.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border p-12 text-center space-y-3">
           <MapPin className="h-10 w-10 text-muted mx-auto" />
-          <h3 className="text-sm font-bold text-foreground">Không tìm thấy chi nhánh</h3>
-          <p className="text-xs text-muted">Bấm nút &quot;Thêm chi nhánh&quot; ở trên hoặc thay đổi bộ lọc tìm kiếm.</p>
+          <h3 className="text-sm font-bold text-foreground">
+            Không tìm thấy chi nhánh
+          </h3>
+          <p className="text-xs text-muted">
+            Bấm nút &quot;Thêm chi nhánh&quot; ở trên hoặc thay đổi bộ lọc tìm
+            kiếm.
+          </p>
         </div>
       ) : (
         <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
@@ -252,19 +297,25 @@ export default function PartnerBranchesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
-                {filteredBranches.map((branch) => (
-                  <tr key={branch.branchId} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-4 font-bold text-foreground">{branch.name}</td>
+                {branches.map((branch) => (
+                  <tr
+                    key={branch.branchId}
+                    className="hover:bg-slate-50 transition-colors"
+                  >
+                    <td className="p-4 font-bold text-foreground">
+                      {branch.name}
+                    </td>
                     <td className="p-4 text-muted leading-relaxed max-w-md">
                       <div className="flex items-center gap-1.5">
                         <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                        <span>{branch.address || 'Chưa cập nhật địa chỉ'}</span>
+                        <span>{branch.address || "Chưa cập nhật địa chỉ"}</span>
                       </div>
                     </td>
                     <td className="p-4 text-muted whitespace-nowrap">
                       {branch.provinceCode
-                        ? provinceNameByCode.get(branch.provinceCode) || branch.provinceCode
-                        : 'Chưa cập nhật'}
+                        ? provinceNameByCode.get(branch.provinceCode) ||
+                          branch.provinceCode
+                        : "Chưa cập nhật"}
                     </td>
                     <td className="p-4 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1.5">
@@ -289,6 +340,14 @@ export default function PartnerBranchesPage() {
               </tbody>
             </table>
           </div>
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            itemLabel="chi nhánh"
+            disabled={fetching}
+            onPageChange={setPage}
+          />
         </div>
       )}
 
@@ -297,40 +356,48 @@ export default function PartnerBranchesPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader className="border-b border-border pb-4 pr-8">
             <DialogTitle>
-              {editingBranch ? 'Cập nhật chi nhánh' : 'Thêm chi nhánh mới'}
+              {editingBranch ? "Cập nhật chi nhánh" : "Thêm chi nhánh mới"}
             </DialogTitle>
             <DialogDescription>
               {editingBranch
-                ? 'Điều chỉnh tên và địa chỉ đang được sử dụng cho chi nhánh này.'
-                : 'Thêm địa điểm áp dụng để có thể gán chi nhánh cho chiến dịch voucher.'}
+                ? "Điều chỉnh tên và địa chỉ đang được sử dụng cho chi nhánh này."
+                : "Thêm địa điểm áp dụng để có thể gán chi nhánh cho chiến dịch voucher."}
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div>
-              <label htmlFor="branch-name" className="mb-1.5 block text-xs font-semibold text-foreground">
+              <label
+                htmlFor="branch-name"
+                className="mb-1.5 block text-xs font-semibold text-foreground"
+              >
                 Tên chi nhánh / Cửa hàng
               </label>
               <input
                 id="branch-name"
                 type="text"
-                {...register('name')}
+                {...register("name")}
                 placeholder="Ví dụ: Chi nhánh Quận 1"
                 aria-invalid={Boolean(errors.name)}
                 className="block w-full rounded-lg border border-border bg-card px-3 py-2 text-xs text-foreground placeholder-slate-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all"
               />
               {errors.name && (
-                <p className="mt-1 text-xs text-red-500">{errors.name.message}</p>
+                <p className="mt-1 text-xs text-red-500">
+                  {errors.name.message}
+                </p>
               )}
             </div>
 
             <div>
-              <label htmlFor="branch-province" className="mb-1.5 block text-xs font-semibold text-foreground">
+              <label
+                htmlFor="branch-province"
+                className="mb-1.5 block text-xs font-semibold text-foreground"
+              >
                 Tỉnh/Thành phố
               </label>
               <select
                 id="branch-province"
-                {...register('provinceCode')}
+                {...register("provinceCode")}
                 aria-invalid={Boolean(errors.provinceCode)}
                 className="block w-full rounded-lg border border-border bg-card px-3 py-2 text-xs text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all"
               >
@@ -342,33 +409,42 @@ export default function PartnerBranchesPage() {
                 ))}
               </select>
               {errors.provinceCode && (
-                <p className="mt-1 text-xs text-red-500">{errors.provinceCode.message}</p>
+                <p className="mt-1 text-xs text-red-500">
+                  {errors.provinceCode.message}
+                </p>
               )}
             </div>
 
             <div>
-              <label htmlFor="branch-address" className="mb-1.5 block text-xs font-semibold text-foreground">
+              <label
+                htmlFor="branch-address"
+                className="mb-1.5 block text-xs font-semibold text-foreground"
+              >
                 Địa chỉ chi tiết
               </label>
               <textarea
                 id="branch-address"
                 rows={3}
-                {...register('address')}
+                {...register("address")}
                 placeholder="Ví dụ: 123 Nguyễn Trãi, Phường Bến Thành, Quận 1, TP. HCM"
                 aria-invalid={Boolean(errors.address)}
                 className="block w-full resize-none rounded-lg border border-border bg-card px-3 py-2 text-xs text-foreground placeholder-slate-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all"
               />
               {errors.address && (
-                <p className="mt-1 text-xs text-red-500">{errors.address.message}</p>
+                <p className="mt-1 text-xs text-red-500">
+                  {errors.address.message}
+                </p>
               )}
             </div>
 
             <DialogFooter className="mt-6">
-              <DialogClose render={<Button type="button" variant="outline" size="sm" />}>
+              <DialogClose
+                render={<Button type="button" variant="outline" size="sm" />}
+              >
                 Hủy bỏ
               </DialogClose>
               <Button type="submit" size="sm">
-                {editingBranch ? 'Lưu thay đổi' : 'Thêm mới'}
+                {editingBranch ? "Lưu thay đổi" : "Thêm mới"}
               </Button>
             </DialogFooter>
           </form>
@@ -385,22 +461,25 @@ export default function PartnerBranchesPage() {
         {branchToDelete && (
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Xóa chi nhánh &quot;{branchToDelete.name}&quot;?</AlertDialogTitle>
+              <AlertDialogTitle>
+                Xóa chi nhánh &quot;{branchToDelete.name}&quot;?
+              </AlertDialogTitle>
               <AlertDialogDescription>
-                Chi nhánh sẽ bị xóa khỏi danh sách địa điểm áp dụng voucher. Thao tác này
-                không thể hoàn tác.
+                Chi nhánh sẽ bị xóa khỏi danh sách địa điểm áp dụng voucher.
+                Thao tác này không thể hoàn tác.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Hủy bỏ</AlertDialogCancel>
-              <AlertDialogAction onClick={() => void handleDelete(branchToDelete.branchId)}>
+              <AlertDialogAction
+                onClick={() => void handleDelete(branchToDelete.branchId)}
+              >
                 Xóa chi nhánh
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         )}
       </AlertDialog>
-
     </div>
   );
 }
