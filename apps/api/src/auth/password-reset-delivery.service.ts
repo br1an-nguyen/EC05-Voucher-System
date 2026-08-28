@@ -80,7 +80,7 @@ export class PasswordResetDeliveryService {
           body: JSON.stringify({
             sender: {
               name: 'VoucherNow Support',
-              email: process.env.GMAIL_USER, // Bắt buộc phải là email dùng để đăng ký Brevo
+              email: process.env.BREVO_SENDER_EMAIL || 'tonhannhan223@gmail.com', // Cố định luôn email này để lỡ GMAIL_USER khác email đăng ký Brevo
             },
             to: [
               {
