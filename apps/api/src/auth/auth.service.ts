@@ -3,7 +3,6 @@ import {
   BadRequestException,
   ConflictException,
   UnauthorizedException,
-  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
@@ -242,7 +241,7 @@ export class AuthService {
 
     const user = await this.usersService.findByEmail(normalizedEmail);
     if (!user) {
-      throw new NotFoundException('Email này chưa được đăng ký trong hệ thống.');
+      return PASSWORD_RESET_RESPONSE;
     }
 
     const resetToken = this.jwtService.sign(

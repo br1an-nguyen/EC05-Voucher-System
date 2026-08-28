@@ -25,19 +25,7 @@ export class PasswordResetDeliveryService {
   }
 
   async deliver(delivery: PasswordResetDelivery): Promise<void> {
-    const fs = require('fs');
-    fs.appendFileSync('delivery-log.txt', `\n--- DELIVER CALLED ---\n`);
-    fs.appendFileSync('delivery-log.txt', `GMAIL_USER: ${process.env.GMAIL_USER}\n`);
-    
-    console.log('--- DELIVER CALLED ---');
-    console.log('GMAIL_USER:', process.env.GMAIL_USER);
-    console.log('GMAIL_APP_PASSWORD:', process.env.GMAIL_APP_PASSWORD ? '***' : 'undefined');
-
     const { email, resetUrl, expiresAt } = delivery;
-    
-    // Log for debugging
-    this.logger.log(`Đang chuẩn bị gửi email khôi phục mật khẩu đến: ${email}`);
-    this.logger.log(`Reset URL: ${resetUrl}`);
 
     const htmlContent = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
@@ -73,14 +61,15 @@ export class PasswordResetDeliveryService {
         const response = await fetch('https://api.brevo.com/v3/smtp/email', {
           method: 'POST',
           headers: {
-            'accept': 'application/json',
+            accept: 'application/json',
             'api-key': process.env.BREVO_API_KEY,
             'content-type': 'application/json',
           },
           body: JSON.stringify({
             sender: {
               name: 'VoucherNow Support',
-              email: process.env.BREVO_SENDER_EMAIL || 'tonhannhan223@gmail.com', // Cố định luôn email này để lỡ GMAIL_USER khác email đăng ký Brevo
+              email:
+                process.env.BREVO_SENDER_EMAIL || 'tonhannhan223@gmail.com', // Cố định luôn email này để lỡ GMAIL_USER khác email đăng ký Brevo
             },
             to: [
               {
@@ -98,7 +87,9 @@ export class PasswordResetDeliveryService {
           throw new Error('Lỗi từ Brevo API');
         }
 
-        this.logger.log(`[Brevo] Đã gửi email khôi phục thành công đến: ${email}`);
+        this.logger.log(
+          `[Brevo] Đã gửi email khôi phục thành công đến: ${email}`,
+        );
         return; // Gửi thành công, kết thúc hàm
       } catch (error) {
         this.logger.error(`[Brevo] Lỗi khi gửi email đến ${email}:`, error);
@@ -112,7 +103,7 @@ export class PasswordResetDeliveryService {
         const response = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+            Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
@@ -129,11 +120,15 @@ export class PasswordResetDeliveryService {
           throw new Error('Lỗi từ Resend API');
         }
 
-        this.logger.log(`[Resend] Đã gửi email khôi phục thành công đến: ${email}`);
+        this.logger.log(
+          `[Resend] Đã gửi email khôi phục thành công đến: ${email}`,
+        );
         return; // Gửi thành công, kết thúc hàm
       } catch (error) {
         this.logger.error(`[Resend] Lỗi khi gửi email đến ${email}:`, error);
-        throw new Error('Không thể gửi email qua Resend. Vui lòng thử lại sau.');
+        throw new Error(
+          'Không thể gửi email qua Resend. Vui lòng thử lại sau.',
+        );
       }
     }
 
@@ -142,7 +137,9 @@ export class PasswordResetDeliveryService {
     const pass = process.env.GMAIL_APP_PASSWORD;
 
     if (!user || !pass) {
-      throw new Error('Tính năng gửi email chưa được cấu hình (Thiếu BREVO_API_KEY hoặc GMAIL_USER/GMAIL_APP_PASSWORD).');
+      throw new Error(
+        'Tính năng gửi email chưa được cấu hình (Thiếu BREVO_API_KEY hoặc GMAIL_USER/GMAIL_APP_PASSWORD).',
+      );
     }
 
     if (!this.transporter) {
@@ -163,10 +160,12 @@ export class PasswordResetDeliveryService {
 
     try {
       await this.transporter.sendMail(mailOptions);
-      this.logger.log(`[Nodemailer] Đã gửi email khôi phục thành công đến: ${email}`);
+      this.logger.log(
+        `[Nodemailer] Đã gửi email khôi phục thành công đến: ${email}`,
+      );
     } catch (error) {
       this.logger.error(`[Nodemailer] Lỗi khi gửi email đến ${email}:`, error);
-      throw new Error('Không thể gửi email bằng SMTP. Vui lòng thử lại sau.');
+      throw new Error('Không thể gửi email. Vui lòng thử lại sau.');
     }
   }
 }
