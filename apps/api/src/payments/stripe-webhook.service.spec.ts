@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, Logger } from '@nestjs/common';
 import {
   OrderStatus,
   PaymentProviderType,
@@ -15,6 +15,17 @@ const PAYMENT_ID = '11111111-1111-4111-8111-111111111111';
 const ORDER_ID = '22222222-2222-4222-8222-222222222222';
 
 describe('StripeWebhookService', () => {
+  let loggerErrorSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    loggerErrorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   const evidence = (overrides: Partial<StripePaymentEvidence> = {}) => ({
     paymentId: PAYMENT_ID,
     orderId: ORDER_ID,
@@ -280,5 +291,8 @@ describe('StripeWebhookService', () => {
       where: { orderId: ORDER_ID },
       data: { paymentStatus: PaymentStatus.REFUND_PENDING },
     });
+    expect(loggerErrorSpy).toHaveBeenCalledWith(
+      `Stripe refund re_test_1 failed for payment ${PAYMENT_ID}; manual reconciliation is required.`,
+    );
   });
 });

@@ -1,10 +1,21 @@
-import { Controller, Get, Patch, Delete, Body, UseGuards, Req, Query, Param } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Patch,
+  Delete,
+  Body,
+  UseGuards,
+  Req,
+  Query,
+  Param,
+} from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UserRole, UserStatus } from '@prisma/client';
+import { AdminUserQueryDto } from './dto/admin-user-query.dto';
 
 /**
  * Controller tiếp nhận các tác vụ tự chỉnh sửa thông tin cá nhân của người dùng hiện tại
@@ -41,12 +52,8 @@ export class UsersController {
    */
   @Get('admin/list')
   @Roles(UserRole.ADMIN)
-  async adminListUsers(
-    @Query('keyword') keyword?: string,
-    @Query('role') role?: string,
-    @Query('status') status?: string,
-  ) {
-    return this.usersService.adminListUsers({ keyword, role, status });
+  async adminListUsers(@Query() query: AdminUserQueryDto) {
+    return this.usersService.adminListUsers(query);
   }
 
   /**

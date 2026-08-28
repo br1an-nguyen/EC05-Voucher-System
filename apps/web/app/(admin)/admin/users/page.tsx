@@ -1,16 +1,19 @@
-'use client';
+"use client";
 
-import React, { useEffect, useState, useTransition } from 'react';
-import { apiRequest } from '../../../../lib/api';
-import { getErrorMessage } from '../../../../lib/errors';
-import { 
-  Users as UsersIcon, 
-  UserCog, 
-  Search, 
-  ShieldAlert, 
-  Mail, 
-  Phone, 
-  UserCheck, 
+import React, { useCallback, useEffect, useState } from "react";
+import { apiRequest } from "../../../../lib/api";
+import { getErrorMessage } from "../../../../lib/errors";
+import { PaginatedResponse } from "../../../../lib/pagination";
+import { useDebouncedValue } from "../../../../hooks/use-debounced-value";
+import { TablePagination } from "../../../../components/ui/table-pagination";
+import {
+  Users as UsersIcon,
+  UserCog,
+  Search,
+  ShieldAlert,
+  Mail,
+  Phone,
+  UserCheck,
   UserX,
   Calendar,
   Lock,
@@ -18,8 +21,8 @@ import {
   Shield,
   Briefcase,
   UserCheck2,
-  ChevronRight
-} from 'lucide-react';
+  ChevronRight,
+} from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,66 +32,120 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '../../../../components/ui/alert-dialog';
+} from "../../../../components/ui/alert-dialog";
 
 interface User {
   userId: string;
   email: string | null;
   phone: string | null;
   fullName: string | null;
-  role: 'CUSTOMER' | 'PARTNER' | 'PARTNER_STAFF' | 'ADMIN';
-  status: 'ACTIVE' | 'LOCKED' | 'PENDING_VERIFICATION';
+  role: "CUSTOMER" | "PARTNER" | "PARTNER_STAFF" | "ADMIN";
+  status: "ACTIVE" | "LOCKED" | "PENDING_VERIFICATION";
   createdAt: string;
+}
+
+interface AdminUserResponse extends PaginatedResponse<User> {
+  summary: {
+    roleCounts: Record<User["role"], number>;
+    statusCounts: Record<User["status"], number>;
+  };
 }
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isPending, startTransition] = useTransition();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [roleFilter, setRoleFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [fetching, setFetching] = useState(false);
+  const [roleCounts, setRoleCounts] = useState<Record<User["role"], number>>({
+    CUSTOMER: 0,
+    PARTNER: 0,
+    PARTNER_STAFF: 0,
+    ADMIN: 0,
+  });
+  const [lockedCount, setLockedCount] = useState(0);
+  const debouncedSearch = useDebouncedValue(searchTerm);
 
   // Trạng thái modal
   const [statusAction, setStatusAction] = useState<{
     user: User;
-    targetStatus: 'ACTIVE' | 'LOCKED';
+    targetStatus: "ACTIVE" | "LOCKED";
   } | null>(null);
   const [roleAction, setRoleAction] = useState<{
     user: User;
-    targetRole: 'CUSTOMER' | 'PARTNER' | 'PARTNER_STAFF' | 'ADMIN';
+    targetRole: "CUSTOMER" | "PARTNER" | "PARTNER_STAFF" | "ADMIN";
   } | null>(null);
 
-  const loadUsers = async () => {
-    try {
-      const data = await apiRequest<User[]>('/users/admin/list');
-      setUsers(data);
-    } catch (error: unknown) {
-      setErrorMsg(getErrorMessage(error, 'Không thể tải danh sách tài khoản người dùng.'));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loadUsers = useCallback(
+    async (signal?: AbortSignal) => {
+      setFetching(true);
+      try {
+        const params = new URLSearchParams({ page: String(page), limit: "20" });
+        if (debouncedSearch) params.set("keyword", debouncedSearch);
+        if (roleFilter) params.set("role", roleFilter);
+        if (statusFilter) params.set("status", statusFilter);
+        const data = await apiRequest<AdminUserResponse>(
+          `/users/admin/list?${params.toString()}`,
+          { signal },
+        );
+        setUsers(data.items);
+        setTotal(data.total);
+        setTotalPages(data.totalPages);
+        setRoleCounts(data.summary.roleCounts);
+        setLockedCount(data.summary.statusCounts.LOCKED);
+      } catch (error: unknown) {
+        if (error instanceof DOMException && error.name === "AbortError")
+          return;
+        setErrorMsg(
+          getErrorMessage(
+            error,
+            "Không thể tải danh sách tài khoản người dùng.",
+          ),
+        );
+      } finally {
+        if (!signal?.aborted) {
+          setLoading(false);
+          setFetching(false);
+        }
+      }
+    },
+    [page, debouncedSearch, roleFilter, statusFilter],
+  );
 
   useEffect(() => {
-    loadUsers();
-  }, []);
+    const controller = new AbortController();
+    queueMicrotask(() => {
+      if (!controller.signal.aborted) void loadUsers(controller.signal);
+    });
+    return () => controller.abort();
+  }, [loadUsers]);
 
-  const handleUpdateStatus = async (userId: string, status: 'ACTIVE' | 'LOCKED') => {
+  const handleUpdateStatus = async (
+    userId: string,
+    status: "ACTIVE" | "LOCKED",
+  ) => {
     setErrorMsg(null);
     setSuccessMsg(null);
     try {
       await apiRequest<void>(`/users/admin/${userId}/status`, {
-        method: 'PATCH',
+        method: "PATCH",
         body: JSON.stringify({ status }),
       });
-      setSuccessMsg(`Đã ${status === 'ACTIVE' ? 'mở khóa' : 'khóa'} tài khoản thành công!`);
+      setSuccessMsg(
+        `Đã ${status === "ACTIVE" ? "mở khóa" : "khóa"} tài khoản thành công!`,
+      );
       loadUsers();
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (error: unknown) {
-      setErrorMsg(getErrorMessage(error, 'Lỗi xảy ra khi cập nhật trạng thái tài khoản.'));
+      setErrorMsg(
+        getErrorMessage(error, "Lỗi xảy ra khi cập nhật trạng thái tài khoản."),
+      );
     }
   };
 
@@ -97,46 +154,36 @@ export default function AdminUsersPage() {
     setSuccessMsg(null);
     try {
       await apiRequest<void>(`/users/admin/${userId}/role`, {
-        method: 'PATCH',
+        method: "PATCH",
         body: JSON.stringify({ role }),
       });
-      setSuccessMsg('Đã cập nhật vai trò người dùng thành công!');
+      setSuccessMsg("Đã cập nhật vai trò người dùng thành công!");
       loadUsers();
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (error: unknown) {
-      setErrorMsg(getErrorMessage(error, 'Lỗi xảy ra khi thay đổi vai trò tài khoản.'));
+      setErrorMsg(
+        getErrorMessage(error, "Lỗi xảy ra khi thay đổi vai trò tài khoản."),
+      );
     }
   };
 
-  const filteredUsers = users.filter(u => {
-    const matchesSearch = 
-      (u.fullName && u.fullName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (u.email && u.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (u.phone && u.phone.includes(searchTerm));
-    
-    const matchesRole = !roleFilter || u.role === roleFilter;
-    const matchesStatus = !statusFilter || u.status === statusFilter;
-
-    return matchesSearch && matchesRole && matchesStatus;
-  });
-
   const getRoleBadge = (role: string) => {
     switch (role) {
-      case 'ADMIN':
+      case "ADMIN":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-red-500/10 text-red-500 border border-red-500/20">
             <Shield className="h-3.5 w-3.5" />
             ADMIN
           </span>
         );
-      case 'PARTNER':
+      case "PARTNER":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-orange-500/10 text-orange-500 border border-orange-500/20">
             <Briefcase className="h-3.5 w-3.5" />
             PARTNER
           </span>
         );
-      case 'PARTNER_STAFF':
+      case "PARTNER_STAFF":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20">
             <UserCheck2 className="h-3.5 w-3.5" />
@@ -155,13 +202,13 @@ export default function AdminUsersPage() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'ACTIVE':
+      case "ACTIVE":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
             Kích hoạt
           </span>
         );
-      case 'LOCKED':
+      case "LOCKED":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-rose-500/10 text-rose-500 border border-rose-500/20">
             Bị khóa
@@ -178,7 +225,6 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-6">
-
       {/* BREADCRUMB */}
       <div className="flex items-center gap-2 text-xs text-muted">
         <span>Admin Portal</span>
@@ -193,7 +239,10 @@ export default function AdminUsersPage() {
             <UserCog className="h-6 w-6 text-primary" />
             Danh sách tài khoản người dùng
           </h1>
-          <p className="text-xs text-muted mt-1">Xem toàn bộ tài khoản, thay đổi quyền hạn và khóa/mở khóa tài khoản người dùng.</p>
+          <p className="text-xs text-muted mt-1">
+            Xem toàn bộ tài khoản, thay đổi quyền hạn và khóa/mở khóa tài khoản
+            người dùng.
+          </p>
         </div>
         <div className="relative max-w-xs w-full">
           <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
@@ -201,7 +250,10 @@ export default function AdminUsersPage() {
             type="text"
             placeholder="Tìm họ tên, email, số điện thoại..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setPage(1);
+            }}
             className="block w-full rounded-lg border border-border bg-card py-2 pl-9 pr-3 text-xs text-foreground placeholder-slate-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all"
           />
         </div>
@@ -224,39 +276,82 @@ export default function AdminUsersPage() {
       {/* THỐNG KÊ NHANH */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-          <p className="text-xs font-semibold text-muted uppercase tracking-wide">Tổng tài khoản</p>
-          <p className="text-2xl font-bold text-foreground mt-1">{users.length}</p>
+          <p className="text-xs font-semibold text-muted uppercase tracking-wide">
+            Tổng tài khoản
+          </p>
+          <p className="text-2xl font-bold text-foreground mt-1">{total}</p>
         </div>
         <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-          <p className="text-xs font-semibold text-muted uppercase tracking-wide">Khách hàng</p>
-          <p className="text-2xl font-bold text-blue-500 mt-1">{users.filter(u => u.role === 'CUSTOMER').length}</p>
+          <p className="text-xs font-semibold text-muted uppercase tracking-wide">
+            Khách hàng
+          </p>
+          <p className="text-2xl font-bold text-blue-500 mt-1">
+            {roleCounts.CUSTOMER}
+          </p>
         </div>
         <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-          <p className="text-xs font-semibold text-muted uppercase tracking-wide">Đối tác & Nhân viên</p>
-          <p className="text-2xl font-bold text-orange-500 mt-1">{users.filter(u => u.role === 'PARTNER' || u.role === 'PARTNER_STAFF').length}</p>
+          <p className="text-xs font-semibold text-muted uppercase tracking-wide">
+            Đối tác & Nhân viên
+          </p>
+          <p className="text-2xl font-bold text-orange-500 mt-1">
+            {roleCounts.PARTNER + roleCounts.PARTNER_STAFF}
+          </p>
         </div>
         <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-          <p className="text-xs font-semibold text-muted uppercase tracking-wide">Đang bị khóa</p>
-          <p className="text-2xl font-bold text-rose-500 mt-1">{users.filter(u => u.status === 'LOCKED').length}</p>
+          <p className="text-xs font-semibold text-muted uppercase tracking-wide">
+            Đang bị khóa
+          </p>
+          <p className="text-2xl font-bold text-rose-500 mt-1">{lockedCount}</p>
         </div>
       </div>
 
       {/* BỘ LỌC DẠNG TAB PILL */}
       <div className="flex flex-wrap gap-4">
         <div className="flex flex-wrap gap-1.5">
-          {[{ v: '', l: 'Tất cả vai trò' }, { v: 'CUSTOMER', l: 'Khách hàng' }, { v: 'PARTNER', l: 'Đối tác' }, { v: 'PARTNER_STAFF', l: 'Nhân viên' }, { v: 'ADMIN', l: 'Admin' }].map(f => (
-            <button key={f.v} onClick={() => setRoleFilter(f.v)}
+          {[
+            { v: "", l: "Tất cả vai trò" },
+            { v: "CUSTOMER", l: "Khách hàng" },
+            { v: "PARTNER", l: "Đối tác" },
+            { v: "PARTNER_STAFF", l: "Nhân viên" },
+            { v: "ADMIN", l: "Admin" },
+          ].map((f) => (
+            <button
+              key={f.v}
+              onClick={() => {
+                setRoleFilter(f.v);
+                setPage(1);
+              }}
               className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
-                roleFilter === f.v ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-secondary text-foreground hover:bg-secondary/80'
-              }`}>{f.l}</button>
+                roleFilter === f.v
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-secondary text-foreground hover:bg-secondary/80"
+              }`}
+            >
+              {f.l}
+            </button>
           ))}
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {[{ v: '', l: 'Mọi trạng thái' }, { v: 'ACTIVE', l: 'Kích hoạt' }, { v: 'LOCKED', l: 'Bị khóa' }, { v: 'PENDING_VERIFICATION', l: 'Chờ xác thực' }].map(f => (
-            <button key={f.v} onClick={() => setStatusFilter(f.v)}
+          {[
+            { v: "", l: "Mọi trạng thái" },
+            { v: "ACTIVE", l: "Kích hoạt" },
+            { v: "LOCKED", l: "Bị khóa" },
+            { v: "PENDING_VERIFICATION", l: "Chờ xác thực" },
+          ].map((f) => (
+            <button
+              key={f.v}
+              onClick={() => {
+                setStatusFilter(f.v);
+                setPage(1);
+              }}
               className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
-                statusFilter === f.v ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-secondary text-foreground hover:bg-secondary/80'
-              }`}>{f.l}</button>
+                statusFilter === f.v
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-secondary text-foreground hover:bg-secondary/80"
+              }`}
+            >
+              {f.l}
+            </button>
           ))}
         </div>
       </div>
@@ -266,11 +361,15 @@ export default function AdminUsersPage() {
         <div className="flex min-h-[300px] items-center justify-center">
           <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary" />
         </div>
-      ) : filteredUsers.length === 0 ? (
+      ) : users.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border p-12 text-center space-y-3">
           <UserX className="h-10 w-10 text-muted mx-auto" />
-          <h3 className="text-sm font-bold text-foreground">Không tìm thấy tài khoản phù hợp</h3>
-          <p className="text-xs text-muted">Hãy thay đổi bộ lọc hoặc từ khóa tìm kiếm.</p>
+          <h3 className="text-sm font-bold text-foreground">
+            Không tìm thấy tài khoản phù hợp
+          </h3>
+          <p className="text-xs text-muted">
+            Hãy thay đổi bộ lọc hoặc từ khóa tìm kiếm.
+          </p>
         </div>
       ) : (
         <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
@@ -287,16 +386,23 @@ export default function AdminUsersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
-                {filteredUsers.map((userItem) => (
-                  <tr key={userItem.userId} className="hover:bg-slate-50 transition-colors">
+                {users.map((userItem) => (
+                  <tr
+                    key={userItem.userId}
+                    className="hover:bg-slate-50 transition-colors"
+                  >
                     <td className="p-4">
                       <div className="flex items-center gap-3">
                         <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">
-                          {userItem.fullName?.charAt(0).toUpperCase() || 'U'}
+                          {userItem.fullName?.charAt(0).toUpperCase() || "U"}
                         </div>
                         <div>
-                          <p className="font-semibold text-foreground text-xs">{userItem.fullName || 'Chưa cập nhật'}</p>
-                          <p className="text-[10px] text-muted truncate max-w-[150px]">{userItem.userId}</p>
+                          <p className="font-semibold text-foreground text-xs">
+                            {userItem.fullName || "Chưa cập nhật"}
+                          </p>
+                          <p className="text-[10px] text-muted truncate max-w-[150px]">
+                            {userItem.userId}
+                          </p>
                         </div>
                       </div>
                     </td>
@@ -314,16 +420,16 @@ export default function AdminUsersPage() {
                         </div>
                       )}
                     </td>
-                    <td className="p-4">
-                      {getRoleBadge(userItem.role)}
-                    </td>
-                    <td className="p-4">
-                      {getStatusBadge(userItem.status)}
-                    </td>
+                    <td className="p-4">{getRoleBadge(userItem.role)}</td>
+                    <td className="p-4">{getStatusBadge(userItem.status)}</td>
                     <td className="p-4 text-[11px] text-muted whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
                         <Calendar className="h-3.5 w-3.5 shrink-0" />
-                        <span>{new Date(userItem.createdAt).toLocaleDateString('vi-VN')}</span>
+                        <span>
+                          {new Date(userItem.createdAt).toLocaleDateString(
+                            "vi-VN",
+                          )}
+                        </span>
                       </div>
                     </td>
                     <td className="p-4 text-right">
@@ -332,9 +438,12 @@ export default function AdminUsersPage() {
                         <select
                           value={userItem.role}
                           onChange={(e) => {
-                            const newRole = e.target.value as any;
+                            const newRole = e.target.value as User["role"];
                             if (newRole !== userItem.role) {
-                              setRoleAction({ user: userItem, targetRole: newRole });
+                              setRoleAction({
+                                user: userItem,
+                                targetRole: newRole,
+                              });
                             }
                           }}
                           className="px-2 py-1 text-xs border border-border rounded bg-background text-foreground"
@@ -346,9 +455,14 @@ export default function AdminUsersPage() {
                         </select>
 
                         {/* Toggle Status */}
-                        {userItem.status === 'LOCKED' ? (
+                        {userItem.status === "LOCKED" ? (
                           <button
-                            onClick={() => setStatusAction({ user: userItem, targetStatus: 'ACTIVE' })}
+                            onClick={() =>
+                              setStatusAction({
+                                user: userItem,
+                                targetStatus: "ACTIVE",
+                              })
+                            }
                             className="p-1.5 rounded-lg text-emerald-500 hover:bg-emerald-500/10 transition-colors"
                             title="Mở khóa tài khoản"
                           >
@@ -356,7 +470,12 @@ export default function AdminUsersPage() {
                           </button>
                         ) : (
                           <button
-                            onClick={() => setStatusAction({ user: userItem, targetStatus: 'LOCKED' })}
+                            onClick={() =>
+                              setStatusAction({
+                                user: userItem,
+                                targetStatus: "LOCKED",
+                              })
+                            }
                             className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors"
                             title="Khóa tài khoản"
                           >
@@ -370,11 +489,22 @@ export default function AdminUsersPage() {
               </tbody>
             </table>
           </div>
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            itemLabel="tài khoản"
+            disabled={fetching}
+            onPageChange={setPage}
+          />
         </div>
       )}
 
       {/* Alert Dialog xác nhận khóa/mở khóa */}
-      <AlertDialog open={!!statusAction} onOpenChange={(open) => !open && setStatusAction(null)}>
+      <AlertDialog
+        open={!!statusAction}
+        onOpenChange={(open) => !open && setStatusAction(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
@@ -382,9 +512,15 @@ export default function AdminUsersPage() {
               Xác nhận thay đổi trạng thái tài khoản?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Bạn đang chuẩn bị {statusAction?.targetStatus === 'LOCKED' ? 'KHÓA' : 'MỞ KHÓA'} tài khoản của{' '}
-              <strong>{statusAction?.user.fullName || statusAction?.user.email}</strong>. 
-              {statusAction?.targetStatus === 'LOCKED' && ' Người dùng bị khóa sẽ không thể đăng nhập hoặc thực hiện bất kỳ giao dịch nào trên hệ thống.'}
+              Bạn đang chuẩn bị{" "}
+              {statusAction?.targetStatus === "LOCKED" ? "KHÓA" : "MỞ KHÓA"} tài
+              khoản của{" "}
+              <strong>
+                {statusAction?.user.fullName || statusAction?.user.email}
+              </strong>
+              .
+              {statusAction?.targetStatus === "LOCKED" &&
+                " Người dùng bị khóa sẽ không thể đăng nhập hoặc thực hiện bất kỳ giao dịch nào trên hệ thống."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -392,11 +528,18 @@ export default function AdminUsersPage() {
             <AlertDialogAction
               onClick={() => {
                 if (statusAction) {
-                  handleUpdateStatus(statusAction.user.userId, statusAction.targetStatus);
+                  handleUpdateStatus(
+                    statusAction.user.userId,
+                    statusAction.targetStatus,
+                  );
                   setStatusAction(null);
                 }
               }}
-              className={statusAction?.targetStatus === 'LOCKED' ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}
+              className={
+                statusAction?.targetStatus === "LOCKED"
+                  ? "bg-red-600 hover:bg-red-700"
+                  : "bg-emerald-600 hover:bg-emerald-700"
+              }
             >
               Xác nhận
             </AlertDialogAction>
@@ -405,7 +548,10 @@ export default function AdminUsersPage() {
       </AlertDialog>
 
       {/* Alert Dialog xác nhận đổi vai trò */}
-      <AlertDialog open={!!roleAction} onOpenChange={(open) => !open && setRoleAction(null)}>
+      <AlertDialog
+        open={!!roleAction}
+        onOpenChange={(open) => !open && setRoleAction(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
@@ -413,9 +559,20 @@ export default function AdminUsersPage() {
               Thay đổi vai trò người dùng?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Bạn có chắc muốn thay đổi vai trò của <strong>{roleAction?.user.fullName || roleAction?.user.email}</strong> từ{' '}
-              <span className="font-bold text-foreground">{roleAction?.user.role}</span> sang{' '}
-              <span className="font-bold text-primary">{roleAction?.targetRole}</span>? Việc này sẽ trực tiếp thay đổi quyền hạn truy cập của người dùng trên toàn hệ thống.
+              Bạn có chắc muốn thay đổi vai trò của{" "}
+              <strong>
+                {roleAction?.user.fullName || roleAction?.user.email}
+              </strong>{" "}
+              từ{" "}
+              <span className="font-bold text-foreground">
+                {roleAction?.user.role}
+              </span>{" "}
+              sang{" "}
+              <span className="font-bold text-primary">
+                {roleAction?.targetRole}
+              </span>
+              ? Việc này sẽ trực tiếp thay đổi quyền hạn truy cập của người dùng
+              trên toàn hệ thống.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -423,7 +580,10 @@ export default function AdminUsersPage() {
             <AlertDialogAction
               onClick={() => {
                 if (roleAction) {
-                  handleUpdateRole(roleAction.user.userId, roleAction.targetRole);
+                  handleUpdateRole(
+                    roleAction.user.userId,
+                    roleAction.targetRole,
+                  );
                   setRoleAction(null);
                 }
               }}

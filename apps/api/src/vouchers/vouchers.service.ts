@@ -24,6 +24,29 @@ import {
 } from './dto/admin-category.dto';
 import { AuditService } from '../audit/audit.service';
 import { VIETNAM_PROVINCES } from '../common/constants/vietnam-provinces';
+import { CampaignListQueryDto } from './dto/campaign-list-query.dto';
+import { paginateResult } from '../common/pagination';
+import {
+  buildCatalogSearchQuery,
+  CatalogFacets,
+  CatalogSearchQueryRow,
+  normalizeCatalogKeyword,
+} from './catalog-search';
+
+interface CampaignStatsRow {
+  campaignId: string;
+  issuedCodeCount: bigint;
+  usedCount: bigint;
+  cancelledCount: bigint;
+  revenue: Prisma.Decimal | null;
+}
+
+interface PartnerCampaignSummaryRow {
+  totalCampaigns: bigint;
+  totalCapacity: bigint;
+  soldQuantity: bigint;
+  totalRevenue: Prisma.Decimal | null;
+}
 
 /**
  * Service quản lý toàn bộ nghiệp vụ tạo, cập nhật, chuyển đổi trạng thái (vòng đời) chiến dịch Voucher.
@@ -339,84 +362,158 @@ export class VouchersService {
   /**
    * Lấy danh sách toàn bộ chiến dịch voucher của một đối tác cụ thể.
    */
-  async getPartnerCampaigns(partnerId: string) {
-    const campaigns = await this.prisma.voucherCampaign.findMany({
-      where: { partnerId },
-      include: {
-        campaignBranches: {
-          include: { branch: true },
-        },
-        campaignCategories: {
-          include: {
-            category: {
-              select: {
-                nameVi: true,
-                code: true,
+  async getPartnerCampaigns(
+    partnerId: string,
+    query = new CampaignListQueryDto(),
+  ) {
+    const where: Prisma.VoucherCampaignWhereInput = {
+      partnerId,
+      status: query.status,
+      ...(query.keyword
+        ? {
+            OR: [
+              { title: { contains: query.keyword, mode: 'insensitive' } },
+              {
+                description: {
+                  contains: query.keyword,
+                  mode: 'insensitive',
+                },
+              },
+              { category: { contains: query.keyword, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+    const statusFilter = query.status
+      ? Prisma.sql`AND vc.status::text = ${query.status}`
+      : Prisma.empty;
+    const keywordFilter = query.keyword
+      ? Prisma.sql`AND (
+          vc.title ILIKE ${`%${query.keyword}%`}
+          OR vc.description ILIKE ${`%${query.keyword}%`}
+          OR vc.category ILIKE ${`%${query.keyword}%`}
+        )`
+      : Prisma.empty;
+    const skip = (query.page - 1) * query.limit;
+    const [campaigns, [summary]] = await Promise.all([
+      this.prisma.voucherCampaign.findMany({
+        where,
+        include: {
+          campaignBranches: {
+            include: { branch: true },
+          },
+          campaignCategories: {
+            include: {
+              category: {
+                select: {
+                  nameVi: true,
+                  code: true,
+                },
               },
             },
           },
         },
-        orderItems: {
-          select: {
-            quantity: true,
-            unitPrice: true,
-            _count: {
-              select: { voucherCodes: true },
-            },
-            voucherCodes: {
-              where: {
-                status: { in: ['USED', 'CANCELLED'] },
-              },
-              select: {
-                status: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+        orderBy: [{ createdAt: 'desc' }, { campaignId: 'desc' }],
+        skip,
+        take: query.limit,
+      }),
+      this.prisma.$queryRaw<PartnerCampaignSummaryRow[]>(Prisma.sql`
+        WITH filtered AS (
+          SELECT vc.campaign_id, vc.capacity
+          FROM "Voucher_Campaigns" vc
+          WHERE vc.partner_id = ${partnerId}::uuid
+          ${statusFilter}
+          ${keywordFilter}
+        ),
+        code_stats AS (
+          SELECT
+            oi.campaign_id,
+            COUNT(*) FILTER (WHERE code.status::text <> 'CANCELLED') AS sold
+          FROM "Voucher_Codes" code
+          JOIN "Order_Items" oi ON oi.item_id = code.item_id
+          JOIN filtered f ON f.campaign_id = oi.campaign_id
+          GROUP BY oi.campaign_id
+        ),
+        order_stats AS (
+          SELECT
+            oi.campaign_id,
+            SUM(oi.quantity * oi.unit_price) AS revenue
+          FROM "Order_Items" oi
+          JOIN filtered f ON f.campaign_id = oi.campaign_id
+          GROUP BY oi.campaign_id
+        )
+        SELECT
+          COUNT(*) AS "totalCampaigns",
+          COALESCE(SUM(f.capacity), 0) AS "totalCapacity",
+          COALESCE(SUM(c.sold), 0) AS "soldQuantity",
+          COALESCE(SUM(o.revenue), 0) AS "totalRevenue"
+        FROM filtered f
+        LEFT JOIN code_stats c ON c.campaign_id = f.campaign_id
+        LEFT JOIN order_stats o ON o.campaign_id = f.campaign_id
+      `),
+    ]);
 
-    return campaigns.map((campaign) => {
-      const usedCount = campaign.orderItems.reduce(
-        (sum, item) =>
-          sum +
-          item.voucherCodes.filter((code) => code.status === 'USED').length,
-        0,
-      );
+    const campaignIds = campaigns.map((campaign) => campaign.campaignId);
+    const stats =
+      campaignIds.length === 0
+        ? []
+        : await this.prisma.$queryRaw<CampaignStatsRow[]>(Prisma.sql`
+            WITH code_stats AS (
+              SELECT
+                oi.campaign_id,
+                COUNT(*) AS issued,
+                COUNT(*) FILTER (WHERE code.status::text = 'USED') AS used,
+                COUNT(*) FILTER (WHERE code.status::text = 'CANCELLED') AS cancelled
+              FROM "Voucher_Codes" code
+              JOIN "Order_Items" oi ON oi.item_id = code.item_id
+              WHERE oi.campaign_id IN (${Prisma.join(campaignIds)})
+              GROUP BY oi.campaign_id
+            ),
+            order_stats AS (
+              SELECT
+                campaign_id,
+                SUM(quantity * unit_price) AS revenue
+              FROM "Order_Items"
+              WHERE campaign_id IN (${Prisma.join(campaignIds)})
+              GROUP BY campaign_id
+            )
+            SELECT
+              ids.campaign_id AS "campaignId",
+              COALESCE(c.issued, 0) AS "issuedCodeCount",
+              COALESCE(c.used, 0) AS "usedCount",
+              COALESCE(c.cancelled, 0) AS "cancelledCount",
+              COALESCE(o.revenue, 0) AS revenue
+            FROM unnest(ARRAY[${Prisma.join(campaignIds)}]::uuid[]) ids(campaign_id)
+            LEFT JOIN code_stats c ON c.campaign_id = ids.campaign_id
+            LEFT JOIN order_stats o ON o.campaign_id = ids.campaign_id
+          `);
+    const statsByCampaign = new Map(
+      stats.map((item) => [item.campaignId, item]),
+    );
+    const items = campaigns.map((campaign) => {
+      const campaignStats = statsByCampaign.get(campaign.campaignId);
+      const issuedCodeCount = Number(campaignStats?.issuedCodeCount ?? 0);
+      const cancelledCount = Number(campaignStats?.cancelledCount ?? 0);
 
-      const issuedCodeCount = campaign.orderItems.reduce(
-        (sum, item) => sum + item._count.voucherCodes,
-        0,
-      );
-
-      const cancelledCodeCount = campaign.orderItems.reduce(
-        (sum, item) =>
-          sum +
-          item.voucherCodes.filter((code) => code.status === 'CANCELLED')
-            .length,
-        0,
-      );
-
-      // Voucher code là nguồn sự thật. CANCELLED đã hoàn lại tồn kho nên không
-      // còn được tính là đang bán, nhưng vẫn thuộc lịch sử phát hành.
-      const soldQuantity = issuedCodeCount - cancelledCodeCount;
-
-      const revenue = campaign.orderItems.reduce(
-        (sum, item) => sum + Number(item.unitPrice) * item.quantity,
-        0,
-      );
-
-      const { orderItems, ...base } = campaign;
-      void orderItems;
       return {
-        ...base,
-        soldQuantity,
+        ...campaign,
+        soldQuantity: issuedCodeCount - cancelledCount,
         issuedCodeCount,
-        usedCount,
-        revenue,
+        usedCount: Number(campaignStats?.usedCount ?? 0),
+        revenue: Number(campaignStats?.revenue ?? 0),
       };
     });
+    const total = Number(summary?.totalCampaigns ?? 0);
+
+    return {
+      ...paginateResult(items, total, query.page, query.limit),
+      summary: {
+        totalCampaigns: total,
+        totalCapacity: Number(summary?.totalCapacity ?? 0),
+        soldQuantity: Number(summary?.soldQuantity ?? 0),
+        totalRevenue: Number(summary?.totalRevenue ?? 0),
+      },
+    };
   }
 
   /**
@@ -682,7 +779,13 @@ export class VouchersService {
           where: activeCampaignWhere,
           select: {
             campaignId: true,
-            campaign: { select: { capacity: true, soldQuantity: true } },
+            campaign: {
+              select: {
+                capacity: true,
+                soldQuantity: true,
+                reservedStock: true,
+              },
+            },
           },
         },
         children: {
@@ -693,7 +796,13 @@ export class VouchersService {
               where: activeCampaignWhere,
               select: {
                 campaignId: true,
-                campaign: { select: { capacity: true, soldQuantity: true } },
+                campaign: {
+                  select: {
+                    capacity: true,
+                    soldQuantity: true,
+                    reservedStock: true,
+                  },
+                },
               },
             },
           },
@@ -705,14 +814,16 @@ export class VouchersService {
     const categoryItems = categories.map((category) => {
       const direct = category.campaignCategories.filter(
         (relation) =>
-          relation.campaign.soldQuantity < relation.campaign.capacity,
+          relation.campaign.soldQuantity + relation.campaign.reservedStock <
+          relation.campaign.capacity,
       );
       const children = category.children.map((child) => ({
         code: child.code,
         name: child.nameVi,
         campaignCount: child.campaignCategories.filter(
           (relation) =>
-            relation.campaign.soldQuantity < relation.campaign.capacity,
+            relation.campaign.soldQuantity + relation.campaign.reservedStock <
+            relation.campaign.capacity,
         ).length,
       }));
       const campaignIds = new Set([
@@ -721,7 +832,9 @@ export class VouchersService {
           child.campaignCategories
             .filter(
               (relation) =>
-                relation.campaign.soldQuantity < relation.campaign.capacity,
+                relation.campaign.soldQuantity +
+                  relation.campaign.reservedStock <
+                relation.campaign.capacity,
             )
             .map((relation) => relation.campaignId),
         ),
@@ -763,10 +876,30 @@ export class VouchersService {
       select: {
         partnerId: true,
         companyName: true,
+        campaigns: {
+          where: {
+            status: VoucherStatus.APPROVED,
+            saleStartTime: { lte: now },
+            saleEndTime: { gte: now },
+          },
+          select: {
+            capacity: true,
+            soldQuantity: true,
+            reservedStock: true,
+          },
+        },
       },
       orderBy: { companyName: 'asc' },
     });
-    return partners;
+    return partners.flatMap(({ campaigns, ...partner }) =>
+      campaigns.some(
+        (campaign) =>
+          campaign.capacity - campaign.soldQuantity - campaign.reservedStock >
+          0,
+      )
+        ? [partner]
+        : [],
+    );
   }
 
   /**
@@ -786,7 +919,13 @@ export class VouchersService {
       select: {
         campaignId: true,
         branch: { select: { provinceCode: true } },
-        campaign: { select: { capacity: true, soldQuantity: true } },
+        campaign: {
+          select: {
+            capacity: true,
+            soldQuantity: true,
+            reservedStock: true,
+          },
+        },
       },
     });
 
@@ -795,7 +934,8 @@ export class VouchersService {
       const provinceCode = relation.branch.provinceCode;
       if (
         !provinceCode ||
-        relation.campaign.soldQuantity >= relation.campaign.capacity
+        relation.campaign.soldQuantity + relation.campaign.reservedStock >=
+          relation.campaign.capacity
       ) {
         continue;
       }
@@ -816,262 +956,30 @@ export class VouchersService {
    * Hỗ trợ tìm kiếm từ khóa, danh mục, khoảng giá và chi nhánh áp dụng.
    */
   async findPublicCatalog(query: PublicCatalogQueryDto) {
-    const {
-      keyword,
-      category,
-      categoryCode,
-      minPrice,
-      maxPrice,
-      branchId,
-      provinceCode,
-      sortPrice,
-      sortDiscount,
-      partnerId,
-      validityStatus,
-      minDiscount,
-      page = 1,
-      limit = 20,
-    } = query;
-    const now = new Date();
-
-    // Ràng buộc cơ bản: Chiến dịch phải được phê duyệt
-    const whereClause: Prisma.VoucherCampaignWhereInput = {
-      status: VoucherStatus.APPROVED,
+    const normalizedKeyword = normalizeCatalogKeyword(query.keyword);
+    const normalizedQuery: PublicCatalogQueryDto = {
+      ...query,
+      keyword: normalizedKeyword || undefined,
     };
-
-    if (validityStatus === 'UPCOMING') {
-      whereClause.saleStartTime = { gt: now };
-    } else {
-      // Catalog mặc định chỉ hiển thị voucher đang mở bán (đã bắt đầu và còn hạn)
-      whereClause.saleStartTime = { lte: now };
-      whereClause.saleEndTime = { gte: now };
-    }
-
-    if (partnerId) {
-      whereClause.partnerId = partnerId;
-    }
-
-    if (categoryCode) {
-      whereClause.campaignCategories = {
-        some: {
-          category: {
-            OR: [
-              { code: categoryCode },
-              { parent: { is: { code: categoryCode } } },
-            ],
-          },
-        },
-      };
-    } else if (category) {
-      whereClause.category = category;
-    }
-
-    if (minPrice !== undefined || maxPrice !== undefined) {
-      whereClause.salePrice = {};
-      if (minPrice !== undefined) {
-        whereClause.salePrice.gte = minPrice;
-      }
-      if (maxPrice !== undefined) {
-        whereClause.salePrice.lte = maxPrice;
-      }
-    }
-
-    if (keyword) {
-      const lowerKeyword = keyword.toLowerCase();
-      const mappedCategories: string[] = [];
-
-      // Keyword to Category Mapping (Semantic search approximation)
-      if (
-        [
-          // Đồ ăn & Uống
-          'đồ ăn', 'ăn uống', 'đồ uống', 'nước uống', 'thức uống', 'giải khát', 'nước', 'trà', 'cà phê', 'sinh tố', 'nước ép',
-          'ẩm thực', 'nhà hàng', 'quán ăn', 'cafe', 'trà sữa', 'buffet', 'lẩu', 'nướng', 'bbq', 'đồ nướng',
-          'bánh', 'bánh ngọt', 'pizza', 'hải sản', 'gà rán', 'hamburger', 'burger', 'tráng miệng', 'kem',
-          'sushi', 'sashimi', 'cua', 'ốc', 'phở', 'bún', 'cơm', 'trái cây', 'hoa quả'
-        ].some((w) => lowerKeyword.includes(w))
-      ) {
-        mappedCategories.push('Food & Beverage', 'FOOD_DRINK');
-      }
-      if (
-        [
-          // Làm đẹp & Sức khỏe
-          'spa', 'làm đẹp', 'cắt tóc', 'massage', 'skincare', 'nail', 'gội đầu',
-          'tẩy trắng răng', 'nha khoa', 'răng', 'da liễu', 'trị mụn', 'phòng khám', 'sức khỏe', 'khám bệnh',
-          'thẩm mỹ', 'salon', 'uốn tóc', 'nhuộm', 'giảm béo', 'chăm sóc da', 'tắm trắng', 'triệt lông'
-        ].some((w) => lowerKeyword.includes(w))
-      ) {
-        mappedCategories.push('Beauty & Spa', 'Beauty', 'BEAUTY_HEALTH');
-      }
-      if (
-        [
-          // Mua sắm & Bán lẻ
-          'mua sắm', 'quần áo', 'giày dép', 'thời trang', 'siêu thị', 'thực phẩm',
-          'túi xách', 'mỹ phẩm', 'đồng hồ', 'trang sức', 'cửa hàng', 'tạp hóa', 'bách hóa',
-          'đồ gia dụng', 'điện máy', 'phụ kiện', 'balo', 'ví', 'quà tặng'
-        ].some((w) => lowerKeyword.includes(w))
-      ) {
-        mappedCategories.push('Shopping', 'SHOPPING_RETAIL');
-      }
-      if (
-        [
-          // Giải trí & Du lịch
-          'giải trí', 'xem phim', 'vui chơi', 'du lịch', 'khách sạn', 'vé', 'công viên',
-          'khu vui chơi', 'vé máy bay', 'tour', 'resort', 'homestay', 'trò chơi', 'game',
-          'rạp chiếu phim', 'bể bơi', 'thủy cung', 'bảo tàng', 'nghỉ dưỡng'
-        ].some((w) => lowerKeyword.includes(w))
-      ) {
-        mappedCategories.push('Entertainment', 'ENTERTAINMENT');
-      }
-      if (
-        [
-          // Viễn thông & Số
-          'điện thoại', 'viễn thông', 'thẻ cào', 'data', '4g', '5g', 'nạp tiền', 'cước',
-          'internet', 'phần mềm', 'ứng dụng', 'bản quyền', 'nhạc số'
-        ].some((w) => lowerKeyword.includes(w))
-      ) {
-        mappedCategories.push('Digital', 'DIGITAL_TELECOM');
-      }
-      if (
-        [
-          // Dịch vụ đời sống
-          'giặt ủi', 'giặt là', 'dịch vụ', 'dọn dẹp', 'vệ sinh', 'sửa chữa', 'bảo dưỡng',
-          'chụp ảnh', 'studio', 'thú cưng', 'chó mèo', 'thú y', 'chăm sóc'
-        ].some((w) => lowerKeyword.includes(w))
-      ) {
-        mappedCategories.push('Lifestyle', 'LIFESTYLE_SERVICES');
-      }
-      if (
-        [
-          // Di chuyển
-          'xe', 'di chuyển', 'taxi', 'xe công nghệ', 'xe ôm', 'giao hàng',
-          'vận chuyển', 'xe khách', 'thuê xe', 'đặt xe'
-        ].some((w) => lowerKeyword.includes(w))
-      ) {
-        mappedCategories.push('Transport', 'TRANSPORT');
-      }
-
-      const searchConditions: any[] = [
-        { title: { contains: keyword, mode: 'insensitive' } },
-        { description: { contains: keyword, mode: 'insensitive' } },
-        { termsAndConditions: { contains: keyword, mode: 'insensitive' } },
-        {
-          campaignBrands: {
-            some: {
-              brand: {
-                displayName: { contains: keyword, mode: 'insensitive' },
-              },
-            },
-          },
-        },
-      ];
-
-      if (mappedCategories.length > 0) {
-        searchConditions.push({ category: { in: mappedCategories } });
-        searchConditions.push({
-          campaignCategories: {
-            some: {
-              category: {
-                OR: [
-                  { code: { in: mappedCategories } },
-                  { parent: { is: { code: { in: mappedCategories } } } },
-                ],
-              },
-            },
-          },
-        });
-      }
-
-      whereClause.OR = searchConditions;
-    }
-
-    if (branchId || provinceCode) {
-      whereClause.campaignBranches = {
-        some: {
-          ...(branchId ? { branchId } : {}),
-          ...(provinceCode ? { branch: { is: { provinceCode } } } : {}),
-        },
-      };
-    }
-
-    const orderByClause: any[] = [];
-    if (sortPrice) {
-      orderByClause.push({ salePrice: sortPrice });
-    }
-    // Prisma không hỗ trợ sort theo percentage (original - sale)/original.
-    // Sẽ sort bằng JS sau khi query nếu cần.
-    orderByClause.push({ createdAt: 'desc' });
-
-    const campaigns = await this.prisma.voucherCampaign.findMany({
-      where: whereClause,
-      include: {
-        partner: {
-          select: { companyName: true },
-        },
-        campaignBranches: {
-          include: { branch: true },
-        },
-        campaignBrands: {
-          include: { brand: true },
-          orderBy: { isPrimary: 'desc' },
-        },
-        campaignCategories: {
-          include: {
-            category: {
-              include: { parent: true },
-            },
-          },
-          orderBy: { isPrimary: 'desc' },
-        },
-      },
-      orderBy: orderByClause,
-    });
-
-    let processedCampaigns = campaigns
-      .filter((campaign) => campaign.soldQuantity < campaign.capacity)
-      .map((campaign) => this.mapCatalogPresentation(campaign));
-
-    // Lọc theo discount (nếu có minDiscount)
-    if (minDiscount !== undefined) {
-      processedCampaigns = processedCampaigns.filter((c) => {
-        const discountPct =
-          ((Number(c.originalPrice.toString()) - Number(c.salePrice.toString())) /
-            Number(c.originalPrice.toString())) *
-          100;
-        return discountPct >= minDiscount;
-      });
-    }
-
-    // Sort by discount
-    if (sortDiscount) {
-      processedCampaigns.sort((a, b) => {
-        const aDisc =
-          ((Number(a.originalPrice.toString()) - Number(a.salePrice.toString())) /
-            Number(a.originalPrice.toString())) *
-          100;
-        const bDisc =
-          ((Number(b.originalPrice.toString()) - Number(b.salePrice.toString())) /
-            Number(b.originalPrice.toString())) *
-          100;
-        return sortDiscount === 'desc' ? bDisc - aDisc : aDisc - bDisc;
-      });
-    }
-
-    // Pagination
-    const total = processedCampaigns.length;
-    const startIndex = (page - 1) * limit;
-    const paginatedCampaigns = processedCampaigns.slice(
-      startIndex,
-      startIndex + limit,
+    const [result] = await this.prisma.$queryRaw<CatalogSearchQueryRow[]>(
+      buildCatalogSearchQuery(normalizedQuery),
     );
+    const total = Number(result?.total ?? 0);
+    const data = Array.isArray(result?.data) ? result.data : [];
+    const facets =
+      result?.facets && typeof result.facets === 'object'
+        ? (result.facets as unknown as CatalogFacets)
+        : { totalCampaignCount: total, categories: [] };
 
     return {
-      data: paginatedCampaigns,
+      data,
       meta: {
         total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        page: normalizedQuery.page ?? 1,
+        limit: normalizedQuery.limit ?? 20,
+        totalPages: Math.ceil(total / (normalizedQuery.limit ?? 20)),
       },
+      facets,
     };
   }
 
@@ -1524,6 +1432,18 @@ export class VouchersService {
     };
   }
 
+  async adminListCategoryOptions() {
+    return this.prisma.voucherCategory.findMany({
+      where: { isActive: true },
+      select: {
+        categoryId: true,
+        nameVi: true,
+        parentId: true,
+      },
+      orderBy: [{ displayOrder: 'asc' }, { nameVi: 'asc' }],
+    });
+  }
+
   /**
    * Admin: Tạo danh mục voucher mới (BR-ADM-05).
    */
@@ -1680,11 +1600,10 @@ export class VouchersService {
    * Admin: Lấy danh sách toàn bộ chiến dịch voucher (BR-ADM-03).
    * @param query Bộ lọc từ khóa và trạng thái
    */
-  async adminListCampaigns(query: { keyword?: string; status?: string }) {
-    const where: Prisma.VoucherCampaignWhereInput = {};
-    if (query.status) {
-      where.status = query.status as VoucherStatus;
-    }
+  async adminListCampaigns(query: CampaignListQueryDto) {
+    const where: Prisma.VoucherCampaignWhereInput = {
+      status: query.status,
+    };
     if (query.keyword) {
       where.OR = [
         { title: { contains: query.keyword, mode: 'insensitive' } },
@@ -1696,34 +1615,66 @@ export class VouchersService {
         },
       ];
     }
-    return this.prisma.voucherCampaign.findMany({
-      where,
-      include: {
-        partner: {
-          select: {
-            companyName: true,
-            representative: true,
+    const summaryWhere: Prisma.VoucherCampaignWhereInput = {
+      OR: where.OR,
+    };
+    const skip = (query.page - 1) * query.limit;
+    const [items, total, statusGroups, totals] = await Promise.all([
+      this.prisma.voucherCampaign.findMany({
+        where,
+        include: {
+          partner: {
+            select: {
+              companyName: true,
+              representative: true,
+            },
           },
-        },
-        campaignBranches: {
-          include: {
-            branch: true,
+          campaignBranches: {
+            include: {
+              branch: true,
+            },
           },
-        },
-        // Bao gồm danh mục tiếng Việt từ bảng quan hệ CampaignCategory
-        campaignCategories: {
-          include: {
-            category: {
-              select: {
-                nameVi: true,
-                code: true,
+          campaignCategories: {
+            include: {
+              category: {
+                select: {
+                  nameVi: true,
+                  code: true,
+                },
               },
             },
           },
         },
+        orderBy: [{ createdAt: 'desc' }, { campaignId: 'desc' }],
+        skip,
+        take: query.limit,
+      }),
+      this.prisma.voucherCampaign.count({ where }),
+      this.prisma.voucherCampaign.groupBy({
+        by: ['status'],
+        where: summaryWhere,
+        _count: { _all: true },
+      }),
+      this.prisma.voucherCampaign.aggregate({
+        where,
+        _sum: { capacity: true, soldQuantity: true },
+      }),
+    ]);
+    const statusCounts = Object.fromEntries(
+      Object.values(VoucherStatus).map((status) => [status, 0]),
+    ) as Record<VoucherStatus, number>;
+    for (const group of statusGroups) {
+      statusCounts[group.status] = group._count._all;
+    }
+
+    return {
+      ...paginateResult(items, total, query.page, query.limit),
+      summary: {
+        statusCounts,
+        totalCapacity: totals._sum.capacity ?? 0,
+        totalSold: totals._sum.soldQuantity ?? 0,
       },
-      orderBy: { createdAt: 'desc' },
-    });
+    };
   }
 
   /**

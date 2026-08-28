@@ -1,9 +1,25 @@
-'use client';
+"use client";
 
-import React, { useEffect, useState } from 'react';
-import { apiRequest } from '../../../../lib/api';
-import { getErrorMessage } from '../../../../lib/errors';
-import { Users, Check, X, AlertCircle, CheckCircle, Search, Mail, Phone, Lock, Unlock, Building2, ChevronRight } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from "react";
+import { apiRequest } from "../../../../lib/api";
+import { getErrorMessage } from "../../../../lib/errors";
+import { PaginatedResponse } from "../../../../lib/pagination";
+import { useDebouncedValue } from "../../../../hooks/use-debounced-value";
+import { TablePagination } from "../../../../components/ui/table-pagination";
+import {
+  Users,
+  Check,
+  X,
+  AlertCircle,
+  CheckCircle,
+  Search,
+  Mail,
+  Phone,
+  Lock,
+  Unlock,
+  Building2,
+  ChevronRight,
+} from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,15 +29,15 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '../../../../components/ui/alert-dialog';
+} from "../../../../components/ui/alert-dialog";
 
 interface Partner {
   partnerId: string;
   companyName: string;
   taxCode: string;
   representative: string | null;
-  approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED';
-  accountStatus: 'ACTIVE' | 'LOCKED';
+  approvalStatus: "PENDING" | "APPROVED" | "REJECTED";
+  accountStatus: "ACTIVE" | "LOCKED";
   createdAt: string;
   user: {
     email: string | null;
@@ -42,38 +58,67 @@ export default function AdminPartnersPage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
   const [partnerAction, setPartnerAction] = useState<{
     partner: Partner;
-    type: 'approve' | 'reject';
+    type: "approve" | "reject";
   } | null>(null);
 
   // Mới bổ sung: xem chi nhánh & thay đổi trạng thái đối tác
-  const [selectedPartnerForBranches, setSelectedPartnerForBranches] = useState<Partner | null>(null);
+  const [selectedPartnerForBranches, setSelectedPartnerForBranches] =
+    useState<Partner | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loadingBranches, setLoadingBranches] = useState(false);
   const [statusAction, setStatusAction] = useState<{
     partner: Partner;
-    targetStatus: 'ACTIVE' | 'LOCKED';
+    targetStatus: "ACTIVE" | "LOCKED";
   } | null>(null);
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [fetching, setFetching] = useState(false);
+  const debouncedSearch = useDebouncedValue(searchTerm);
 
-  const loadPartners = async () => {
-    try {
-      const data = await apiRequest<Partner[]>('/partners/admin/list');
-      setPartners(data);
-    } catch (error: unknown) {
-      setErrorMsg(getErrorMessage(error, 'Không thể tải danh sách đối tác.'));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loadPartners = useCallback(
+    async (signal?: AbortSignal) => {
+      setFetching(true);
+      try {
+        const params = new URLSearchParams({ page: String(page), limit: "20" });
+        if (debouncedSearch) params.set("keyword", debouncedSearch);
+        if (statusFilter === "LOCKED") {
+          params.set("accountStatus", "LOCKED");
+        } else if (statusFilter) {
+          params.set("approvalStatus", statusFilter);
+        }
+        const data = await apiRequest<PaginatedResponse<Partner>>(
+          `/partners/admin/list?${params.toString()}`,
+          { signal },
+        );
+        setPartners(data.items);
+        setTotal(data.total);
+        setTotalPages(data.totalPages);
+      } catch (error: unknown) {
+        if (error instanceof DOMException && error.name === "AbortError")
+          return;
+        setErrorMsg(getErrorMessage(error, "Không thể tải danh sách đối tác."));
+      } finally {
+        if (!signal?.aborted) {
+          setLoading(false);
+          setFetching(false);
+        }
+      }
+    },
+    [page, debouncedSearch, statusFilter],
+  );
 
   useEffect(() => {
+    const controller = new AbortController();
     queueMicrotask(() => {
-      void loadPartners();
+      if (!controller.signal.aborted) void loadPartners(controller.signal);
     });
-  }, []);
+    return () => controller.abort();
+  }, [loadPartners]);
 
   const handleApprove = async (partnerId: string) => {
     setErrorMsg(null);
@@ -81,13 +126,13 @@ export default function AdminPartnersPage() {
 
     try {
       await apiRequest<void>(`/partners/admin/${partnerId}/approve`, {
-        method: 'PATCH',
+        method: "PATCH",
       });
-      setSuccessMsg('Đã phê duyệt đối tác và kích hoạt tài khoản thành công!');
+      setSuccessMsg("Đã phê duyệt đối tác và kích hoạt tài khoản thành công!");
       loadPartners();
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (error: unknown) {
-      setErrorMsg(getErrorMessage(error, 'Lỗi xảy ra khi duyệt đối tác.'));
+      setErrorMsg(getErrorMessage(error, "Lỗi xảy ra khi duyệt đối tác."));
     }
   };
 
@@ -97,29 +142,36 @@ export default function AdminPartnersPage() {
 
     try {
       await apiRequest<void>(`/partners/admin/${partnerId}/reject`, {
-        method: 'PATCH',
+        method: "PATCH",
       });
-      setSuccessMsg('Đã từ chối đối tác thành công.');
+      setSuccessMsg("Đã từ chối đối tác thành công.");
       loadPartners();
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (error: unknown) {
-      setErrorMsg(getErrorMessage(error, 'Lỗi xảy ra khi từ chối đối tác.'));
+      setErrorMsg(getErrorMessage(error, "Lỗi xảy ra khi từ chối đối tác."));
     }
   };
 
-  const handleToggleStatus = async (partnerId: string, status: 'ACTIVE' | 'LOCKED') => {
+  const handleToggleStatus = async (
+    partnerId: string,
+    status: "ACTIVE" | "LOCKED",
+  ) => {
     setErrorMsg(null);
     setSuccessMsg(null);
     try {
       await apiRequest<void>(`/partners/admin/${partnerId}/toggle-status`, {
-        method: 'PATCH',
+        method: "PATCH",
         body: JSON.stringify({ status }),
       });
-      setSuccessMsg(`Đã ${status === 'ACTIVE' ? 'mở khóa' : 'khóa'} đối tác thành công!`);
+      setSuccessMsg(
+        `Đã ${status === "ACTIVE" ? "mở khóa" : "khóa"} đối tác thành công!`,
+      );
       loadPartners();
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (error: unknown) {
-      setErrorMsg(getErrorMessage(error, 'Lỗi xảy ra khi đổi trạng thái đối tác.'));
+      setErrorMsg(
+        getErrorMessage(error, "Lỗi xảy ra khi đổi trạng thái đối tác."),
+      );
     }
   };
 
@@ -128,28 +180,21 @@ export default function AdminPartnersPage() {
     setLoadingBranches(true);
     setBranches([]);
     try {
-      const data = await apiRequest<Branch[]>(`/partners/admin/${partner.partnerId}/branches`);
+      const data = await apiRequest<Branch[]>(
+        `/partners/admin/${partner.partnerId}/branches`,
+      );
       setBranches(data);
     } catch (error: unknown) {
-      setErrorMsg(getErrorMessage(error, 'Không thể tải danh sách chi nhánh của đối tác.'));
+      setErrorMsg(
+        getErrorMessage(
+          error,
+          "Không thể tải danh sách chi nhánh của đối tác.",
+        ),
+      );
     } finally {
       setLoadingBranches(false);
     }
   };
-
-  const filteredPartners = partners.filter(p => {
-    const matchesSearch = 
-      p.companyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.taxCode.includes(searchTerm) ||
-      (p.representative && p.representative.toLowerCase().includes(searchTerm.toLowerCase()));
-
-    const matchesStatus = 
-      !statusFilter ? true :
-      statusFilter === 'LOCKED' ? p.accountStatus === 'LOCKED' :
-      p.approvalStatus === statusFilter;
-
-    return matchesSearch && matchesStatus;
-  });
 
   if (loading) {
     return (
@@ -161,7 +206,6 @@ export default function AdminPartnersPage() {
 
   return (
     <div className="space-y-6">
-      
       {/* BREADCRUMB */}
       <div className="flex items-center gap-2 text-xs text-muted">
         <span>Admin Portal</span>
@@ -176,7 +220,10 @@ export default function AdminPartnersPage() {
             <Users className="h-6 w-6 text-primary" />
             Danh sách đối tác liên kết
           </h1>
-          <p className="text-xs text-muted mt-1">Xét duyệt hồ sơ đăng ký đối tác mới, xem danh sách chi nhánh và khóa/mở khóa đối tác đang hoạt động.</p>
+          <p className="text-xs text-muted mt-1">
+            Xét duyệt hồ sơ đăng ký đối tác mới, xem danh sách chi nhánh và
+            khóa/mở khóa đối tác đang hoạt động.
+          </p>
         </div>
         <div className="relative max-w-xs w-full">
           <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
@@ -184,7 +231,10 @@ export default function AdminPartnersPage() {
             type="text"
             placeholder="Tìm tên công ty, MST, đại diện..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setPage(1);
+            }}
             className="block w-full rounded-lg border border-border bg-card py-2 pl-9 pr-3 text-xs text-foreground placeholder-slate-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all"
           />
         </div>
@@ -207,19 +257,22 @@ export default function AdminPartnersPage() {
       {/* BỘ LỌC DẠNG TAB PILL */}
       <div className="flex flex-wrap gap-1.5">
         {[
-          { v: '', l: 'Tất cả' },
-          { v: 'PENDING', l: 'Chờ xét duyệt' },
-          { v: 'APPROVED', l: 'Đã phê duyệt' },
-          { v: 'REJECTED', l: 'Đã từ chối' },
-          { v: 'LOCKED', l: 'Bị khóa' }
-        ].map(f => (
+          { v: "", l: "Tất cả" },
+          { v: "PENDING", l: "Chờ xét duyệt" },
+          { v: "APPROVED", l: "Đã phê duyệt" },
+          { v: "REJECTED", l: "Đã từ chối" },
+          { v: "LOCKED", l: "Bị khóa" },
+        ].map((f) => (
           <button
             key={f.v}
-            onClick={() => setStatusFilter(f.v)}
+            onClick={() => {
+              setStatusFilter(f.v);
+              setPage(1);
+            }}
             className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
               statusFilter === f.v
-                ? 'bg-primary text-primary-foreground shadow-sm'
-                : 'bg-secondary text-foreground hover:bg-secondary/80'
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-secondary text-foreground hover:bg-secondary/80"
             }`}
           >
             {f.l}
@@ -228,11 +281,15 @@ export default function AdminPartnersPage() {
       </div>
 
       {/* BẢNG DANH SÁCH ĐỐI TÁC */}
-      {filteredPartners.length === 0 ? (
+      {partners.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border p-12 text-center space-y-3">
           <Users className="h-10 w-10 text-muted mx-auto" />
-          <h3 className="text-sm font-bold text-foreground">Không tìm thấy đối tác</h3>
-          <p className="text-xs text-muted">Hệ thống hiện tại chưa ghi nhận yêu cầu đối tác nào khớp với bộ lọc.</p>
+          <h3 className="text-sm font-bold text-foreground">
+            Không tìm thấy đối tác
+          </h3>
+          <p className="text-xs text-muted">
+            Hệ thống hiện tại chưa ghi nhận yêu cầu đối tác nào khớp với bộ lọc.
+          </p>
         </div>
       ) : (
         <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
@@ -249,48 +306,59 @@ export default function AdminPartnersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
-                {filteredPartners.map((partner) => (
-                  <tr key={partner.partnerId} className="hover:bg-slate-50 transition-colors">
-                    
+                {partners.map((partner) => (
+                  <tr
+                    key={partner.partnerId}
+                    className="hover:bg-slate-50 transition-colors"
+                  >
                     {/* Tên Doanh nghiệp */}
                     <td className="p-4">
-                      <div className="font-bold text-foreground">{partner.companyName}</div>
+                      <div className="font-bold text-foreground">
+                        {partner.companyName}
+                      </div>
                       <div className="text-[10px] text-muted mt-0.5">
-                        Ngày tạo: {new Date(partner.createdAt).toLocaleDateString('vi-VN')}
+                        Ngày tạo:{" "}
+                        {new Date(partner.createdAt).toLocaleDateString(
+                          "vi-VN",
+                        )}
                       </div>
                     </td>
 
                     {/* MST / Người đại diện */}
                     <td className="p-4">
-                      <div className="text-foreground font-semibold">MST: {partner.taxCode}</div>
-                      <div className="text-[10px] text-muted mt-0.5">ĐD: {partner.representative || 'Chưa rõ'}</div>
+                      <div className="text-foreground font-semibold">
+                        MST: {partner.taxCode}
+                      </div>
+                      <div className="text-[10px] text-muted mt-0.5">
+                        ĐD: {partner.representative || "Chưa rõ"}
+                      </div>
                     </td>
 
                     {/* Tài khoản đăng ký */}
                     <td className="p-4 space-y-1">
                       <div className="text-[11px] text-foreground font-medium flex items-center gap-1.5">
                         <Mail className="h-3.5 w-3.5 text-muted shrink-0" />
-                        <span>{partner.user.email || 'N/A'}</span>
+                        <span>{partner.user.email || "N/A"}</span>
                       </div>
                       <div className="text-[11px] text-muted flex items-center gap-1.5">
                         <Phone className="h-3.5 w-3.5 text-muted shrink-0" />
-                        <span>{partner.user.phone || 'N/A'}</span>
+                        <span>{partner.user.phone || "N/A"}</span>
                       </div>
                     </td>
 
                     {/* Trạng thái duyệt */}
                     <td className="p-4 whitespace-nowrap">
-                      {partner.approvalStatus === 'PENDING' && (
+                      {partner.approvalStatus === "PENDING" && (
                         <span className="inline-flex items-center rounded bg-yellow-100 px-2 py-0.5 text-[10px] font-extrabold uppercase text-yellow-800">
                           Chờ xét duyệt
                         </span>
                       )}
-                      {partner.approvalStatus === 'APPROVED' && (
+                      {partner.approvalStatus === "APPROVED" && (
                         <span className="inline-flex items-center rounded bg-green-100 px-2 py-0.5 text-[10px] font-extrabold uppercase text-green-800">
                           Đã phê duyệt
                         </span>
                       )}
-                      {partner.approvalStatus === 'REJECTED' && (
+                      {partner.approvalStatus === "REJECTED" && (
                         <span className="inline-flex items-center rounded bg-red-100 px-2 py-0.5 text-[10px] font-extrabold uppercase text-red-800">
                           Đã từ chối
                         </span>
@@ -299,8 +367,8 @@ export default function AdminPartnersPage() {
 
                     {/* Trạng thái tài khoản */}
                     <td className="p-4 whitespace-nowrap">
-                      {partner.approvalStatus === 'APPROVED' ? (
-                        partner.accountStatus === 'ACTIVE' ? (
+                      {partner.approvalStatus === "APPROVED" ? (
+                        partner.accountStatus === "ACTIVE" ? (
                           <span className="inline-flex items-center rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold uppercase text-emerald-800">
                             Hoạt động
                           </span>
@@ -316,10 +384,12 @@ export default function AdminPartnersPage() {
 
                     {/* Hành động phê duyệt */}
                     <td className="p-4 text-right whitespace-nowrap">
-                      {partner.approvalStatus === 'PENDING' ? (
+                      {partner.approvalStatus === "PENDING" ? (
                         <div className="flex items-center justify-end gap-1.5">
                           <button
-                            onClick={() => setPartnerAction({ partner, type: 'approve' })}
+                            onClick={() =>
+                              setPartnerAction({ partner, type: "approve" })
+                            }
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors"
                             title="Phê duyệt"
                           >
@@ -327,7 +397,9 @@ export default function AdminPartnersPage() {
                             Duyệt
                           </button>
                           <button
-                            onClick={() => setPartnerAction({ partner, type: 'reject' })}
+                            onClick={() =>
+                              setPartnerAction({ partner, type: "reject" })
+                            }
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors"
                             title="Từ chối"
                           >
@@ -335,7 +407,7 @@ export default function AdminPartnersPage() {
                             Từ chối
                           </button>
                         </div>
-                      ) : partner.approvalStatus === 'APPROVED' ? (
+                      ) : partner.approvalStatus === "APPROVED" ? (
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             onClick={() => handleViewBranches(partner)}
@@ -345,9 +417,14 @@ export default function AdminPartnersPage() {
                             <Building2 className="h-3.5 w-3.5" />
                             Chi nhánh
                           </button>
-                          {partner.accountStatus === 'ACTIVE' ? (
+                          {partner.accountStatus === "ACTIVE" ? (
                             <button
-                              onClick={() => setStatusAction({ partner, targetStatus: 'LOCKED' })}
+                              onClick={() =>
+                                setStatusAction({
+                                  partner,
+                                  targetStatus: "LOCKED",
+                                })
+                              }
                               className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent"
                               title="Khóa đối tác"
                             >
@@ -355,7 +432,12 @@ export default function AdminPartnersPage() {
                             </button>
                           ) : (
                             <button
-                              onClick={() => setStatusAction({ partner, targetStatus: 'ACTIVE' })}
+                              onClick={() =>
+                                setStatusAction({
+                                  partner,
+                                  targetStatus: "ACTIVE",
+                                })
+                              }
                               className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors border border-transparent"
                               title="Mở khóa đối tác"
                             >
@@ -364,15 +446,24 @@ export default function AdminPartnersPage() {
                           )}
                         </div>
                       ) : (
-                        <span className="text-[10px] text-muted italic">Đã từ chối</span>
+                        <span className="text-[10px] text-muted italic">
+                          Đã từ chối
+                        </span>
                       )}
                     </td>
-
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            itemLabel="đối tác"
+            disabled={fetching}
+            onPageChange={setPage}
+          />
         </div>
       )}
 
@@ -387,13 +478,13 @@ export default function AdminPartnersPage() {
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>
-                {partnerAction.type === 'approve' ? 'Phê duyệt' : 'Từ chối'} đối tác
-                &nbsp;&quot;{partnerAction.partner.companyName}&quot;?
+                {partnerAction.type === "approve" ? "Phê duyệt" : "Từ chối"} đối
+                tác &nbsp;&quot;{partnerAction.partner.companyName}&quot;?
               </AlertDialogTitle>
               <AlertDialogDescription>
-                {partnerAction.type === 'approve'
-                  ? 'Hồ sơ đối tác sẽ được phê duyệt và tài khoản đăng nhập được kích hoạt.'
-                  : 'Hồ sơ đối tác sẽ bị từ chối và tài khoản đăng nhập bị khóa.'}
+                {partnerAction.type === "approve"
+                  ? "Hồ sơ đối tác sẽ được phê duyệt và tài khoản đăng nhập được kích hoạt."
+                  : "Hồ sơ đối tác sẽ bị từ chối và tài khoản đăng nhập bị khóa."}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -401,15 +492,21 @@ export default function AdminPartnersPage() {
               <AlertDialogAction
                 onClick={() => {
                   if (partnerAction) {
-                    void (partnerAction.type === 'approve'
+                    void (partnerAction.type === "approve"
                       ? handleApprove(partnerAction.partner.partnerId)
                       : handleReject(partnerAction.partner.partnerId));
                     setPartnerAction(null);
                   }
                 }}
-                className={partnerAction.type === 'approve' ? 'bg-primary hover:bg-primary-hover' : 'bg-red-600 hover:bg-red-700'}
+                className={
+                  partnerAction.type === "approve"
+                    ? "bg-primary hover:bg-primary-hover"
+                    : "bg-red-600 hover:bg-red-700"
+                }
               >
-                {partnerAction.type === 'approve' ? 'Phê duyệt đối tác' : 'Từ chối đối tác'}
+                {partnerAction.type === "approve"
+                  ? "Phê duyệt đối tác"
+                  : "Từ chối đối tác"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -427,13 +524,14 @@ export default function AdminPartnersPage() {
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>
-                {statusAction.targetStatus === 'LOCKED' ? 'Khóa' : 'Mở khóa'} tài khoản đối tác
-                &nbsp;&quot;{statusAction.partner.companyName}&quot;?
+                {statusAction.targetStatus === "LOCKED" ? "Khóa" : "Mở khóa"}{" "}
+                tài khoản đối tác &nbsp;&quot;{statusAction.partner.companyName}
+                &quot;?
               </AlertDialogTitle>
               <AlertDialogDescription>
-                {statusAction.targetStatus === 'LOCKED'
-                  ? 'Khi đối tác bị khóa, tất cả tài khoản nhân viên của họ cũng không thể quét/redeem mã và các chiến dịch voucher của họ có thể bị ảnh hưởng.'
-                  : 'Tài khoản đối tác và quyền quản lý chiến dịch của họ sẽ hoạt động bình thường trở lại.'}
+                {statusAction.targetStatus === "LOCKED"
+                  ? "Khi đối tác bị khóa, tất cả tài khoản nhân viên của họ cũng không thể quét/redeem mã và các chiến dịch voucher của họ có thể bị ảnh hưởng."
+                  : "Tài khoản đối tác và quyền quản lý chiến dịch của họ sẽ hoạt động bình thường trở lại."}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -441,11 +539,18 @@ export default function AdminPartnersPage() {
               <AlertDialogAction
                 onClick={() => {
                   if (statusAction) {
-                    void handleToggleStatus(statusAction.partner.partnerId, statusAction.targetStatus);
+                    void handleToggleStatus(
+                      statusAction.partner.partnerId,
+                      statusAction.targetStatus,
+                    );
                     setStatusAction(null);
                   }
                 }}
-                className={statusAction.targetStatus === 'LOCKED' ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}
+                className={
+                  statusAction.targetStatus === "LOCKED"
+                    ? "bg-red-600 hover:bg-red-700"
+                    : "bg-emerald-600 hover:bg-emerald-700"
+                }
               >
                 Xác nhận
               </AlertDialogAction>
@@ -463,7 +568,7 @@ export default function AdminPartnersPage() {
                 <Building2 className="h-5 w-5 text-primary" />
                 Chi nhánh áp dụng ({selectedPartnerForBranches.companyName})
               </h3>
-              <button 
+              <button
                 onClick={() => setSelectedPartnerForBranches(null)}
                 className="p-1.5 rounded-md hover:bg-secondary/20 transition-colors text-muted"
               >
@@ -476,11 +581,18 @@ export default function AdminPartnersPage() {
                   <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
                 </div>
               ) : branches.length === 0 ? (
-                <p className="text-center py-6 text-sm text-muted">Chưa đăng ký chi nhánh nào.</p>
+                <p className="text-center py-6 text-sm text-muted">
+                  Chưa đăng ký chi nhánh nào.
+                </p>
               ) : (
                 branches.map((b) => (
-                  <div key={b.branchId} className="p-3 border border-border bg-secondary/5 rounded-xl">
-                    <p className="font-semibold text-foreground text-sm">{b.name}</p>
+                  <div
+                    key={b.branchId}
+                    className="p-3 border border-border bg-secondary/5 rounded-xl"
+                  >
+                    <p className="font-semibold text-foreground text-sm">
+                      {b.name}
+                    </p>
                     <p className="text-xs text-muted mt-1">{b.address}</p>
                   </div>
                 ))
@@ -497,7 +609,6 @@ export default function AdminPartnersPage() {
           </div>
         </div>
       )}
-
     </div>
   );
 }

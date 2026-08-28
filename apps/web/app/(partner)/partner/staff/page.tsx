@@ -1,10 +1,13 @@
-'use client';
+"use client";
 
-import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { apiRequest } from '../../../../lib/api';
-import { getErrorMessage } from '../../../../lib/errors';
-import { useAuth } from '../../../../context/AuthContext';
-import { useRouter } from 'next/navigation';
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { apiRequest } from "../../../../lib/api";
+import { getErrorMessage } from "../../../../lib/errors";
+import { PaginatedResponse } from "../../../../lib/pagination";
+import { useDebouncedValue } from "../../../../hooks/use-debounced-value";
+import { TablePagination } from "../../../../components/ui/table-pagination";
+import { useAuth } from "../../../../context/AuthContext";
+import { useRouter } from "next/navigation";
 import {
   Users,
   UserPlus,
@@ -21,25 +24,25 @@ import {
   Eye,
   EyeOff,
   Search,
-  Calendar
-} from 'lucide-react';
-import { Controller, useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+  Calendar,
+} from "lucide-react";
+import { Controller, useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '../../../../components/ui/select';
+} from "../../../../components/ui/select";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '../../../../components/ui/dialog';
+} from "../../../../components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,77 +52,88 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '../../../../components/ui/alert-dialog';
+} from "../../../../components/ui/alert-dialog";
 
 // Form validation schema for creating staff
-const createStaffSchema = z.object({
-  email: z.string().email('Email không hợp lệ.'),
-  password: z
-    .string()
-    .min(1, 'Vui lòng nhập mật khẩu.')
-    .min(6, 'Mật khẩu phải có ít nhất 8 ký tự.'),
-  confirmPassword: z.string().min(1, 'Vui lòng xác nhận lại mật khẩu.'),
-  fullName: z.string().min(2, 'Họ và tên phải dài ít nhất 2 ký tự.'),
-  phone: z
-    .string()
-    .trim()
-    .min(1, 'Vui lòng nhập số điện thoại.')
-    .superRefine((value, ctx) => {
-      if (/[A-Za-z]/.test(value)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'Số điện thoại không được chứa chữ.',
-        });
-        return;
-      }
+const createStaffSchema = z
+  .object({
+    email: z.string().email("Email không hợp lệ."),
+    password: z
+      .string()
+      .min(1, "Vui lòng nhập mật khẩu.")
+      .min(6, "Mật khẩu phải có ít nhất 8 ký tự."),
+    confirmPassword: z.string().min(1, "Vui lòng xác nhận lại mật khẩu."),
+    fullName: z.string().min(2, "Họ và tên phải dài ít nhất 2 ký tự."),
+    phone: z
+      .string()
+      .trim()
+      .min(1, "Vui lòng nhập số điện thoại.")
+      .superRefine((value, ctx) => {
+        if (/[A-Za-z]/.test(value)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Số điện thoại không được chứa chữ.",
+          });
+          return;
+        }
 
-      if (/[^0-9+\-()\s]/.test(value)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'Số điện thoại không được chứa ký tự đặc biệt.',
-        });
-        return;
-      }
+        if (/[^0-9+\-()\s]/.test(value)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Số điện thoại không được chứa ký tự đặc biệt.",
+          });
+          return;
+        }
 
-      const digitCount = value.replace(/\D/g, '').length;
-      if (digitCount < 9 || digitCount > 15) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'Số điện thoại phải có từ 9 đến 15 chữ số.',
-        });
-      }
-    }),
-  branchId: z.string().uuid('Vui lòng chọn chi nhánh hợp lệ.'),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: 'Mật khẩu và xác nhận mật khẩu không khớp.',
-  path: ['confirmPassword'],
-});
+        const digitCount = value.replace(/\D/g, "").length;
+        if (digitCount < 9 || digitCount > 15) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Số điện thoại phải có từ 9 đến 15 chữ số.",
+          });
+        }
+      }),
+    branchId: z.string().uuid("Vui lòng chọn chi nhánh hợp lệ."),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Mật khẩu và xác nhận mật khẩu không khớp.",
+    path: ["confirmPassword"],
+  });
 
 type CreateStaffFormInput = z.infer<typeof createStaffSchema>;
 
 // Form validation schema for editing staff (password optional)
-const editStaffSchema = z.object({
-  fullName: z.string().min(2, 'Họ và tên phải dài ít nhất 2 ký tự.'),
-  branchId: z.string().uuid('Vui lòng chọn chi nhánh hợp lệ.'),
-  password: z.string().optional().or(z.literal('')),
-  confirmPassword: z.string().optional().or(z.literal('')),
-}).refine((data) => {
-  if (data.password && data.password.length > 0) {
-    return data.password === data.confirmPassword;
-  }
-  return true;
-}, {
-  message: 'Mật khẩu mới và xác nhận mật khẩu không khớp.',
-  path: ['confirmPassword'],
-}).refine((data) => {
-  if (data.password && data.password.length > 0) {
-    return data.password.length >= 6;
-  }
-  return true;
-}, {
-  message: 'Mật khẩu mới phải có ít nhất 8 ký tự.',
-  path: ['password'],
-});
+const editStaffSchema = z
+  .object({
+    fullName: z.string().min(2, "Họ và tên phải dài ít nhất 2 ký tự."),
+    branchId: z.string().uuid("Vui lòng chọn chi nhánh hợp lệ."),
+    password: z.string().optional().or(z.literal("")),
+    confirmPassword: z.string().optional().or(z.literal("")),
+  })
+  .refine(
+    (data) => {
+      if (data.password && data.password.length > 0) {
+        return data.password === data.confirmPassword;
+      }
+      return true;
+    },
+    {
+      message: "Mật khẩu mới và xác nhận mật khẩu không khớp.",
+      path: ["confirmPassword"],
+    },
+  )
+  .refine(
+    (data) => {
+      if (data.password && data.password.length > 0) {
+        return data.password.length >= 6;
+      }
+      return true;
+    },
+    {
+      message: "Mật khẩu mới phải có ít nhất 8 ký tự.",
+      path: ["password"],
+    },
+  );
 
 type EditStaffFormInput = z.infer<typeof editStaffSchema>;
 
@@ -152,7 +166,12 @@ export default function PartnerStaffPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [fetching, setFetching] = useState(false);
+  const debouncedSearch = useDebouncedValue(searchTerm);
 
   // Modals state
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -178,16 +197,16 @@ export default function PartnerStaffPage() {
     formState: { errors: errorsCreate },
   } = useForm<CreateStaffFormInput>({
     resolver: zodResolver(createStaffSchema),
-    mode: 'onSubmit',
-    reValidateMode: 'onSubmit',
+    mode: "onSubmit",
+    reValidateMode: "onSubmit",
     defaultValues: {
-      email: '',
-      password: '',
-      confirmPassword: '',
-      fullName: '',
-      phone: '',
-      branchId: '',
-    }
+      email: "",
+      password: "",
+      confirmPassword: "",
+      fullName: "",
+      phone: "",
+      branchId: "",
+    },
   });
 
   // Form for editing staff
@@ -200,29 +219,31 @@ export default function PartnerStaffPage() {
     formState: { errors: errorsEdit },
   } = useForm<EditStaffFormInput>({
     resolver: zodResolver(editStaffSchema),
-    mode: 'onSubmit',
-    reValidateMode: 'onSubmit',
+    mode: "onSubmit",
+    reValidateMode: "onSubmit",
     defaultValues: {
-      fullName: '',
-      branchId: '',
-      password: '',
-      confirmPassword: '',
-    }
+      fullName: "",
+      branchId: "",
+      password: "",
+      confirmPassword: "",
+    },
   });
 
   useEffect(() => {
     if (!createModalOpen || !createFormRef.current) return;
 
     const orderedFields: Array<keyof CreateStaffFormInput> = [
-      'branchId',
-      'fullName',
-      'email',
-      'password',
-      'confirmPassword',
-      'phone',
+      "branchId",
+      "fullName",
+      "email",
+      "password",
+      "confirmPassword",
+      "phone",
     ];
 
-    const firstInvalidField = orderedFields.find((field) => Boolean(errorsCreate[field]));
+    const firstInvalidField = orderedFields.find((field) =>
+      Boolean(errorsCreate[field]),
+    );
     if (!firstInvalidField) return;
 
     const target = createFormRef.current.querySelector<HTMLElement>(
@@ -230,7 +251,7 @@ export default function PartnerStaffPage() {
     );
     if (!target) return;
 
-    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
     target.focus({ preventScroll: true });
   }, [errorsCreate, createModalOpen]);
 
@@ -238,13 +259,15 @@ export default function PartnerStaffPage() {
     if (!editingStaff || !editFormRef.current) return;
 
     const orderedFields: Array<keyof EditStaffFormInput> = [
-      'branchId',
-      'fullName',
-      'password',
-      'confirmPassword',
+      "branchId",
+      "fullName",
+      "password",
+      "confirmPassword",
     ];
 
-    const firstInvalidField = orderedFields.find((field) => Boolean(errorsEdit[field]));
+    const firstInvalidField = orderedFields.find((field) =>
+      Boolean(errorsEdit[field]),
+    );
     if (!firstInvalidField) return;
 
     const target = editFormRef.current.querySelector<HTMLElement>(
@@ -252,47 +275,72 @@ export default function PartnerStaffPage() {
     );
     if (!target) return;
 
-    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
     target.focus({ preventScroll: true });
   }, [errorsEdit, editingStaff]);
 
-  const loadData = async () => {
-    setLoading(true);
-    setErrorMsg(null);
-    try {
-      const [staffData, branchData] = await Promise.all([
-        apiRequest<StaffUser[]>('/partners/staff'),
-        apiRequest<Branch[]>('/partners/branches'),
-      ]);
-      setStaffList(staffData);
-      setBranches(branchData);
-    } catch (error: unknown) {
-      setErrorMsg(getErrorMessage(error, 'Không thể tải dữ liệu nhân viên.'));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loadStaff = useCallback(
+    async (signal?: AbortSignal) => {
+      setFetching(true);
+      setErrorMsg(null);
+      try {
+        const params = new URLSearchParams({ page: String(page), limit: "20" });
+        if (debouncedSearch) params.set("keyword", debouncedSearch);
+        const data = await apiRequest<PaginatedResponse<StaffUser>>(
+          `/partners/staff?${params.toString()}`,
+          { signal },
+        );
+        setStaffList(data.items);
+        setTotal(data.total);
+        setTotalPages(data.totalPages);
+      } catch (error: unknown) {
+        if (error instanceof DOMException && error.name === "AbortError")
+          return;
+        setErrorMsg(getErrorMessage(error, "Không thể tải dữ liệu nhân viên."));
+      } finally {
+        if (!signal?.aborted) {
+          setLoading(false);
+          setFetching(false);
+        }
+      }
+    },
+    [page, debouncedSearch],
+  );
 
   useEffect(() => {
     if (!authLoading) {
-      if (!user || user.role !== 'PARTNER') {
-        router.push('/login?redirect=/partner/staff');
+      if (!user || user.role !== "PARTNER") {
+        router.push("/login?redirect=/partner/staff");
       } else {
+        const controller = new AbortController();
         queueMicrotask(() => {
-          void loadData();
+          if (!controller.signal.aborted) void loadStaff(controller.signal);
         });
+        return () => controller.abort();
       }
     }
-  }, [user, authLoading, router]);
+  }, [user, authLoading, router, loadStaff]);
+
+  useEffect(() => {
+    if (!authLoading && user?.role === "PARTNER") {
+      void apiRequest<Branch[]>("/partners/branches")
+        .then(setBranches)
+        .catch((error: unknown) => {
+          setErrorMsg(
+            getErrorMessage(error, "Không thể tải danh sách chi nhánh."),
+          );
+        });
+    }
+  }, [user, authLoading]);
 
   const openEditModal = (staff: StaffUser) => {
     setSuccessMsg(null);
     setErrorMsg(null);
     setEditingStaff(staff);
-    setEditValue('fullName', staff.fullName || '');
-    setEditValue('branchId', staff.branchId || '');
-    setEditValue('password', '');
-    setEditValue('confirmPassword', '');
+    setEditValue("fullName", staff.fullName || "");
+    setEditValue("branchId", staff.branchId || "");
+    setEditValue("password", "");
+    setEditValue("confirmPassword", "");
     setShowEditPass(false);
     setShowEditConfirmPass(false);
   };
@@ -301,29 +349,35 @@ export default function PartnerStaffPage() {
     setSubmitting(true);
     setErrorMsg(null);
     setSuccessMsg(null);
-    clearCreateErrors(['email', 'phone']);
+    clearCreateErrors(["email", "phone"]);
     try {
-      await apiRequest<void>('/partners/staff', {
-        method: 'POST',
+      await apiRequest<void>("/partners/staff", {
+        method: "POST",
         body: JSON.stringify(data),
       });
-      setSuccessMsg('Đã tạo thành công tài khoản nhân viên!');
+      setSuccessMsg("Đã tạo thành công tài khoản nhân viên!");
       resetCreate();
       setCreateModalOpen(false);
-      loadData();
+      loadStaff();
     } catch (error: unknown) {
-      const message = getErrorMessage(error, 'Tạo nhân viên thất bại. Vui lòng thử lại.');
+      const message = getErrorMessage(
+        error,
+        "Tạo nhân viên thất bại. Vui lòng thử lại.",
+      );
 
-      if (message.includes('Email')) {
-        setCreateError('email', { type: 'server', message });
+      if (message.includes("Email")) {
+        setCreateError("email", { type: "server", message });
       }
 
-      if (message.includes('Số điện thoại')) {
-        setCreateError('phone', { type: 'server', message });
+      if (message.includes("Số điện thoại")) {
+        setCreateError("phone", { type: "server", message });
       }
 
-      if (!message.includes('Email') && !message.includes('Số điện thoại')) {
-        setCreateError('email', { type: 'server', message: 'Tạo nhân viên thất bại. Vui lòng thử lại.' });
+      if (!message.includes("Email") && !message.includes("Số điện thoại")) {
+        setCreateError("email", {
+          type: "server",
+          message: "Tạo nhân viên thất bại. Vui lòng thử lại.",
+        });
       }
     } finally {
       setSubmitting(false);
@@ -345,15 +399,17 @@ export default function PartnerStaffPage() {
       }
 
       await apiRequest<void>(`/partners/staff/${editingStaff.userId}`, {
-        method: 'PATCH',
+        method: "PATCH",
         body: JSON.stringify(body),
       });
-      setSuccessMsg(`Cập nhật thông tin nhân viên "${data.fullName}" thành công!`);
+      setSuccessMsg(
+        `Cập nhật thông tin nhân viên "${data.fullName}" thành công!`,
+      );
       setEditingStaff(null);
       resetEdit();
-      loadData();
+      loadStaff();
     } catch (error: unknown) {
-      setErrorMsg(getErrorMessage(error, 'Cập nhật nhân viên thất bại.'));
+      setErrorMsg(getErrorMessage(error, "Cập nhật nhân viên thất bại."));
     } finally {
       setSubmitting(false);
     }
@@ -364,22 +420,18 @@ export default function PartnerStaffPage() {
     setSuccessMsg(null);
     try {
       await apiRequest<void>(`/partners/staff/${staff.userId}`, {
-        method: 'DELETE',
+        method: "DELETE",
       });
-      setSuccessMsg(`Đã xóa thành công tài khoản nhân viên "${staff.fullName}".`);
-      loadData();
+      setSuccessMsg(
+        `Đã xóa thành công tài khoản nhân viên "${staff.fullName}".`,
+      );
+      loadStaff();
     } catch (error: unknown) {
-      setErrorMsg(getErrorMessage(error, 'Không thể xóa tài khoản nhân viên này.'));
+      setErrorMsg(
+        getErrorMessage(error, "Không thể xóa tài khoản nhân viên này."),
+      );
     }
   };
-
-  const filteredStaff = useMemo(() => {
-    return staffList.filter(s =>
-      (s.fullName && s.fullName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (s.email && s.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (s.phone && s.phone.includes(searchTerm))
-    );
-  }, [staffList, searchTerm]);
 
   if (authLoading || loading) {
     return (
@@ -391,7 +443,6 @@ export default function PartnerStaffPage() {
 
   return (
     <div className="space-y-6">
-
       {/* BREADCRUMB */}
       <div className="flex items-center gap-2 text-xs text-muted">
         <span>Đối tác</span>
@@ -406,7 +457,10 @@ export default function PartnerStaffPage() {
             <Users className="h-6 w-6 text-primary" />
             Nhân viên cửa hàng
           </h1>
-          <p className="text-xs text-muted mt-1">Cấp tài khoản, chỉnh sửa địa điểm gán chi nhánh hoặc xóa nhân sự thu ngân.</p>
+          <p className="text-xs text-muted mt-1">
+            Cấp tài khoản, chỉnh sửa địa điểm gán chi nhánh hoặc xóa nhân sự thu
+            ngân.
+          </p>
         </div>
 
         <div className="flex items-center gap-2 max-w-md w-full sm:justify-end">
@@ -416,7 +470,10 @@ export default function PartnerStaffPage() {
               type="text"
               placeholder="Tìm theo họ tên, email..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setPage(1);
+              }}
               className="block w-full rounded-lg border border-border bg-card py-2 pl-9 pr-3 text-xs text-foreground placeholder-slate-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all"
             />
           </div>
@@ -452,12 +509,15 @@ export default function PartnerStaffPage() {
       )}
 
       {/* DANH SÁCH NHÂN VIÊN */}
-      {filteredStaff.length === 0 ? (
+      {staffList.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border p-12 text-center space-y-3">
           <Users className="h-10 w-10 text-muted mx-auto" />
-          <h3 className="text-sm font-bold text-foreground">Không tìm thấy nhân viên phù hợp</h3>
+          <h3 className="text-sm font-bold text-foreground">
+            Không tìm thấy nhân viên phù hợp
+          </h3>
           <p className="text-xs text-muted max-w-sm mx-auto">
-            Hãy nhấp vào nút &quot;Thêm nhân viên&quot; ở trên hoặc thay đổi bộ lọc tìm kiếm.
+            Hãy nhấp vào nút &quot;Thêm nhân viên&quot; ở trên hoặc thay đổi bộ
+            lọc tìm kiếm.
           </p>
         </div>
       ) : (
@@ -474,23 +534,30 @@ export default function PartnerStaffPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
-                {filteredStaff.map((staff) => (
-                  <tr key={staff.userId} className="hover:bg-slate-50 transition-colors">
+                {staffList.map((staff) => (
+                  <tr
+                    key={staff.userId}
+                    className="hover:bg-slate-50 transition-colors"
+                  >
                     <td className="p-4">
                       <div className="flex items-center gap-3">
                         <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">
                           {staff.fullName?.charAt(0).toUpperCase()}
                         </div>
                         <div>
-                          <p className="font-semibold text-foreground text-xs">{staff.fullName}</p>
-                          <p className="text-[10px] text-muted truncate max-w-[150px]">{staff.userId}</p>
+                          <p className="font-semibold text-foreground text-xs">
+                            {staff.fullName}
+                          </p>
+                          <p className="text-[10px] text-muted truncate max-w-[150px]">
+                            {staff.userId}
+                          </p>
                         </div>
                       </div>
                     </td>
                     <td className="p-4">
                       <div className="text-foreground font-semibold flex items-center gap-1.5">
                         <Store className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                        <span>{staff.branch?.name || 'Chưa gán'}</span>
+                        <span>{staff.branch?.name || "Chưa gán"}</span>
                       </div>
                     </td>
                     <td className="p-4 space-y-1">
@@ -508,7 +575,11 @@ export default function PartnerStaffPage() {
                     <td className="p-4 text-[11px] text-muted whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
                         <Calendar className="h-3.5 w-3.5 shrink-0" />
-                        <span>{new Date(staff.createdAt).toLocaleDateString('vi-VN')}</span>
+                        <span>
+                          {new Date(staff.createdAt).toLocaleDateString(
+                            "vi-VN",
+                          )}
+                        </span>
                       </div>
                     </td>
                     <td className="p-4 text-right whitespace-nowrap">
@@ -534,6 +605,14 @@ export default function PartnerStaffPage() {
               </tbody>
             </table>
           </div>
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            itemLabel="nhân viên"
+            disabled={fetching}
+            onPageChange={setPage}
+          />
         </div>
       )}
 
@@ -547,20 +626,31 @@ export default function PartnerStaffPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <form ref={createFormRef} onSubmit={handleSubmitCreate(onCreateSubmit)} className="flex-1 space-y-2 overflow-y-auto p-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-
+          <form
+            ref={createFormRef}
+            onSubmit={handleSubmitCreate(onCreateSubmit)}
+            className="flex-1 space-y-2 overflow-y-auto p-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+          >
             {/* Chi nhánh */}
             <div className="space-y-1">
-              <label id="create-staff-branch-label" className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Chi nhánh gán cố định</label>
+              <label
+                id="create-staff-branch-label"
+                className="block text-[10px] font-bold text-foreground uppercase tracking-wide"
+              >
+                Chi nhánh gán cố định
+              </label>
               <Controller
                 name="branchId"
                 control={controlCreate}
                 render={({ field }) => (
                   <Select
                     name={field.name}
-                    items={branches.map((branch) => ({ label: branch.name, value: branch.branchId }))}
+                    items={branches.map((branch) => ({
+                      label: branch.name,
+                      value: branch.branchId,
+                    }))}
                     value={field.value || null}
-                    onValueChange={(value) => field.onChange(value ?? '')}
+                    onValueChange={(value) => field.onChange(value ?? "")}
                   >
                     <SelectTrigger
                       data-field-name="branchId"
@@ -573,7 +663,10 @@ export default function PartnerStaffPage() {
                     </SelectTrigger>
                     <SelectContent align="start" alignItemWithTrigger={false}>
                       {branches.map((branch) => (
-                        <SelectItem key={branch.branchId} value={branch.branchId}>
+                        <SelectItem
+                          key={branch.branchId}
+                          value={branch.branchId}
+                        >
                           {branch.name}
                         </SelectItem>
                       ))}
@@ -582,52 +675,64 @@ export default function PartnerStaffPage() {
                 )}
               />
               {errorsCreate.branchId && (
-                <p className="text-[9px] text-red-500">{errorsCreate.branchId.message}</p>
+                <p className="text-[9px] text-red-500">
+                  {errorsCreate.branchId.message}
+                </p>
               )}
             </div>
 
             {/* Họ tên */}
             <div className="space-y-1">
-              <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Họ và tên nhân viên</label>
+              <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">
+                Họ và tên nhân viên
+              </label>
               <div className="relative">
                 <input
                   type="text"
                   placeholder="Ví dụ: Nguyễn Văn A"
-                  {...registerCreate('fullName')}
+                  {...registerCreate("fullName")}
                   className="block w-full rounded-lg border border-border bg-card py-1.5 pl-8 pr-2.5 text-[11px] text-foreground focus:border-primary focus:outline-none"
                 />
                 <User className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
               </div>
               {errorsCreate.fullName && (
-                <p className="text-[9px] text-red-500">{errorsCreate.fullName.message}</p>
+                <p className="text-[9px] text-red-500">
+                  {errorsCreate.fullName.message}
+                </p>
               )}
             </div>
 
             {/* Email */}
             <div className="space-y-1">
-              <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Địa chỉ Email đăng nhập</label>
+              <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">
+                Địa chỉ Email đăng nhập
+              </label>
               <div className="relative">
                 <input
                   type="email"
                   placeholder="staff@company.com"
-                  {...registerCreate('email')}
+                  {...registerCreate("email")}
                   className="block w-full rounded-lg border border-border bg-card py-1.5 pl-8 pr-2.5 text-[11px] text-foreground focus:border-primary focus:outline-none"
                 />
                 <Mail className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
               </div>
               {errorsCreate.email && (
-                <p className="text-[9px] text-red-500">{errorsCreate.email.message}</p>
+                <p className="text-[9px] text-red-500">
+                  {errorsCreate.email.message}
+                </p>
               )}
             </div>
 
             {/* Password */}
             <div className="space-y-1">
-              <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Mật khẩu ban đầu</label>
+              <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">
+                Mật khẩu ban đầu
+              </label>
               <div className="relative">
                 <input
-                  type={showPass ? 'text' : 'password'}
+                  type={showPass ? "text" : "password"}
                   placeholder="Tối thiểu 8 ký tự"
-                  {...registerCreate('password')}
+                  {...registerCreate("password")}
                   className="block w-full rounded-lg border border-border bg-card py-1.5 pl-8 pr-8 text-[11px] text-foreground focus:border-primary focus:outline-none"
                 />
                 <Lock className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
@@ -636,22 +741,30 @@ export default function PartnerStaffPage() {
                   onClick={() => setShowPass(!showPass)}
                   className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400 hover:text-foreground"
                 >
-                  {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showPass ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
                 </button>
               </div>
               {errorsCreate.password && (
-                <p className="text-[9px] text-red-500">{errorsCreate.password.message}</p>
+                <p className="text-[9px] text-red-500">
+                  {errorsCreate.password.message}
+                </p>
               )}
             </div>
 
             {/* Confirm Password */}
             <div className="space-y-1">
-              <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Nhập lại mật khẩu</label>
+              <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">
+                Nhập lại mật khẩu
+              </label>
               <div className="relative">
                 <input
-                  type={showConfirmPass ? 'text' : 'password'}
+                  type={showConfirmPass ? "text" : "password"}
                   placeholder="Xác nhận trùng khớp mật khẩu"
-                  {...registerCreate('confirmPassword')}
+                  {...registerCreate("confirmPassword")}
                   className="block w-full rounded-lg border border-border bg-card py-1.5 pl-8 pr-8 text-[11px] text-foreground focus:border-primary focus:outline-none"
                 />
                 <Lock className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
@@ -660,28 +773,38 @@ export default function PartnerStaffPage() {
                   onClick={() => setShowConfirmPass(!showConfirmPass)}
                   className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400 hover:text-foreground"
                 >
-                  {showConfirmPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showConfirmPass ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
                 </button>
               </div>
               {errorsCreate.confirmPassword && (
-                <p className="text-[9px] text-red-500">{errorsCreate.confirmPassword.message}</p>
+                <p className="text-[9px] text-red-500">
+                  {errorsCreate.confirmPassword.message}
+                </p>
               )}
             </div>
 
             {/* Điện thoại */}
             <div className="space-y-1">
-              <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Số điện thoại</label>
+              <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">
+                Số điện thoại
+              </label>
               <div className="relative">
                 <input
                   type="text"
                   placeholder="Ví dụ: 0987654321"
-                  {...registerCreate('phone')}
+                  {...registerCreate("phone")}
                   className="block w-full rounded-lg border border-border bg-card py-1.5 pl-8 pr-2.5 text-[11px] text-foreground focus:border-primary focus:outline-none"
                 />
                 <Phone className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
               </div>
               {errorsCreate.phone && (
-                <p className="text-[9px] text-red-500">{errorsCreate.phone.message}</p>
+                <p className="text-[9px] text-red-500">
+                  {errorsCreate.phone.message}
+                </p>
               )}
             </div>
 
@@ -699,10 +822,9 @@ export default function PartnerStaffPage() {
                 disabled={submitting}
                 className="px-3 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold transition-colors disabled:opacity-50"
               >
-                {submitting ? 'Đang tạo...' : 'Tạo tài khoản'}
+                {submitting ? "Đang tạo..." : "Tạo tài khoản"}
               </button>
             </div>
-
           </form>
         </DialogContent>
       </Dialog>
@@ -717,27 +839,42 @@ export default function PartnerStaffPage() {
         {editingStaff && (
           <DialogContent className="flex h-[min(84vh,720px)] w-[min(92vw,520px)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-[520px]">
             <DialogHeader className="shrink-0 border-b border-border px-4 py-3 pr-12 text-left">
-              <DialogTitle className="text-sm">Chỉnh sửa thông tin nhân viên</DialogTitle>
+              <DialogTitle className="text-sm">
+                Chỉnh sửa thông tin nhân viên
+              </DialogTitle>
               <DialogDescription className="text-[10px]">
-                Email đăng nhập gán cố định:{' '}
-                <span className="font-bold text-foreground">{editingStaff.email}</span>
+                Email đăng nhập gán cố định:{" "}
+                <span className="font-bold text-foreground">
+                  {editingStaff.email}
+                </span>
               </DialogDescription>
             </DialogHeader>
 
-            <form ref={editFormRef} onSubmit={handleSubmitEdit(onEditSubmit)} className="flex-1 space-y-2 overflow-y-auto p-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-
+            <form
+              ref={editFormRef}
+              onSubmit={handleSubmitEdit(onEditSubmit)}
+              className="flex-1 space-y-2 overflow-y-auto p-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            >
               {/* Chi nhánh */}
               <div className="space-y-1">
-                <label id="edit-staff-branch-label" className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Chi nhánh gán làm việc</label>
+                <label
+                  id="edit-staff-branch-label"
+                  className="block text-[10px] font-bold text-foreground uppercase tracking-wide"
+                >
+                  Chi nhánh gán làm việc
+                </label>
                 <Controller
                   name="branchId"
                   control={controlEdit}
                   render={({ field }) => (
                     <Select
                       name={field.name}
-                      items={branches.map((branch) => ({ label: branch.name, value: branch.branchId }))}
+                      items={branches.map((branch) => ({
+                        label: branch.name,
+                        value: branch.branchId,
+                      }))}
                       value={field.value || null}
-                      onValueChange={(value) => field.onChange(value ?? '')}
+                      onValueChange={(value) => field.onChange(value ?? "")}
                     >
                       <SelectTrigger
                         data-field-name="branchId"
@@ -750,7 +887,10 @@ export default function PartnerStaffPage() {
                       </SelectTrigger>
                       <SelectContent align="start" alignItemWithTrigger={false}>
                         {branches.map((branch) => (
-                          <SelectItem key={branch.branchId} value={branch.branchId}>
+                          <SelectItem
+                            key={branch.branchId}
+                            value={branch.branchId}
+                          >
                             {branch.name}
                           </SelectItem>
                         ))}
@@ -759,34 +899,42 @@ export default function PartnerStaffPage() {
                   )}
                 />
                 {errorsEdit.branchId && (
-                  <p className="text-[9px] text-red-500">{errorsEdit.branchId.message}</p>
+                  <p className="text-[9px] text-red-500">
+                    {errorsEdit.branchId.message}
+                  </p>
                 )}
               </div>
 
               {/* Họ tên */}
               <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Họ và tên nhân viên</label>
+                <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">
+                  Họ và tên nhân viên
+                </label>
                 <div className="relative">
                   <input
                     type="text"
-                    {...registerEdit('fullName')}
+                    {...registerEdit("fullName")}
                     className="block w-full rounded-lg border border-border bg-card py-1.5 pl-8 pr-2.5 text-[11px] text-foreground focus:border-primary focus:outline-none"
                   />
                   <User className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
                 </div>
                 {errorsEdit.fullName && (
-                  <p className="text-[9px] text-red-500">{errorsEdit.fullName.message}</p>
+                  <p className="text-[9px] text-red-500">
+                    {errorsEdit.fullName.message}
+                  </p>
                 )}
               </div>
 
               {/* Password mới (Tùy chọn) */}
               <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Mật khẩu mới</label>
+                <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">
+                  Mật khẩu mới
+                </label>
                 <div className="relative">
                   <input
-                    type={showEditPass ? 'text' : 'password'}
+                    type={showEditPass ? "text" : "password"}
                     placeholder="Nhập nếu cần đổi mật khẩu nhân viên"
-                    {...registerEdit('password')}
+                    {...registerEdit("password")}
                     className="block w-full rounded-lg border border-border bg-card py-1.5 pl-8 pr-8 text-[11px] text-foreground focus:border-primary focus:outline-none"
                   />
                   <Lock className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
@@ -795,22 +943,30 @@ export default function PartnerStaffPage() {
                     onClick={() => setShowEditPass(!showEditPass)}
                     className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400 hover:text-foreground"
                   >
-                    {showEditPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    {showEditPass ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
                   </button>
                 </div>
                 {errorsEdit.password && (
-                  <p className="text-[9px] text-red-500">{errorsEdit.password.message}</p>
+                  <p className="text-[9px] text-red-500">
+                    {errorsEdit.password.message}
+                  </p>
                 )}
               </div>
 
               {/* Confirm Password */}
               <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">Xác nhận lại mật khẩu</label>
+                <label className="block text-[10px] font-bold text-foreground uppercase tracking-wide">
+                  Xác nhận lại mật khẩu
+                </label>
                 <div className="relative">
                   <input
-                    type={showEditConfirmPass ? 'text' : 'password'}
+                    type={showEditConfirmPass ? "text" : "password"}
                     placeholder="Xác nhận lại mật khẩu mới ở trên"
-                    {...registerEdit('confirmPassword')}
+                    {...registerEdit("confirmPassword")}
                     className="block w-full rounded-lg border border-border bg-card py-1.5 pl-8 pr-8 text-[11px] text-foreground focus:border-primary focus:outline-none"
                   />
                   <Lock className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
@@ -819,11 +975,17 @@ export default function PartnerStaffPage() {
                     onClick={() => setShowEditConfirmPass(!showEditConfirmPass)}
                     className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400 hover:text-foreground"
                   >
-                    {showEditConfirmPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    {showEditConfirmPass ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
                   </button>
                 </div>
                 {errorsEdit.confirmPassword && (
-                  <p className="text-[9px] text-red-500">{errorsEdit.confirmPassword.message}</p>
+                  <p className="text-[9px] text-red-500">
+                    {errorsEdit.confirmPassword.message}
+                  </p>
                 )}
               </div>
 
@@ -841,10 +1003,9 @@ export default function PartnerStaffPage() {
                   disabled={submitting}
                   className="px-3 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold transition-colors disabled:opacity-50"
                 >
-                  {submitting ? 'Đang lưu...' : 'Lưu thay đổi'}
+                  {submitting ? "Đang lưu..." : "Lưu thay đổi"}
                 </button>
               </div>
-
             </form>
           </DialogContent>
         )}
@@ -861,23 +1022,25 @@ export default function PartnerStaffPage() {
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>
-                Xóa nhân viên &quot;{staffToDelete.fullName || staffToDelete.email}&quot;?
+                Xóa nhân viên &quot;
+                {staffToDelete.fullName || staffToDelete.email}&quot;?
               </AlertDialogTitle>
               <AlertDialogDescription>
-                Tài khoản nhân viên sẽ bị xóa vĩnh viễn và không thể tiếp tục đăng nhập để
-                quét voucher. Thao tác này không thể hoàn tác.
+                Tài khoản nhân viên sẽ bị xóa vĩnh viễn và không thể tiếp tục
+                đăng nhập để quét voucher. Thao tác này không thể hoàn tác.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Hủy bỏ</AlertDialogCancel>
-              <AlertDialogAction onClick={() => void handleDeleteStaff(staffToDelete)}>
+              <AlertDialogAction
+                onClick={() => void handleDeleteStaff(staffToDelete)}
+              >
                 Xóa nhân viên
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         )}
       </AlertDialog>
-
     </div>
   );
 }

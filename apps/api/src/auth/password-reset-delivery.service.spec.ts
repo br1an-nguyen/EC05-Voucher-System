@@ -1,5 +1,6 @@
 import { PasswordResetDeliveryService } from './password-reset-delivery.service';
 import * as nodemailer from 'nodemailer';
+import { Logger } from '@nestjs/common';
 
 jest.mock('nodemailer');
 
@@ -9,6 +10,8 @@ describe('PasswordResetDeliveryService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.spyOn(Logger.prototype, 'log').mockImplementation();
+    jest.spyOn(Logger.prototype, 'error').mockImplementation();
     mockSendMail = jest.fn().mockResolvedValue({ messageId: 'test-msg-id' });
     (nodemailer.createTransport as jest.Mock).mockReturnValue({
       sendMail: mockSendMail,
@@ -22,6 +25,7 @@ describe('PasswordResetDeliveryService', () => {
   afterEach(() => {
     delete process.env.GMAIL_USER;
     delete process.env.GMAIL_APP_PASSWORD;
+    jest.restoreAllMocks();
   });
 
   it('should be defined', () => {
@@ -42,7 +46,9 @@ describe('PasswordResetDeliveryService', () => {
     const callArgs = mockSendMail.mock.calls[0][0];
     expect(callArgs.to).toBe('customer@example.com');
     expect(callArgs.subject).toContain('đặt lại mật khẩu');
-    expect(callArgs.html).toContain('https://frontend.example/reset?token=secret');
+    expect(callArgs.html).toContain(
+      'https://frontend.example/reset?token=secret',
+    );
   });
 
   it('should throw an error when credentials are missing', async () => {

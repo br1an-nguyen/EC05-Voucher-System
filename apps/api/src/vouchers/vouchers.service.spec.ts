@@ -104,60 +104,111 @@ describe('VouchersService admin category safeguards', () => {
 });
 
 describe('VouchersService public province filters', () => {
-  it('defaults the public catalog to approved campaigns currently on sale', async () => {
+  function createCatalogService() {
     const prisma = {
-      voucherCampaign: { findMany: jest.fn().mockResolvedValue([]) },
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          total: 0,
+          data: [],
+          facets: { totalCampaignCount: 0, categories: [] },
+        },
+      ]),
     };
-    const service = new VouchersService(prisma as any, {} as any);
+    return {
+      prisma,
+      service: new VouchersService(prisma as any, {} as any),
+    };
+  }
+
+  function executedSql(
+    prisma: ReturnType<typeof createCatalogService>['prisma'],
+  ) {
+    return (prisma.$queryRaw.mock.calls[0][0] as { sql: string }).sql;
+  }
+
+  it('defaults the public catalog to approved campaigns currently on sale', async () => {
+    const { prisma, service } = createCatalogService();
 
     await service.findPublicCatalog({});
 
-    expect(prisma.voucherCampaign.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          status: VoucherStatus.APPROVED,
-          saleStartTime: { lte: expect.any(Date) },
-          saleEndTime: { gte: expect.any(Date) },
-        }),
-      }),
+    expect(executedSql(prisma)).toContain('vc.sale_start_time <= NOW()');
+    expect(executedSql(prisma)).toContain('vc.sale_end_time >= NOW()');
+    expect(executedSql(prisma)).toContain(
+      'vc.capacity - vc.sold_quantity - vc.reserved_stock > 0',
     );
   });
 
   it('returns only campaigns that have not started when UPCOMING is requested', async () => {
-    const prisma = {
-      voucherCampaign: { findMany: jest.fn().mockResolvedValue([]) },
-    };
-    const service = new VouchersService(prisma as any, {} as any);
+    const { prisma, service } = createCatalogService();
 
     await service.findPublicCatalog({ validityStatus: 'UPCOMING' });
 
-    expect(prisma.voucherCampaign.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          status: VoucherStatus.APPROVED,
-          saleStartTime: { gt: expect.any(Date) },
-        }),
+    expect(executedSql(prisma)).toContain('vc.sale_start_time > NOW()');
+  });
+
+  it('returns active and upcoming campaigns when ALL is requested', async () => {
+    const { prisma, service } = createCatalogService();
+
+    await service.findPublicCatalog({ validityStatus: 'ALL' });
+
+    expect(executedSql(prisma)).toContain('vc.sale_end_time >= NOW()');
+    expect(executedSql(prisma)).not.toContain('vc.sale_start_time <= NOW()');
+  });
+
+  it('returns pagination and filter-aware facets from the same query', async () => {
+    const { prisma, service } = createCatalogService();
+    prisma.$queryRaw.mockResolvedValue([
+      {
+        total: 3,
+        data: [{ campaignId: 'campaign-1' }],
+        facets: {
+          totalCampaignCount: 3,
+          categories: [
+            {
+              code: 'SHOPPING_RETAIL',
+              name: 'Mua sắm',
+              campaignCount: 3,
+              children: [],
+            },
+          ],
+        },
+      },
+    ]);
+
+    await expect(
+      service.findPublicCatalog({
+        keyword: '  Marc   Fashion ',
+        page: 1,
+        limit: 12,
       }),
-    );
+    ).resolves.toEqual({
+      data: [{ campaignId: 'campaign-1' }],
+      meta: { total: 3, page: 1, limit: 12, totalPages: 1 },
+      facets: {
+        totalCampaignCount: 3,
+        categories: [
+          {
+            code: 'SHOPPING_RETAIL',
+            name: 'Mua sắm',
+            campaignCount: 3,
+            children: [],
+          },
+        ],
+      },
+    });
   });
 
   it('filters campaigns by a branch province code', async () => {
-    const prisma = {
-      voucherCampaign: { findMany: jest.fn().mockResolvedValue([]) },
-    };
-    const service = new VouchersService(prisma as any, {} as any);
+    const { prisma, service } = createCatalogService();
 
     await service.findPublicCatalog({ provinceCode: '79' });
 
-    expect(prisma.voucherCampaign.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          campaignBranches: {
-            some: { branch: { is: { provinceCode: '79' } } },
-          },
-        }),
-      }),
+    expect(executedSql(prisma)).toContain(
+      'province_branch.province_code = ?',
     );
+    expect(
+      (prisma.$queryRaw.mock.calls[0][0] as { values: unknown[] }).values,
+    ).toContain('79');
   });
 
   it('counts each active campaign once per province', async () => {
@@ -167,17 +218,17 @@ describe('VouchersService public province filters', () => {
           {
             campaignId: 'campaign-1',
             branch: { provinceCode: '79' },
-            campaign: { capacity: 10, soldQuantity: 2 },
+            campaign: { capacity: 10, soldQuantity: 2, reservedStock: 0 },
           },
           {
             campaignId: 'campaign-1',
             branch: { provinceCode: '79' },
-            campaign: { capacity: 10, soldQuantity: 2 },
+            campaign: { capacity: 10, soldQuantity: 2, reservedStock: 0 },
           },
           {
             campaignId: 'campaign-sold-out',
             branch: { provinceCode: '79' },
-            campaign: { capacity: 10, soldQuantity: 10 },
+            campaign: { capacity: 10, soldQuantity: 10, reservedStock: 0 },
           },
         ]),
       },
@@ -325,28 +376,38 @@ describe('VouchersService partner campaign management', () => {
             soldQuantity: 6,
             campaignBranches: [],
             campaignCategories: [],
-            orderItems: [
-              {
-                quantity: 4,
-                unitPrice: 97_000,
-                _count: { voucherCodes: 4 },
-                voucherCodes: [
-                  { status: VoucherCodeStatus.USED },
-                  { status: VoucherCodeStatus.CANCELLED },
-                ],
-              },
-            ],
           },
         ]),
       },
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            totalCampaigns: 1n,
+            totalCapacity: 10n,
+            soldQuantity: 3n,
+            totalRevenue: 388000,
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            campaignId,
+            issuedCodeCount: 4n,
+            usedCount: 1n,
+            cancelledCount: 1n,
+            revenue: 388000,
+          },
+        ]),
     };
     const service = new VouchersService(prisma as any, {} as any);
 
-    const [campaign] = await service.getPartnerCampaigns(partnerId);
+    const result = await service.getPartnerCampaigns(partnerId);
+    const [campaign] = result.items;
 
     expect(campaign.soldQuantity).toBe(3);
     expect(campaign.issuedCodeCount).toBe(4);
     expect(campaign.usedCount).toBe(1);
+    expect(result.total).toBe(1);
   });
 
   it('uses the same real-code calculation for partner campaign detail', async () => {
