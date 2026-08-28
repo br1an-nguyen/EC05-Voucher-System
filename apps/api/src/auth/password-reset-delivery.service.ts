@@ -112,7 +112,6 @@ export class PasswordResetDeliveryService {
         port: 465,
         secure: true,
         auth: { user, pass },
-        family: 4, // Ép dùng IPv4
       });
     }
 
