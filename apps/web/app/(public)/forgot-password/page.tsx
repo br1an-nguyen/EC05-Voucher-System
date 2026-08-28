@@ -74,7 +74,7 @@ export default function ForgotPasswordPage() {
               <p className="font-semibold">Yêu cầu đặt lại mật khẩu đã được gửi.</p>
             </div>
             <p>
-              Nếu email của bạn đã tồn tại trong hệ thống, chúng tôi sẽ gửi hướng dẫn trong vài phút.
+              Liên kết đặt lại mật khẩu đã được gửi thành công. Vui lòng kiểm tra hộp thư đến (và thư mục Spam) của bạn.
             </p>
             <Link
               href="/login"
