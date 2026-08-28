@@ -193,15 +193,17 @@ export default function PaymentReturnPage() {
         const paymentId = searchParams.get("orderId");
         if (!paymentId) return;
         try {
-          // Gọi ngầm API mock-success, sau đó luồng polling phía trên sẽ tự động 
-          // bắt được trạng thái SUCCEEDED và cập nhật giao diện cái rụp!
           await apiRequest<void>(`/payments/${paymentId}/mock-success`, {
             method: "POST",
           });
+          // Chủ động cập nhật giao diện thành công luôn vì vòng lặp polling có thể đã bị ngắt
+          await fetchPaymentStatus(paymentId);
+          setStatus("SUCCESS");
+          setLoading(false);
         } catch (e) {
           console.error("Auto mock-success failed", e);
         }
-      }, 10000);
+      }, 7000); // Chạy sau 7 giây (trước khi polling hết hạn ở giây thứ 10)
       return () => clearTimeout(timer);
     }
   }, [provider, status, searchParams]);
