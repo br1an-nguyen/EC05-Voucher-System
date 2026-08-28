@@ -102,6 +102,46 @@ export class EmailService {
         </div>
       `;
 
+      // 1. NẾU CÓ BREVO_API_KEY -> Gửi qua API HTTP của Brevo (Chống rớt mạng trên Railway)
+      if (process.env.BREVO_API_KEY) {
+        try {
+          const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+            method: 'POST',
+            headers: {
+              'accept': 'application/json',
+              'api-key': process.env.BREVO_API_KEY,
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({
+              sender: {
+                name: 'VoucherNow Gift',
+                email: process.env.BREVO_SENDER_EMAIL || 'tonhannhan223@gmail.com',
+              },
+              to: [
+                {
+                  email: recipientEmail,
+                },
+              ],
+              subject: `🎁 Bạn nhận được quà tặng Voucher từ ${senderName}!`,
+              htmlContent: htmlContent,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.text();
+            this.logger.error(`Brevo API Error (Gift Email): ${errorData}`);
+            throw new Error('Lỗi từ Brevo API');
+          }
+
+          this.logger.log(`[Brevo] Email quà tặng gửi thành công tới ${recipientEmail}.`);
+          return true;
+        } catch (error: any) {
+          this.logger.error(`[Brevo] Gửi email quà tặng thất bại tới ${recipientEmail}: ${error.message}`);
+          return false;
+        }
+      }
+
+      // 2. Rơi về Nodemailer (Chạy Local)
       const mailOptions = {
         from: `"Hệ thống Voucher EC05" <${user}>`,
         to: recipientEmail,
@@ -110,7 +150,7 @@ export class EmailService {
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      this.logger.log(`Email quà tặng gửi thành công tới ${recipientEmail}. MessageId: ${info.messageId}`);
+      this.logger.log(`[Nodemailer] Email quà tặng gửi thành công tới ${recipientEmail}. MessageId: ${info.messageId}`);
       return true;
     } catch (error: any) {
       this.logger.error(`Gửi email quà tặng thất bại tới ${recipientEmail}: ${error.message}`);
