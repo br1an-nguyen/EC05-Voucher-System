@@ -351,9 +351,10 @@ export default function PartnerStaffPage() {
     setSuccessMsg(null);
     clearCreateErrors(["email", "phone"]);
     try {
+      const { confirmPassword, ...payload } = data;
       await apiRequest<void>("/partners/staff", {
         method: "POST",
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       });
       setSuccessMsg("Đã tạo thành công tài khoản nhân viên!");
       resetCreate();
@@ -365,19 +366,20 @@ export default function PartnerStaffPage() {
         "Tạo nhân viên thất bại. Vui lòng thử lại.",
       );
 
-      if (message.includes("Email")) {
+      let isFieldError = false;
+
+      if (message.includes("Email") || message.toLowerCase().includes("email")) {
         setCreateError("email", { type: "server", message });
+        isFieldError = true;
       }
 
-      if (message.includes("Số điện thoại")) {
+      if (message.includes("Số điện thoại") || message.toLowerCase().includes("phone")) {
         setCreateError("phone", { type: "server", message });
+        isFieldError = true;
       }
 
-      if (!message.includes("Email") && !message.includes("Số điện thoại")) {
-        setCreateError("email", {
-          type: "server",
-          message: "Tạo nhân viên thất bại. Vui lòng thử lại.",
-        });
+      if (!isFieldError) {
+        setErrorMsg(message);
       }
     } finally {
       setSubmitting(false);
