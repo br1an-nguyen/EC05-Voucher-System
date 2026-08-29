@@ -130,6 +130,7 @@ export default function PartnerVoucherDetailPage({
   const [codeAction, setCodeAction] = useState<{ code: VoucherCodeItem; action: 'lock' | 'unlock' } | null>(null);
   const [processingCode, setProcessingCode] = useState(false);
 
+  // Nạp thông tin, chi nhánh áp dụng và thống kê mã của một chiến dịch thuộc đối tác.
   const loadCampaign = useCallback(async () => {
     try {
       const data = await apiRequest<CampaignDetail>(`/vouchers/partner/${id}`);
@@ -141,6 +142,7 @@ export default function PartnerVoucherDetailPage({
     }
   }, [id]);
 
+  // Danh sách mã phục vụ quản trị (tìm/lọc/khóa), không phải quy trình quét tại quầy.
   const loadCodes = useCallback(async () => {
     setLoadingCodes(true);
     try {
@@ -171,6 +173,7 @@ export default function PartnerVoucherDetailPage({
     });
   }, [loadCodes]);
 
+  // Khóa/mở khóa mã là thao tác quản trị để kiểm soát khả năng sử dụng mã.
   const handleCodeAction = async () => {
     if (!codeAction) return;
     setProcessingCode(true);

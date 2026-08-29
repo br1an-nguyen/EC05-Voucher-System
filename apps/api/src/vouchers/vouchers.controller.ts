@@ -109,7 +109,7 @@ export class VouchersController {
   }
 
   /**
-   * Cập nhật thông tin chiến dịch voucher (chỉ áp dụng cho DRAFT/REJECTED).
+   * Cập nhật chiến dịch (chỉ áp dụng cho DRAFT/REJECTED).
    * PATCH /vouchers/:id
    */
   @Patch(':id')
@@ -139,7 +139,7 @@ export class VouchersController {
   }
 
   /**
-   * Lấy danh sách voucher thuộc quyền sở hữu của đối tác đăng nhập.
+   * Lấy chiến dịch thuộc quyền sở hữu của đối tác đăng nhập.
    * GET /vouchers/partner/list
    */
   @Get('partner/list')
@@ -170,7 +170,7 @@ export class VouchersController {
   }
 
   /**
-   * Lấy danh sách từng voucher code đã phát hành của một chiến dịch.
+   * Lấy các mã đã phát hành của một chiến dịch để quản trị.
    * GET /vouchers/partner/:id/codes
    */
   @Get('partner/:id/codes')
@@ -368,7 +368,7 @@ export class VouchersController {
   }
 
   /**
-   * Admin/Partner: Khóa mã voucher ngưng cho phép đổi mã.
+   * Admin/Partner khóa mã để tạm ngưng khả năng sử dụng mã.
    * PATCH /vouchers/codes/:codeId/lock
    */
   @Patch('codes/:codeId/lock')
@@ -379,7 +379,7 @@ export class VouchersController {
   }
 
   /**
-   * Admin/Partner: Mở khóa mã voucher.
+   * Admin/Partner mở khóa mã voucher.
    * PATCH /vouchers/codes/:codeId/unlock
    */
   @Patch('codes/:codeId/unlock')

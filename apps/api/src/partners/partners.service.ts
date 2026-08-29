@@ -67,7 +67,7 @@ export class PartnersService {
   }
 
   /**
-   * Lấy thông tin hồ sơ doanh nghiệp của đối tác kèm thông tin tài khoản user.
+   * Lấy hồ sơ doanh nghiệp kèm thông tin tài khoản của đối tác.
    */
   async getProfile(partnerId: string) {
     const partner = await this.prisma.partner.findUnique({
@@ -92,7 +92,7 @@ export class PartnersService {
   }
 
   /**
-   * Cập nhật thông tin hồ sơ đối tác.
+   * Cập nhật hồ sơ và chặn mã số thuế trùng với doanh nghiệp khác.
    */
   async updateProfile(partnerId: string, updatePartnerDto: UpdatePartnerDto) {
     const { companyName, taxCode, representative } = updatePartnerDto;
@@ -123,7 +123,7 @@ export class PartnersService {
   }
 
   /**
-   * Lấy thống kê dashboard theo tài khoản đối tác hiện tại.
+   * Tổng hợp chiến dịch, doanh số, khách hàng, doanh thu và số mã đã dùng.
    */
   async getDashboard(partnerId: string) {
     const [dashboard] = await this.prisma.$queryRaw<PartnerDashboardRow[]>`
@@ -187,7 +187,7 @@ export class PartnersService {
   }
 
   /**
-   * Lấy danh sách toàn bộ chi nhánh của đối tác.
+   * Lấy toàn bộ chi nhánh thuộc đối tác để chọn trong form.
    */
   async getBranches(partnerId: string) {
     return this.prisma.branch.findMany({
@@ -202,6 +202,12 @@ export class PartnersService {
     });
   }
 
+  /**
+   * Tìm kiếm và phân trang danh sách chi nhánh của chính đối tác.
+   * @param partnerId ID đối tác đang đăng nhập.
+   * @param query Điều kiện tìm kiếm và phân trang từ màn hình quản lý.
+   * @returns Danh sách chi nhánh và metadata phân trang.
+   */
   async listBranches(partnerId: string, query: PartnerListQueryDto) {
     const where: Prisma.BranchWhereInput = {
       partnerId,
@@ -249,7 +255,7 @@ export class PartnersService {
   }
 
   /**
-   * Cập nhật thông tin chi nhánh của đối tác.
+   * Cập nhật thông tin sau khi xác minh chi nhánh thuộc sở hữu đối tác.
    */
   async updateBranch(
     partnerId: string,
@@ -278,7 +284,7 @@ export class PartnersService {
   }
 
   /**
-   * Xóa chi nhánh của đối tác.
+   * Chỉ xóa khi chi nhánh không còn liên kết voucher hoặc nhân viên.
    */
   async deleteBranch(partnerId: string, branchId: string) {
     // Xác minh chi nhánh tồn tại và thuộc sở hữu
@@ -315,9 +321,11 @@ export class PartnersService {
   }
 
   /**
-   * Tạo tài khoản nhân viên (PARTNER_STAFF) cho chi nhánh cửa hàng.
+   * Tạo tài khoản PARTNER_STAFF cho chi nhánh cửa hàng.
    */
   async createStaff(partnerId: string, dto: CreateStaffDto) {
+    const normalizedEmail = dto.email.trim().toLowerCase();
+
     // 1. Kiểm tra chi nhánh thuộc sở hữu của đối tác
     const branch = await this.prisma.branch.findUnique({
       where: { branchId: dto.branchId },
@@ -331,7 +339,7 @@ export class PartnersService {
     // 2. Kiểm tra trùng lặp theo từng trường để frontend có thể gắn lỗi đúng ô nhập liệu
     const [existingEmail, existingPhone] = await Promise.all([
       this.prisma.user.findFirst({
-        where: { email: dto.email },
+        where: { email: normalizedEmail },
         select: { userId: true },
       }),
       this.prisma.user.findFirst({
@@ -356,7 +364,7 @@ export class PartnersService {
     // 4. Tạo user
     return this.prisma.user.create({
       data: {
-        email: dto.email,
+        email: normalizedEmail,
         phone: dto.phone,
         passwordHash,
         fullName: dto.fullName,
@@ -378,7 +386,7 @@ export class PartnersService {
   }
 
   /**
-   * Lấy danh sách nhân viên của đối tác.
+   * Lấy danh sách nhân viên của đối tác, có tìm kiếm và phân trang.
    */
   async listStaff(partnerId: string, query: PartnerListQueryDto) {
     const where: Prisma.UserWhereInput = {
@@ -427,7 +435,7 @@ export class PartnersService {
   }
 
   /**
-   * Cập nhật thông tin nhân viên (Đổi tên, đổi chi nhánh, đổi mật khẩu tùy chọn).
+   * Cập nhật tên, chi nhánh hoặc mật khẩu của nhân viên thuộc đối tác.
    */
   async updateStaff(
     partnerId: string,
@@ -492,7 +500,7 @@ export class PartnersService {
   }
 
   /**
-   * Xóa tài khoản nhân viên.
+   * Xóa tài khoản nhân viên của đối tác.
    */
   async deleteStaff(partnerId: string, staffUserId: string) {
     const staff = await this.prisma.user.findFirst({

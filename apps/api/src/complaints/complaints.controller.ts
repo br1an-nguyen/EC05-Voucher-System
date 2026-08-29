@@ -88,6 +88,10 @@ export class ComplaintsController {
     );
   }
 
+  /**
+   * Lấy danh sách vụ việc đối tác cần xử lý, hỗ trợ lọc trạng thái và quá hạn.
+   * GET /complaints/partner/list
+   */
   @Get('partner/list')
   @Roles(UserRole.PARTNER)
   findPartnerComplaints(
@@ -97,6 +101,10 @@ export class ComplaintsController {
     return this.complaintsService.findPartnerComplaints(req.user.userId, query);
   }
 
+  /**
+   * Chỉ trả về chi tiết vụ việc thuộc đúng đối tác đăng nhập.
+   * GET /complaints/partner/:id
+   */
   @Get('partner/:id')
   @Roles(UserRole.PARTNER)
   findPartnerDetail(@Req() req: AuthRequest, @Param('id', uuid) id: string) {
@@ -106,6 +114,10 @@ export class ComplaintsController {
     );
   }
 
+  /**
+   * Ghi phản hồi của đối tác và chuyển vụ việc về trạng thái đang xem xét.
+   * POST /complaints/partner/:id/messages
+   */
   @Post('partner/:id/messages')
   @Roles(UserRole.PARTNER)
   partnerMessage(

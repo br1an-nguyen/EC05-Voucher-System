@@ -2,11 +2,12 @@ import { Transform } from 'class-transformer';
 import { IsEmail, IsString, MinLength, IsUUID, Matches } from 'class-validator';
 
 export class CreateStaffDto {
+  @Transform(({ value }) => String(value ?? '').trim().toLowerCase())
   @IsEmail({}, { message: 'Email không hợp lệ.' })
   email: string;
 
   @IsString()
-  @MinLength(6, { message: 'Mật khẩu phải chứa ít nhất 8 ký tự.' })
+  @MinLength(8, { message: 'Mật khẩu phải chứa ít nhất 8 ký tự.' })
   password: string;
 
   @IsString()

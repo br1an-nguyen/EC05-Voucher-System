@@ -368,6 +368,12 @@ export class ComplaintsService {
     return this.pagedList(this.buildListWhere(query, { customerId }), query);
   }
 
+  /**
+   * Lấy các vụ việc mà đối tác đăng nhập là bên liên quan.
+   * @param partnerId ID đối tác đăng nhập.
+   * @param query Bộ lọc trạng thái, quá hạn và phân trang.
+   * @returns Danh sách khiếu nại trong phạm vi đối tác.
+   */
   async findPartnerComplaints(partnerId: string, query: ComplaintQueryDto) {
     return this.pagedList(this.buildListWhere(query, { partnerId }), query);
   }
@@ -408,6 +414,10 @@ export class ComplaintsService {
     return complaint;
   }
 
+  /**
+   * Đọc chi tiết, hội thoại và lịch sử của một vụ việc thuộc đối tác.
+   * @throws NotFoundException nếu vụ việc không thuộc đối tác.
+   */
   async findPartnerComplaintDetail(partnerId: string, complaintId: string) {
     const complaint = await this.prisma.complaint.findFirst({
       where: { complaintId, partnerId },
@@ -496,6 +506,11 @@ export class ComplaintsService {
     return this.partyReply(UserRole.CUSTOMER, customerId, complaintId, dto);
   }
 
+  /**
+   * Nhận phản hồi của đối tác rồi ủy quyền xử lý transaction cho partyReply.
+   * @throws BadRequestException nếu chưa đến lượt đối tác phản hồi.
+   * @throws ConflictException nếu khiếu nại vừa bị cập nhật bởi người khác.
+   */
   async partnerReply(
     partnerId: string,
     complaintId: string,
@@ -504,6 +519,10 @@ export class ComplaintsService {
     return this.partyReply(UserRole.PARTNER, partnerId, complaintId, dto);
   }
 
+  /**
+   * Transaction kiểm tra quyền/trạng thái/phiên bản, lưu tin nhắn và nhật ký thay đổi.
+   * expectedVersion bảo vệ thao tác phản hồi đồng thời trên cùng một khiếu nại.
+   */
   private async partyReply(
     role: UserRole,
     actorId: string,

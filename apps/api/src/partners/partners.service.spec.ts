@@ -103,3 +103,38 @@ describe('PartnersService branches', () => {
     });
   });
 });
+
+describe('PartnersService staff accounts', () => {
+  it('normalizes a staff email before checking duplicates and persisting it', async () => {
+    const prisma = {
+      branch: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ branchId: 'branch-1', partnerId: 'partner-1' }),
+      },
+      user: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ userId: 'staff-1' }),
+      },
+    };
+    const service = new PartnersService(prisma as any, {} as any);
+
+    await service.createStaff('partner-1', {
+      email: ' StaffLocDemo@GMAIL.com ',
+      phone: '0704946039',
+      password: 'Password123',
+      fullName: 'Staff Loc Demo',
+      branchId: 'branch-1',
+    });
+
+    expect(prisma.user.findFirst).toHaveBeenCalledWith({
+      where: { email: 'stafflocdemo@gmail.com' },
+      select: { userId: true },
+    });
+    expect(prisma.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ email: 'stafflocdemo@gmail.com' }),
+      }),
+    );
+  });
+});
