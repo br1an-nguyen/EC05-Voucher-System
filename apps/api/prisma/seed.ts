@@ -461,7 +461,7 @@ async function main() {
   const voucherCode1 = await prisma.voucherCode.create({
     data: {
       itemId: orderItem1.itemId,
-      uniqueCode: "LAUABC999",
+      uniqueCode: "ABC199000001",
       customerId: customer1.userId,
       status: "AVAILABLE",
       issuedAt: oneMonthAgo,
@@ -521,7 +521,7 @@ async function main() {
   const voucherCode2 = await prisma.voucherCode.create({
     data: {
       itemId: orderItem2.itemId,
-      uniqueCode: "XYZ100K001",
+      uniqueCode: "XYZ100000001",
       customerId: customer2.userId,
       status: "USED",
       issuedAt: oneMonthAgo,
@@ -542,7 +542,7 @@ async function main() {
   await prisma.voucherCode.create({
     data: {
       itemId: orderItem2.itemId,
-      uniqueCode: "XYZ100K002",
+      uniqueCode: "XYZ100000002",
       customerId: customer2.userId,
       status: "AVAILABLE",
       issuedAt: oneMonthAgo,

@@ -173,6 +173,14 @@ describe('PaymentFinalizationService', () => {
       },
     });
     expect(tx.voucherCode.create).toHaveBeenCalledTimes(2);
+    const issuedCodes = tx.voucherCode.create.mock.calls.map(
+      ([call]) => call.data.uniqueCode as string,
+    );
+    expect(issuedCodes).toHaveLength(2);
+    expect(new Set(issuedCodes).size).toBe(2);
+    for (const uniqueCode of issuedCodes) {
+      expect(uniqueCode).toMatch(/^[0-9A-F]{12}$/);
+    }
     expect(tx.orderItem.update).toHaveBeenCalledWith({
       where: { itemId },
       data: {

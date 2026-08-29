@@ -32,8 +32,22 @@ interface Branch {
 interface VerifiedVoucher {
   codeId: string;
   uniqueCode: string;
-  status: 'AVAILABLE' | 'USED' | 'EXPIRED' | 'CANCELLED';
+  status: 'AVAILABLE' | 'USED' | 'EXPIRED' | 'CANCELLED' | 'LOCKED';
   issuedAt: string;
+  redemptionEligibility: {
+    redeemable: boolean;
+    reason:
+      | 'ELIGIBLE'
+      | 'NOT_STARTED'
+      | 'INDIVIDUAL_EXPIRED'
+      | 'CAMPAIGN_EXPIRED'
+      | 'USED'
+      | 'EXPIRED'
+      | 'CANCELLED'
+      | 'LOCKED'
+      | 'UNAVAILABLE';
+    message: string | null;
+  };
   customer: {
     fullName: string | null;
     email: string | null;
@@ -60,6 +74,16 @@ interface RedeemResult {
 interface ScannerInstance {
   clear: () => Promise<void>;
 }
+
+const formatVietnamDateTime = (value: string) =>
+  new Date(value).toLocaleString('vi-VN', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    dateStyle: 'short',
+    timeStyle: 'short',
+  });
+
+// Mã mới luôn có 12 ký tự; giới hạn rộng hơn giữ khả năng đổi mã legacy.
+const LEGACY_VOUCHER_CODE_MAX_LENGTH = 64;
 
 export default function PartnerRedeemPage() {
   const { user, loading: authLoading } = useAuth();
@@ -334,20 +358,36 @@ export default function PartnerRedeemPage() {
                 <div className="space-y-1.5">
                   <span className="text-muted block">Trạng thái mã hiện tại:</span>
                   <span className={`inline-block text-[10px] font-extrabold uppercase px-2 py-0.5 rounded ${
-                    verifiedVoucher.status === 'AVAILABLE'
+                    verifiedVoucher.redemptionEligibility.redeemable
                       ? 'bg-green-100 text-green-700'
-                      : 'bg-red-100 text-red-700'
+                      : verifiedVoucher.redemptionEligibility.reason === 'NOT_STARTED'
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-red-100 text-red-700'
                   }`}>
-                    {verifiedVoucher.status === 'AVAILABLE' ? 'Khả dụng (Chưa dùng)' : verifiedVoucher.status === 'USED' ? 'Đã dùng' : verifiedVoucher.status === 'EXPIRED' ? 'Hết hạn' : 'Đã hủy'}
+                    {verifiedVoucher.redemptionEligibility.redeemable
+                      ? 'Có thể sử dụng'
+                      : verifiedVoucher.redemptionEligibility.reason === 'NOT_STARTED'
+                        ? 'Chưa đến thời gian'
+                        : verifiedVoucher.status === 'USED'
+                          ? 'Đã dùng'
+                          : verifiedVoucher.status === 'EXPIRED'
+                            ? 'Hết hạn'
+                            : verifiedVoucher.status === 'LOCKED'
+                              ? 'Đang khóa'
+                              : 'Không khả dụng'}
                   </span>
                 </div>
               </div>
 
               {/* Ràng buộc Chi nhánh & Thời gian sử dụng */}
               <div className="bg-secondary/40 border border-border rounded-xl p-4 text-xs space-y-2 text-muted">
-                <div className="flex justify-between">
-                  <span>Hạn sử dụng:</span>
-                  <span className="font-bold text-foreground">Đến {new Date(verifiedVoucher.campaign.usageEndTime).toLocaleDateString('vi-VN')}</span>
+                <div className="flex justify-between gap-4">
+                  <span>Bắt đầu sử dụng:</span>
+                  <span className="text-right font-bold text-foreground">{formatVietnamDateTime(verifiedVoucher.campaign.usageStartTime)}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span>Kết thúc sử dụng:</span>
+                  <span className="text-right font-bold text-foreground">{formatVietnamDateTime(verifiedVoucher.campaign.usageEndTime)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Hình thức:</span>
@@ -364,12 +404,12 @@ export default function PartnerRedeemPage() {
               </div>
 
               {/* Cảnh báo nếu mã không khả dụng */}
-              {verifiedVoucher.status !== 'AVAILABLE' && (
-                <div className="bg-red-500/10 border border-red-500/20 text-red-800 text-xs p-4 rounded-xl flex items-start gap-2.5">
-                  <AlertTriangle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+              {!verifiedVoucher.redemptionEligibility.redeemable && (
+                <div className="bg-amber-500/10 border border-amber-500/20 text-amber-900 text-xs p-4 rounded-xl flex items-start gap-2.5">
+                  <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
                   <div>
-                    <span className="font-bold">Mã không hợp lệ để đổi!</span>
-                    <p className="text-[10px] text-red-700 mt-0.5">Voucher này không ở trạng thái khả dụng hoặc đã bị hủy/hết hạn. Không chấp nhận đổi hàng.</p>
+                    <span className="font-bold">Chưa thể đổi voucher</span>
+                    <p className="text-[10px] mt-0.5">{verifiedVoucher.redemptionEligibility.message || 'Voucher hiện chưa đủ điều kiện sử dụng.'}</p>
                   </div>
                 </div>
               )}
@@ -387,7 +427,7 @@ export default function PartnerRedeemPage() {
                   Quay lại quét
                 </button>
                 
-                {verifiedVoucher.status === 'AVAILABLE' && (
+                {verifiedVoucher.redemptionEligibility.redeemable && (
                   <button
                     type="button"
                     onClick={handleConfirmRedeem}
@@ -446,14 +486,14 @@ export default function PartnerRedeemPage() {
                 >
                   <div className="space-y-1.5">
                     <label className="block text-xs font-bold text-foreground uppercase tracking-wider">
-                      Nhập mã Voucher (12 ký tự)
+                      Nhập mã Voucher (mã mới gồm 12 ký tự)
                     </label>
                     <input
                       type="text"
                       value={uniqueCode}
                       onChange={(e) => setUniqueCode(e.target.value)}
                       placeholder="Ví dụ: A1B2C3D4E5F6"
-                      maxLength={12}
+                      maxLength={LEGACY_VOUCHER_CODE_MAX_LENGTH}
                       className="block w-full rounded-lg border border-border bg-card py-2.5 px-3 text-foreground placeholder-slate-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary text-sm font-mono tracking-widest uppercase transition-all"
                     />
                   </div>

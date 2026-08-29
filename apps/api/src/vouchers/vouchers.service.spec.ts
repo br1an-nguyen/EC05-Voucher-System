@@ -46,6 +46,153 @@ describe('VouchersService redemption scope', () => {
   });
 });
 
+describe('VouchersService redemption time eligibility', () => {
+  const usageStartTime = new Date('2026-09-20T00:00:00.000Z');
+  const usageEndTime = new Date('2026-09-21T00:00:00.000Z');
+  const actor = { userId: 'admin-1', role: UserRole.ADMIN };
+
+  function voucherFixture(overrides: Record<string, unknown> = {}) {
+    return {
+      codeId: '11111111-1111-4111-8111-111111111111',
+      uniqueCode: 'VOUCHER-001',
+      status: VoucherCodeStatus.AVAILABLE,
+      issuedAt: new Date('2026-09-01T00:00:00.000Z'),
+      expiresAt: null,
+      customer: { fullName: 'Khách hàng A', email: null },
+      usageLogs: [],
+      orderItem: {
+        campaign: {
+          partnerId: 'partner-1',
+          title: 'Voucher demo',
+          description: null,
+          usageStartTime,
+          usageEndTime,
+          isMultiUse: false,
+          maxUsesPerCode: null,
+          partner: { companyName: 'Đối tác A', partnerId: 'partner-1' },
+          campaignBranches: [
+            {
+              branchId: '22222222-2222-4222-8222-222222222222',
+              branch: { name: 'Chi nhánh A' },
+            },
+          ],
+        },
+      },
+      ...overrides,
+    };
+  }
+
+  function verificationService(voucher = voucherFixture()) {
+    const prisma = {
+      voucherCode: { findUnique: jest.fn().mockResolvedValue(voucher) },
+    };
+    return new VouchersService(prisma as any, {} as any);
+  }
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it.each([
+    [
+      'before the usage window',
+      '2026-09-19T23:59:59.999Z',
+      false,
+      'NOT_STARTED',
+      VoucherCodeStatus.AVAILABLE,
+    ],
+    [
+      'at the usage start boundary',
+      '2026-09-20T00:00:00.000Z',
+      true,
+      'ELIGIBLE',
+      VoucherCodeStatus.AVAILABLE,
+    ],
+    [
+      'inside the usage window',
+      '2026-09-20T12:00:00.000Z',
+      true,
+      'ELIGIBLE',
+      VoucherCodeStatus.AVAILABLE,
+    ],
+    [
+      'at the usage end boundary',
+      '2026-09-21T00:00:00.000Z',
+      true,
+      'ELIGIBLE',
+      VoucherCodeStatus.AVAILABLE,
+    ],
+    [
+      'after the usage window',
+      '2026-09-21T00:00:00.001Z',
+      false,
+      'CAMPAIGN_EXPIRED',
+      VoucherCodeStatus.EXPIRED,
+    ],
+  ])(
+    'reports consistent eligibility %s',
+    async (_caseName, now, redeemable, reason, expectedStatus) => {
+      jest.useFakeTimers().setSystemTime(new Date(now as string));
+
+      const result = await verificationService().verifyVoucherCode(
+        actor,
+        'VOUCHER-001',
+      );
+
+      expect(result.status).toBe(expectedStatus);
+      expect(result.redemptionEligibility).toEqual(
+        expect.objectContaining({ redeemable, reason }),
+      );
+    },
+  );
+
+  it('reports an individually expired code separately from campaign expiry', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-20T12:00:00.000Z'));
+    const service = verificationService(
+      voucherFixture({ expiresAt: new Date('2026-09-20T11:59:59.999Z') }),
+    );
+
+    const result = await service.verifyVoucherCode(actor, 'VOUCHER-001');
+
+    expect(result.status).toBe(VoucherCodeStatus.EXPIRED);
+    expect(result.redemptionEligibility).toEqual(
+      expect.objectContaining({
+        redeemable: false,
+        reason: 'INDIVIDUAL_EXPIRED',
+      }),
+    );
+  });
+
+  it('rejects redeem with the same NOT_STARTED eligibility used by verification', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-19T23:59:59.999Z'));
+    const voucher = voucherFixture();
+    const tx = {
+      voucherCode: {
+        findUnique: jest.fn().mockResolvedValue(voucher),
+        update: jest.fn(),
+      },
+      $executeRawUnsafe: jest.fn().mockResolvedValue(1),
+      voucherUsageLog: { create: jest.fn() },
+    };
+    const prisma = {
+      $transaction: jest.fn((callback: (client: typeof tx) => unknown) =>
+        callback(tx),
+      ),
+    };
+    const service = new VouchersService(prisma as any, {} as any);
+
+    await expect(
+      service.redeemVoucher(
+        actor,
+        'VOUCHER-001',
+        '22222222-2222-4222-8222-222222222222',
+      ),
+    ).rejects.toThrow('Voucher chưa đến thời gian áp dụng.');
+    expect(tx.voucherUsageLog.create).not.toHaveBeenCalled();
+    expect(tx.voucherCode.update).not.toHaveBeenCalled();
+  });
+});
+
 describe('VouchersService admin category safeguards', () => {
   it('rejects a parent change that creates a hierarchy cycle', async () => {
     const tx = {
@@ -203,9 +350,7 @@ describe('VouchersService public province filters', () => {
 
     await service.findPublicCatalog({ provinceCode: '79' });
 
-    expect(executedSql(prisma)).toContain(
-      'province_branch.province_code = ?',
-    );
+    expect(executedSql(prisma)).toContain('province_branch.province_code = ?');
     expect(
       (prisma.$queryRaw.mock.calls[0][0] as { values: unknown[] }).values,
     ).toContain('79');

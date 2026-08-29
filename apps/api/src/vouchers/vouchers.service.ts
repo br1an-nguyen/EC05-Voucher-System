@@ -48,6 +48,23 @@ interface PartnerCampaignSummaryRow {
   totalRevenue: Prisma.Decimal | null;
 }
 
+export type RedemptionEligibilityReason =
+  | 'ELIGIBLE'
+  | 'NOT_STARTED'
+  | 'INDIVIDUAL_EXPIRED'
+  | 'CAMPAIGN_EXPIRED'
+  | 'USED'
+  | 'EXPIRED'
+  | 'CANCELLED'
+  | 'LOCKED'
+  | 'UNAVAILABLE';
+
+export interface RedemptionEligibility {
+  redeemable: boolean;
+  reason: RedemptionEligibilityReason;
+  message: string | null;
+}
+
 /**
  * Service quản lý toàn bộ nghiệp vụ tạo, cập nhật, chuyển đổi trạng thái (vòng đời) chiến dịch Voucher.
  */
@@ -98,6 +115,73 @@ export class VouchersService {
     }
 
     throw new ForbiddenException('Tài khoản không có phạm vi đối tác hợp lệ.');
+  }
+
+  private evaluateRedemptionEligibility(
+    voucher: { status: VoucherCodeStatus; expiresAt: Date | null },
+    campaign: { usageStartTime: Date; usageEndTime: Date },
+    now = new Date(),
+  ): RedemptionEligibility {
+    const unavailableByStatus: Partial<
+      Record<VoucherCodeStatus, RedemptionEligibility>
+    > = {
+      [VoucherCodeStatus.USED]: {
+        redeemable: false,
+        reason: 'USED',
+        message: 'Mã voucher này đã được sử dụng.',
+      },
+      [VoucherCodeStatus.EXPIRED]: {
+        redeemable: false,
+        reason: 'EXPIRED',
+        message: 'Mã voucher này đã hết hạn.',
+      },
+      [VoucherCodeStatus.CANCELLED]: {
+        redeemable: false,
+        reason: 'CANCELLED',
+        message: 'Mã voucher này đã bị hủy.',
+      },
+      [VoucherCodeStatus.LOCKED]: {
+        redeemable: false,
+        reason: 'LOCKED',
+        message: 'Mã voucher này hiện đang bị khóa.',
+      },
+    };
+    const statusEligibility = unavailableByStatus[voucher.status];
+    if (statusEligibility) return statusEligibility;
+
+    if (voucher.status !== VoucherCodeStatus.AVAILABLE) {
+      return {
+        redeemable: false,
+        reason: 'UNAVAILABLE',
+        message: 'Mã voucher này không ở trạng thái khả dụng.',
+      };
+    }
+
+    if (voucher.expiresAt && now > voucher.expiresAt) {
+      return {
+        redeemable: false,
+        reason: 'INDIVIDUAL_EXPIRED',
+        message: 'Mã voucher cá nhân đã hết hạn sử dụng.',
+      };
+    }
+
+    if (now < campaign.usageStartTime) {
+      return {
+        redeemable: false,
+        reason: 'NOT_STARTED',
+        message: 'Voucher chưa đến thời gian áp dụng.',
+      };
+    }
+
+    if (now > campaign.usageEndTime) {
+      return {
+        redeemable: false,
+        reason: 'CAMPAIGN_EXPIRED',
+        message: 'Voucher đã hết hạn sử dụng theo chiến dịch.',
+      };
+    }
+
+    return { redeemable: true, reason: 'ELIGIBLE', message: null };
   }
 
   /**
@@ -1185,16 +1269,16 @@ export class VouchersService {
     }
 
     // Trả về trạng thái chi tiết của voucher để hiển thị
-    const now = new Date();
-    let computedStatus = voucher.status;
-
-    if (
-      voucher.status === 'AVAILABLE' &&
-      ((voucher.expiresAt && now > voucher.expiresAt) ||
-        now > campaign.usageEndTime)
-    ) {
-      computedStatus = 'EXPIRED';
-    }
+    const redemptionEligibility = this.evaluateRedemptionEligibility(
+      voucher,
+      campaign,
+    );
+    const computedStatus =
+      voucher.status === VoucherCodeStatus.AVAILABLE &&
+      (redemptionEligibility.reason === 'INDIVIDUAL_EXPIRED' ||
+        redemptionEligibility.reason === 'CAMPAIGN_EXPIRED')
+        ? VoucherCodeStatus.EXPIRED
+        : voucher.status;
 
     return {
       codeId: voucher.codeId,
@@ -1202,6 +1286,7 @@ export class VouchersService {
       status: computedStatus,
       issuedAt: voucher.issuedAt,
       expiresAt: voucher.expiresAt,
+      redemptionEligibility,
       customer: voucher.customer,
       campaign: {
         title: campaign.title,
@@ -1302,46 +1387,24 @@ export class VouchersService {
         );
       }
 
-      // 4. Kiểm tra trạng thái khả dụng của mã (RB-07)
-      if (voucher.status === 'USED') {
-        throw new BadRequestException('Mã voucher này đã được sử dụng.');
-      }
-      if (voucher.status === 'EXPIRED') {
-        throw new BadRequestException('Mã voucher này đã hết hạn.');
-      }
-      if (voucher.status === 'CANCELLED') {
-        throw new BadRequestException('Mã voucher này đã bị hủy.');
-      }
-      if (voucher.status === 'LOCKED') {
-        throw new BadRequestException('Mã voucher này hiện đang bị khóa.');
-      }
-      if (voucher.status !== 'AVAILABLE') {
-        throw new BadRequestException(
-          'Mã voucher này không ở trạng thái khả dụng.',
-        );
-      }
-
-      // 5. Kiểm tra thời hạn sử dụng cá nhân và thời gian chiến dịch (RB-08)
+      // 4-5. Kiểm tra thống nhất trạng thái mã và cửa sổ sử dụng (RB-07, RB-08)
       const now = new Date();
-      if (voucher.expiresAt && now > voucher.expiresAt) {
+      const redemptionEligibility = this.evaluateRedemptionEligibility(
+        voucher,
+        campaign,
+        now,
+      );
+      if (
+        redemptionEligibility.reason === 'INDIVIDUAL_EXPIRED' ||
+        redemptionEligibility.reason === 'CAMPAIGN_EXPIRED'
+      ) {
         await tx.voucherCode.update({
           where: { codeId: voucher.codeId },
-          data: { status: 'EXPIRED' },
+          data: { status: VoucherCodeStatus.EXPIRED },
         });
-        throw new BadRequestException('Mã voucher cá nhân đã hết hạn sử dụng.');
       }
-
-      if (now < campaign.usageStartTime) {
-        throw new BadRequestException('Voucher chưa đến thời gian áp dụng.');
-      }
-      if (now > campaign.usageEndTime) {
-        await tx.voucherCode.update({
-          where: { codeId: voucher.codeId },
-          data: { status: 'EXPIRED' },
-        });
-        throw new BadRequestException(
-          'Voucher đã hết hạn sử dụng theo chiến dịch.',
-        );
+      if (!redemptionEligibility.redeemable) {
+        throw new BadRequestException(redemptionEligibility.message);
       }
 
       // 6. Ghi nhận lịch sử sử dụng VoucherUsageLog
