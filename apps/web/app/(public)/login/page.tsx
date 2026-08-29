@@ -11,7 +11,7 @@ import { Mail, Lock, Ticket, ArrowRight, AlertCircle, Info, Eye, EyeOff, ArrowLe
 import { getErrorMessage } from '../../../lib/errors';
 
 const loginSchema = z.object({
-  identifier: z.string().min(1, 'Vui lòng nhập Email hoặc Số điện thoại.'),
+  identifier: z.string().trim().min(1, 'Vui lòng nhập Email hoặc Số điện thoại.'),
   password: z.string().min(6, 'Mật khẩu phải chứa ít nhất 8 ký tự.'),
 });
 
