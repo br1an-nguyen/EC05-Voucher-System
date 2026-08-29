@@ -35,6 +35,7 @@ export default function PartnerLayout({
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  // Các chức năng hiển thị theo quyền của tài khoản đang đăng nhập.
   const allNavigation = [
     {
       name: "Dashboard",

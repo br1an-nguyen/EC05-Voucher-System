@@ -148,6 +148,7 @@ export default function PartnerVouchersPage() {
   });
   const debouncedSearch = useDebouncedValue(searchTerm);
 
+  // Lấy chiến dịch của chính đối tác, kèm số liệu tổng hợp cho các thẻ KPI.
   const loadCampaigns = useCallback(
     async (signal?: AbortSignal) => {
       setFetching(true);
@@ -191,6 +192,7 @@ export default function PartnerVouchersPage() {
     return () => controller.abort();
   }, [loadCampaigns]);
 
+  // Chuyển bản nháp/từ chối sang trạng thái chờ Admin phê duyệt.
   const handleSubmitForApproval = async (campaignId: string) => {
     setErrorMsg(null);
     setSuccessMsg(null);
@@ -206,6 +208,7 @@ export default function PartnerVouchersPage() {
     }
   };
 
+  // Đối tác chỉ có thể ngừng bán hoặc mở bán lại chiến dịch của mình.
   const handleStatusAction = async () => {
     if (!statusAction) return;
     setUpdatingStatus(true);

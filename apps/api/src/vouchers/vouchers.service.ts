@@ -302,7 +302,7 @@ export class VouchersService {
   }
 
   /**
-   * Cập nhật thông tin chiến dịch voucher (chỉ cho phép khi ở trạng thái DRAFT hoặc REJECTED).
+   * Cập nhật chiến dịch khi ở trạng thái DRAFT hoặc REJECTED.
    */
   async update(
     partnerId: string,
@@ -415,7 +415,7 @@ export class VouchersService {
   }
 
   /**
-   * Gửi duyệt chiến dịch voucher (chuyển trạng thái từ DRAFT/REJECTED thành PENDING_APPROVAL).
+   * Gửi duyệt chiến dịch, chuyển DRAFT/REJECTED thành PENDING_APPROVAL.
    */
   async submitForApproval(partnerId: string, campaignId: string) {
     const campaign = await this.prisma.voucherCampaign.findUnique({
@@ -444,7 +444,7 @@ export class VouchersService {
   }
 
   /**
-   * Lấy danh sách toàn bộ chiến dịch voucher của một đối tác cụ thể.
+   * Lấy chiến dịch của một đối tác kèm bộ lọc, phân trang và số liệu tổng hợp.
    */
   async getPartnerCampaigns(
     partnerId: string,
@@ -601,7 +601,7 @@ export class VouchersService {
   }
 
   /**
-   * Chi tiết chiến dịch trong phạm vi đối tác, kèm thống kê từng trạng thái mã.
+   * Lấy chi tiết chiến dịch kèm thống kê từng trạng thái mã.
    */
   async getPartnerCampaignDetail(partnerId: string, campaignId: string) {
     const campaign = await this.prisma.voucherCampaign.findFirst({
@@ -652,7 +652,7 @@ export class VouchersService {
   }
 
   /**
-   * Danh sách phân trang các mã đã phát hành của một chiến dịch thuộc đối tác.
+   * Lấy danh sách phân trang các mã đã phát hành của chiến dịch thuộc đối tác.
    */
   async getPartnerVoucherCodes(
     partnerId: string,
@@ -1773,7 +1773,7 @@ export class VouchersService {
   }
 
   /**
-   * Admin/Partner: Khóa mã voucher cá nhân (VoucherCode) ngưng không cho phép quét sử dụng (LOCKED).
+   * Admin/Partner khóa mã (LOCKED) để tạm ngưng khả năng sử dụng.
    * @param actorId ID người thao tác (Admin hoặc Partner)
    * @param codeId ID mã voucher cần khóa
    */
@@ -1843,7 +1843,7 @@ export class VouchersService {
   }
 
   /**
-   * Admin/Partner: Mở khóa mã voucher bị khóa trước đó về trạng thái khả dụng (AVAILABLE).
+   * Admin/Partner mở khóa mã về trạng thái khả dụng (AVAILABLE).
    * @param actorId ID người thao tác (Admin hoặc Partner)
    * @param codeId ID mã voucher cần mở khóa
    */

@@ -46,7 +46,7 @@ export class PartnersController {
   }
 
   /**
-   * Lấy thông tin hồ sơ của đối tác hiện tại đang đăng nhập.
+   * Lấy thông tin của đối tác hiện tại đang đăng nhập.
    * GET /partners/profile
    */
   @Get('profile')
@@ -56,7 +56,7 @@ export class PartnersController {
   }
 
   /**
-   * Cập nhật thông tin hồ sơ đối tác.
+   * Cập nhật thông tin doanh nghiệp của chính đối tác đăng nhập.
    * PATCH /partners/profile
    */
   @Patch('profile')
@@ -72,7 +72,7 @@ export class PartnersController {
   }
 
   /**
-   * Lấy tổng quan dashboard cho đối tác hiện tại.
+   * Lấy các chỉ số tổng quan cho đối tác hiện tại.
    * GET /partners/dashboard
    */
   @Get('dashboard')
@@ -82,7 +82,7 @@ export class PartnersController {
   }
 
   /**
-   * Lấy danh sách chi nhánh của đối tác hiện tại.
+   * Lấy toàn bộ chi nhánh thuộc đối tác hiện tại để chọn trong form.
    * GET /partners/branches
    */
   @Get('branches')
@@ -96,7 +96,7 @@ export class PartnersController {
   }
 
   /**
-   * Lấy danh sách chi nhánh phân trang cho màn hình quản lý.
+   * Lấy danh sách có tìm kiếm và phân trang cho màn hình quản lý.
    * GET /partners/branches/list
    */
   @Get('branches/list')
@@ -106,7 +106,7 @@ export class PartnersController {
   }
 
   /**
-   * Tạo chi nhánh mới.
+   * Tạo chi nhánh mới thuộc đối tác đăng nhập.
    * POST /partners/branches
    */
   @Post('branches')
@@ -119,7 +119,7 @@ export class PartnersController {
   }
 
   /**
-   * Cập nhật chi nhánh.
+   * Cập nhật chi nhánh sau khi service xác nhận quyền sở hữu.
    * PATCH /partners/branches/:id
    */
   @Patch('branches/:id')
@@ -137,7 +137,7 @@ export class PartnersController {
   }
 
   /**
-   * Xóa chi nhánh.
+   * Xóa chi nhánh khi không còn ràng buộc nghiệp vụ.
    * DELETE /partners/branches/:id
    */
   @Delete('branches/:id')
@@ -147,7 +147,7 @@ export class PartnersController {
   }
 
   /**
-   * Tạo tài khoản nhân viên cho chi nhánh.
+   * Tạo tài khoản PARTNER_STAFF cho một chi nhánh.
    * POST /partners/staff
    */
   @Post('staff')
@@ -156,6 +156,10 @@ export class PartnersController {
     return this.partnersService.createStaff(req.user.userId, createStaffDto);
   }
 
+  /**
+   * Lấy danh sách nhân viên của đối tác, có tìm kiếm và phân trang.
+   * GET /partners/staff
+   */
   @Get('staff')
   @Roles(UserRole.PARTNER)
   async listStaff(@Req() req: any, @Query() query: PartnerListQueryDto) {
@@ -163,7 +167,7 @@ export class PartnersController {
   }
 
   /**
-   * Cập nhật tài khoản nhân viên.
+   * Cập nhật tài khoản nhân viên thuộc đối tác.
    * PATCH /partners/staff/:id
    */
   @Patch('staff/:id')
@@ -177,7 +181,7 @@ export class PartnersController {
   }
 
   /**
-   * Xóa tài khoản nhân viên.
+   * Xóa tài khoản nhân viên thuộc đối tác.
    * DELETE /partners/staff/:id
    */
   @Delete('staff/:id')

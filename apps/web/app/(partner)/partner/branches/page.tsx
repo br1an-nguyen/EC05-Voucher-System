@@ -87,6 +87,7 @@ export default function PartnerBranchesPage() {
     resolver: zodResolver(branchSchema),
   });
 
+  // Tìm kiếm và phân trang chỉ trong các chi nhánh thuộc đối tác đăng nhập.
   const loadBranches = useCallback(
     async (signal?: AbortSignal) => {
       setFetching(true);
@@ -116,6 +117,7 @@ export default function PartnerBranchesPage() {
     [page, debouncedSearch],
   );
 
+  // Danh mục tỉnh/thành là dữ liệu phụ trợ cho form tạo và sửa chi nhánh.
   useEffect(() => {
     const controller = new AbortController();
     queueMicrotask(() => {
@@ -154,6 +156,7 @@ export default function PartnerBranchesPage() {
     setModalOpen(true);
   };
 
+  // Cùng một form thực hiện tạo mới hoặc cập nhật theo editingBranch.
   const onSubmit = async (data: BranchSchemaType) => {
     setErrorMsg(null);
     const payload = {
@@ -183,6 +186,7 @@ export default function PartnerBranchesPage() {
     }
   };
 
+  // Backend kiểm tra ràng buộc với voucher và nhân viên trước khi xóa.
   const handleDelete = async (branchId: string) => {
     setErrorMsg(null);
     setSuccessMsg(null);

@@ -87,6 +87,7 @@ export default function PartnerDashboard() {
   const [campaignTotalPages, setCampaignTotalPages] = useState(0);
   const [campaignLoading, setCampaignLoading] = useState(false);
 
+  // Tải các KPI được tổng hợp riêng cho đối tác đang đăng nhập.
   useEffect(() => {
     const loadDashboard = async () => {
       try {
@@ -113,6 +114,7 @@ export default function PartnerDashboard() {
     loadDashboard();
   }, [user?.fullName]);
 
+  // Tải bảng chiến dịch gần đây; có phân trang độc lập với KPI.
   useEffect(() => {
     const controller = new AbortController();
     const loadCampaigns = async () => {

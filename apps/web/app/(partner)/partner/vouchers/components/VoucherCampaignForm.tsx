@@ -145,7 +145,7 @@ export default function VoucherCampaignForm({ campaignId }: VoucherCampaignFormP
   const thumbnailUrlValue = useWatch({ control, name: 'thumbnailUrl' }) || '';
   const multiUseRegistration = register('isMultiUse');
 
-  // Load chi nhánh và dữ liệu hiện tại khi chỉnh sửa.
+  // Lấy chi nhánh để chọn phạm vi áp dụng và, khi sửa, nạp dữ liệu chiến dịch hiện có.
   useEffect(() => {
     async function loadFormData() {
       try {
@@ -260,6 +260,7 @@ export default function VoucherCampaignForm({ campaignId }: VoucherCampaignFormP
     }
   };
 
+  // Form tạo bản nháp mới hoặc cập nhật bản nháp/từ chối, tùy campaignId.
   const onSubmit = async (data: CampaignSchemaType) => {
     setSaving(true);
     setErrorMsg(null);

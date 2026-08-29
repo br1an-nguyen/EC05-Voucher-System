@@ -57,11 +57,15 @@ import {
 // Form validation schema for creating staff
 const createStaffSchema = z
   .object({
-    email: z.string().email("Email không hợp lệ."),
+    email: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .email("Email không hợp lệ."),
     password: z
       .string()
       .min(1, "Vui lòng nhập mật khẩu.")
-      .min(6, "Mật khẩu phải có ít nhất 8 ký tự."),
+      .min(8, "Mật khẩu phải có ít nhất 8 ký tự."),
     confirmPassword: z.string().min(1, "Vui lòng xác nhận lại mật khẩu."),
     fullName: z.string().min(2, "Họ và tên phải dài ít nhất 2 ký tự."),
     phone: z
@@ -125,7 +129,7 @@ const editStaffSchema = z
   .refine(
     (data) => {
       if (data.password && data.password.length > 0) {
-        return data.password.length >= 6;
+        return data.password.length >= 8;
       }
       return true;
     },
@@ -279,6 +283,7 @@ export default function PartnerStaffPage() {
     target.focus({ preventScroll: true });
   }, [errorsEdit, editingStaff]);
 
+  // Chỉ tài khoản PARTNER được tải và quản trị nhân viên thuộc doanh nghiệp mình.
   const loadStaff = useCallback(
     async (signal?: AbortSignal) => {
       setFetching(true);
@@ -307,6 +312,7 @@ export default function PartnerStaffPage() {
     [page, debouncedSearch],
   );
 
+  // Lấy chi nhánh để gán nơi làm việc khi tạo hoặc sửa nhân viên.
   useEffect(() => {
     if (!authLoading) {
       if (!user || user.role !== "PARTNER") {
@@ -345,6 +351,7 @@ export default function PartnerStaffPage() {
     setShowEditConfirmPass(false);
   };
 
+  // Tạo tài khoản PARTNER_STAFF và gán cố định vào một chi nhánh.
   const onCreateSubmit = async (data: CreateStaffFormInput) => {
     setSubmitting(true);
     setErrorMsg(null);
@@ -386,6 +393,7 @@ export default function PartnerStaffPage() {
     }
   };
 
+  // Đối tác có thể đổi tên, chi nhánh và tùy chọn đặt lại mật khẩu nhân viên.
   const onEditSubmit = async (data: EditStaffFormInput) => {
     if (!editingStaff) return;
     setSubmitting(true);
@@ -417,6 +425,7 @@ export default function PartnerStaffPage() {
     }
   };
 
+  // Xóa tài khoản nhân viên sau khi người dùng xác nhận trong hộp thoại.
   const handleDeleteStaff = async (staff: StaffUser) => {
     setErrorMsg(null);
     setSuccessMsg(null);

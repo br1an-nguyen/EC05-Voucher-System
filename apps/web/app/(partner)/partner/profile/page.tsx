@@ -37,6 +37,7 @@ export default function PartnerProfilePage() {
     resolver: zodResolver(profileSchema),
   });
 
+  // Nạp dữ liệu doanh nghiệp hiện tại vào form trước khi cho phép sửa.
   useEffect(() => {
     async function loadProfile() {
       try {
@@ -53,6 +54,7 @@ export default function PartnerProfilePage() {
     loadProfile();
   }, [setValue]);
 
+  // Chỉ gửi các trường doanh nghiệp hợp lệ đến API cập nhật hồ sơ.
   const onSubmit = async (data: ProfileSchemaType) => {
     setSaving(true);
     setSuccessMsg(null);

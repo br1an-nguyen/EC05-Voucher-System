@@ -39,6 +39,7 @@ export default function PartnerComplaintsPage() {
   const [detail, setDetail] = useState<Complaint | null>(null);
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
+  // Lọc danh sách vụ việc theo trạng thái, hạn phản hồi và trang hiện tại.
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -60,6 +61,7 @@ export default function PartnerComplaintsPage() {
       void load();
     });
   }, [load]);
+  // Chi tiết bao gồm hội thoại và lịch sử trạng thái của đúng vụ việc thuộc đối tác.
   const openDetail = async (id: string) => {
     try {
       setDetail(await apiRequest<Complaint>(`/complaints/partner/${id}`));
@@ -68,6 +70,7 @@ export default function PartnerComplaintsPage() {
       toast.error(getErrorMessage(e, "Không thể tải chi tiết."));
     }
   };
+  // expectedVersion ngăn phản hồi trên dữ liệu đã bị người khác cập nhật.
   const sendReply = async () => {
     if (!detail || !reply.trim()) return;
     setSending(true);
